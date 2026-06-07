@@ -1,0 +1,6 @@
+compile_commands.json
+*.img
+*.log
+.cache/
+.vscode/
+krnl/build/

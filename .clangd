@@ -1,0 +1,29 @@
+CompileFlags:
+  Compiler: x86_64-elf-g++
+
+  Add: [
+    "-std=c++20",             # Enforce C++20 syntax checking
+    "-target", "x86_64-elf",  # Force Clang to use the correct target triple
+    "-ffreestanding",         # Tell clangd there is no standard hosted C library
+    "-nostdlib",              # Disable standard system libraries
+    "-nostdinc++",            # Disable hosted standard C++ headers
+    "-mno-red-zone",          # Match kernel-space compilation rules
+    "-mno-mmx",               # Match kernel disabling of SIMD registers
+    "-mno-sse",
+    "-mno-sse2",
+
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic"
+  ]
+
+  CompilationDatabase: .
+
+Diagnostics:
+  Suppress: [
+    "reserved_identifier",
+    "gnu_include_next"
+  ]
+
+Index:
+  Background: Build

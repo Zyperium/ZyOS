@@ -20,7 +20,7 @@ extern "C" void krnlmain() {
 
     Scheduler::Initialize();
 
-    SCREEN::fill_screen(SCREEN::COL::BLACK);
+    SCREEN::fill_screen(SCREEN::COL::GREEN);
     SCREEN::flip_buffer();
 
     for (;;) {

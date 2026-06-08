@@ -22,7 +22,7 @@ namespace HAL::PCI {
 
     void EnumeratePCI();
     uint32_t Read32(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset);
-    uint64_t GetBar(uint8_t bus, uint8_t device, uint8_t function, uint8_t bar_index);
+    uint64_t GetBAR(uint8_t bus, uint8_t device, uint8_t function, uint8_t bar_index);
     void EnableBusMaster(uint8_t bus, uint8_t device, uint8_t function);
     void EnableMSIX(uint8_t bus, uint8_t device, uint8_t func, uint8_t vector, uint8_t apic_id);
 
@@ -79,7 +79,7 @@ namespace HAL::PCI {
     constexpr uint8_t PCI_PROGIF_USB_XHCI = 0x30;
 
     constexpr uint8_t PCI_BAR_5 = 5;
-    constexpr uint8_t MAX_PCI_BUS = 256;
+    constexpr uint16_t MAX_PCI_BUS = 256;
     constexpr uint8_t MAX_PCI_DEV = 32;
 
     constexpr uint8_t PCI_REG_STATUS = 0x06;

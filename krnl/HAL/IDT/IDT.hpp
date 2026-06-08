@@ -58,6 +58,7 @@ namespace HAL::IDT {
     constexpr int SHIFT_MID  = 16;
     constexpr int SHIFT_HIGH = 32;
 
+    constexpr uint8_t MSIX_VECTOR = 0x40;
     constexpr uint8_t IST_MASK = 0x07;
 
     enum class ISR_CODES : uint8_t {

@@ -8,7 +8,8 @@ namespace Scheduler {
         AWAIT_FILE_IO,
         AWAIT_MOUSE_CURSOR,
         AWAIT_KEYBOARD_INPUT,
-        GARBAGE
+        GARBAGE,
+        AWAIT_MSIX_EVENT
     };
 
     struct TaskBlock {
@@ -47,6 +48,7 @@ namespace Scheduler {
 
         void yield();
         void block(BlockReasons reason, ZyOS::QWORD arg = 0);
+        void unblock(BlockReasons unreason);
         void suicide();
         ZyOS::QWORD get_pid();
         void fork();
@@ -54,6 +56,7 @@ namespace Scheduler {
         void change_queue(ZyOS::DWORD to);
 
         static void TerminateTask(Task *term);
+        static void UnblockAll(BlockReasons whoisblocking);
     private:
         alignas(16) uint8_t *fx_state;
         TaskBlock *block_while;

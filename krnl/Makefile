@@ -13,7 +13,7 @@ ASM     := nasm
 KERNEL_CFLAGS := -g -O2 -ffreestanding -mcmodel=kernel -mno-red-zone \
                  -fno-exceptions -fno-rtti -Wall -Wextra -I$(LIMINE_DIR) -I$(SRC_DIR) \
                  -mgeneral-regs-only -std=c++23 -fno-threadsafe-statics \
-                 -fno-pic -fno-omit-frame-pointer -fstack-protector-all
+                 -fno-pic -fno-omit-frame-pointer -fstack-protector-all -Werror
 
 KERNEL_CFLAGS_C := -g -O2 -ffreestanding -mcmodel=kernel -mno-red-zone \
                    -Wall -Wextra -I$(LIMINE_DIR) -I$(SRC_DIR) \

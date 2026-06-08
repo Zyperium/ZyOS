@@ -9,7 +9,8 @@ enum class PanicReasons {
     SCHEDULER_OUT_OF_TASKS,
     OUT_OF_MEMORY,
     OUT_OF_PIDs, // Note this is only raised if a driver tries to fork while no PIDs are available.
-    UNKNOWN_ERROR_CODE
+    UNKNOWN_ERROR_CODE,
+    xHCI_CRITICAL_ERROR
 };
 
 void panic(PanicReasons reason);

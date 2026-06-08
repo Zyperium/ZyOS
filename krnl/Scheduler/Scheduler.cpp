@@ -200,6 +200,14 @@ namespace Scheduler {
         return;
     }
 
+    void Task::unblock(BlockReasons reason) {
+        (void)reason;
+    }
+
+    void Task::UnblockAll(BlockReasons reason) {
+        (void)reason;
+    }
+
     void Task::enqueue(ZyOS::WORD queue_id) {
         if (queue_id > TOTAL_SCHD_QUEUES) {
             Debug::krnl_print(

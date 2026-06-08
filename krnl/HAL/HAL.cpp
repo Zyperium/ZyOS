@@ -5,6 +5,7 @@
 #include <HAL/MEM/KMEM.hpp>
 #include <HAL/CORE/Core.hpp>
 #include <HAL/SCREEN/Screen.hpp>
+#include <HAL/PCI/PCI.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/string.h>
@@ -61,5 +62,7 @@ namespace HAL {
         CORE::init_core(data);
 
         SCREEN::initialize(framebuffer_request.response);
+
+        PCI::EnumeratePCI();
     }
 }

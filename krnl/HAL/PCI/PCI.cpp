@@ -98,7 +98,7 @@ namespace HAL::PCI {
             uint8_t prog_if = (val8 >> 8)  & PCI_8BIT_MASK;
 
             Debug::krnl_print("PCI", Debug::LOG_INFO, "Found new device. Data:");
-            Debug::krnl_print("PCI", Debug::LOG_INFO, "Address: %x:%x:%x", bus, device, f);
+            Debug::krnl_print("PCI", Debug::LOG_INFO, "Address: %i:%i:%i", bus, device, f);
             Debug::krnl_print("PCI", Debug::LOG_INFO, "Vendor: %x, Device: %x", v_id, d_id);
             Debug::krnl_print("PCI", Debug::LOG_INFO, "Class: %x, Sub: %x, ProgIF: %x", class_code, subclass, prog_if);
 

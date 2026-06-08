@@ -6,6 +6,7 @@
 #include <HAL/IDT/Panic.hpp>
 #include <HAL/IDT/IDT.hpp>
 #include <HAL/MEM/KMEM.hpp>
+#include <HAL/ACPI/ACPI.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/regs.h>
@@ -260,7 +261,7 @@ namespace HAL::PCI {
 
         bios_handoff();
         reset_controller();
-        PCI::EnableMSIX(pci_bus, pci_device, pci_func, IDT::MSIX_VECTOR, /* current APIC ID*/ 0); // FIX ME ME ME ME ME NOTICE ME BEFORE FIXING ANYTHING ELSE PLEASE!
+        PCI::EnableMSIX(pci_bus, pci_device, pci_func, IDT::MSIX_VECTOR, ACPI::get_apic_id());
 
         op_regs->config = max_slots;
 

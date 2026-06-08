@@ -1,4 +1,5 @@
 #include <HAL/IDT/IDT.hpp>
+#include <HAL/IDT/Panic.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/io.hpp>
@@ -8,9 +9,20 @@
 // Cool.
 
 extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
-    if (HAL::IDT::ISR_CODES::PAGE_FAULT == frame->error_code) {
 
+    if (frame->error_code == 0) {
+        panic(PanicReasons::DIVIDE_BY_ZERO_ERROR);
     }
+    else if (frame->error_code == 13) {
+        panic(PanicReasons::GENERAL_FAULT_KMODE);
+    }
+    else if (frame->error_code == 14) {
+        panic(PanicReasons::PAGE_FAULT_KMODE);
+    }
+
+    panic(PanicReasons::UNKNOWN_ERROR_CODE);
+
+    for (;;);
 }
 
 namespace HAL::IDT {
@@ -58,6 +70,8 @@ namespace HAL::IDT {
         }
 
         set_gate(ISR_CODES::DIV_ZERO, (void*)isr0, GATE_INTERRUPT);
+        set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void*)isr13, GATE_INTERRUPT);
+        set_gate(ISR_CODES::PAGE_FAULT, (void*)isr14, GATE_INTERRUPT);
 
         asm volatile("lidt %0" :: "m"(idtr));
     }

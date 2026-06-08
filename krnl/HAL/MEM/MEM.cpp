@@ -2,6 +2,7 @@
 #include <HAL/MEM/PMM.hpp>
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/MEM/KMEM.hpp>
+#include <HAL/MEM/FMEM.hpp>
 
 #include <Library/regs.h>
 #include <Library/debug.hpp>
@@ -19,5 +20,7 @@ namespace HAL::MEM {
             KMEM::DEFAULT_KMEM_START, 
             KMEM::INITIAL_PAGES
         );
+
+        FMEM::enable_sse();
     }
 }

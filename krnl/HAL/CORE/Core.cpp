@@ -9,14 +9,14 @@ namespace HAL::CORE {
         MSR::wrmsr(MSR::IA32_KERNEL_GS_BASE, addr);
     }
 
-    size_t get_core_id() {
-        size_t core_id;
+    ThreadLocal *get_thread_data() {
+        ThreadLocal *core_id;
         
         __asm__ (
-            "movq %%gs:16, %0"
+            "movq %%gs:0, %0"
             : "=r" (core_id)
-            :                   
-            :                   
+            :
+            :         
         );
 
         return core_id;

@@ -1,6 +1,6 @@
 #include <HAL/MEM/FMEM.hpp>
 
-namespace FastMem {
+namespace FMEM {
     __attribute__((target("sse")))
     void FastFill32(uint32_t* dest, uint32_t color, size_t count) {
         if (count < 8) {

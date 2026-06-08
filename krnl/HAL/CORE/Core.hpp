@@ -4,5 +4,5 @@
 
 namespace HAL::CORE {
     void init_core(ThreadLocal *data);
-    size_t get_core_id();
+    ThreadLocal *get_thread_data();
 }

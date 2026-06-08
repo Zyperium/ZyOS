@@ -70,12 +70,12 @@ namespace HAL::IDT {
         INVALID_OPCODE,
         DEV_NOT_AVAILABLE,
         DOUBLE_FAULT,
-        INVALID_TSS,
+        INVALID_TSS = 10,
         SEGMENT_NOT_PRESENT,
         STACK_SEGMENT_FAULT,
         GENERAL_PROTECTION_FAULT,
         PAGE_FAULT,
-        x87_FLOAT_POINT_EXCEPTION
+        x87_FLOAT_POINT_EXCEPTION = 16
     };
 
     inline bool operator==(ISR_CODES a, uint8_t b) {

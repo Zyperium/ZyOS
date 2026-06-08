@@ -5,6 +5,8 @@ namespace HAL::MEM::VMM {
     constexpr uint64_t PTE_PRESENT = 1;
     constexpr uint64_t PTE_WRITABLE = 2;
     constexpr uint64_t PTE_USER = 4;
+    constexpr uint64_t PTE_WRITEBACK = 8;
+    constexpr uint64_t PTE_CACHELESS = 16;
     constexpr uint64_t PTE_HUGE = 1ULL << 7;
     constexpr uint64_t PTE_NX = 1ULL << 63;
     constexpr uint64_t PTE_ADDR_MASK = 0x000FFFFFFFFFF000;

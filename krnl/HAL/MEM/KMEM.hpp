@@ -6,10 +6,6 @@ namespace HAL::MEM::KMEM {
     constexpr uint64_t SEGMENT_MAGIC = 0xDEADBEEF;
     constexpr uint64_t INITIAL_PAGES = 10;
     constexpr uint64_t DEFAULT_KMEM_START = 0xFFFF900000000000;
-    
-    #define KWORD 16
-    #define KDWORD 32
-    #define KQWORD 64
 
     extern uint64_t* pml4_root;
 
@@ -42,8 +38,13 @@ namespace HAL::MEM::KMEM {
     }
 }
 
-void* operator new(size_t size);
-void* operator new[](size_t size);
+namespace std {
+    enum class align_val_t : size_t {};
+}
+
+void *operator new(size_t size);
+void *operator new(size_t size, std::align_val_t align);
+void *operator new[](size_t size);
 void operator delete(void* p);
 void operator delete[](void* p);
 void operator delete(void* p, size_t size);

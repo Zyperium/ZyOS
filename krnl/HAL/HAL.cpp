@@ -1,10 +1,13 @@
-#include "Library/string.h"
 #include <HAL/HAL.hpp>
 #include <HAL/IDT/IDT.hpp>
+#include <HAL/IDT/Panic.hpp>
 #include <HAL/MEM/MEM.hpp>
 #include <HAL/MEM/KMEM.hpp>
+#include <HAL/CORE/Core.hpp>
+#include <HAL/SCREEN/Screen.hpp>
 
 #include <Library/debug.hpp>
+#include <Library/string.h>
 
 #include <limine.h>
 
@@ -30,17 +33,33 @@ static constinit volatile limine_framebuffer_request framebuffer_request = {
 
 namespace HAL {
     void initialize() {
+        if (framebuffer_request.response == nullptr) {
+            panic(PanicReasons::HAL_FAILED_INITIALIZATION);
+        }
+
+        if (hhdm_request.response == nullptr) {
+            panic(PanicReasons::HAL_FAILED_INITIALIZATION);
+        }
+
+        if (memmap_request.response == nullptr) {
+            panic(PanicReasons::HAL_FAILED_INITIALIZATION);
+        }
+
         Debug::krnl_print("HAL", Debug::LOG_INFO, "Initialize");
         MEM::initialize(&hhdm_request, memmap_request.response);
 
         IDT::initialize();
-    }
 
-    void *kmalloc(size_t size) {
-        return MEM::KMEM::malloc(size);
-    }
+        Debug::krnl_print("HAL", Debug::LOG_INFO, "Initialize core 0");
+        // This should be core 0. Otherwise something weird is going on.
+        CORE::ThreadLocal *data = new CORE::ThreadLocal;
+        data->core_id = 0;
+        data->current_task = nullptr;
+        data->last_task = nullptr;
+        data->kernel_stack = 0;
+        
+        CORE::init_core(data);
 
-    void kfree(void *ptr) {
-        return MEM::KMEM::free(ptr);
+        SCREEN::initialize(framebuffer_request.response);
     }
 }

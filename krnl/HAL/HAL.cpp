@@ -6,6 +6,7 @@
 #include <HAL/CORE/Core.hpp>
 #include <HAL/SCREEN/Screen.hpp>
 #include <HAL/PCI/PCI.hpp>
+#include <HAL/GDT/GDT.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/string.h>
@@ -49,6 +50,8 @@ namespace HAL {
         Debug::krnl_print("HAL", Debug::LOG_INFO, "Initialize");
         MEM::initialize(&hhdm_request, memmap_request.response);
 
+        GDT::initialize();
+
         IDT::initialize();
 
         Debug::krnl_print("HAL", Debug::LOG_INFO, "Initialize core 0");
@@ -58,6 +61,8 @@ namespace HAL {
         data->current_task = nullptr;
         data->last_task = nullptr;
         data->kernel_stack = 0;
+        data->self = data;
+        data->lapic_ticks_per_ms = 0;
         
         CORE::init_core(data);
 

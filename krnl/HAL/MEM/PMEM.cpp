@@ -30,7 +30,7 @@ namespace HAL::MEM::PMEM {
 
         VMM::map_page(
             KMEM::pml4_root, 
-            virt_start + PAGE_SIZE, 
+            virt_start, 
             (uint64_t)phys_addr, 
             flags
         );
@@ -40,10 +40,10 @@ namespace HAL::MEM::PMEM {
 
     void *alloc_pages(size_t count, uint64_t flags) {
         uint64_t virt_start = next_virt_addr;
-        next_virt_addr += PAGE_SIZE;
 
         for (auto i{0uz}; i < count; ++i) {
             void* phys_addr = PMM::alloc_page();
+            next_virt_addr += PAGE_SIZE;
         
             if (!phys_addr) {
                 return nullptr;

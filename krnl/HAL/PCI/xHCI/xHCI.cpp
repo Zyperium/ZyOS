@@ -55,7 +55,10 @@ namespace HAL::PCI {
     template <typename T>
     inline T zalloc_page() {
         T x = reinterpret_cast<T>(PMEM::alloc_page(VMM::PTE_PRESENT | VMM::PTE_WRITABLE | VMM::PTE_CACHELESS));
-        if (!x) return nullptr;
+        if (!x) {
+            Debug::krnl_print("xHCI", Debug::LOG_ERROR, "PMEM failed to allocate a page!");
+            return nullptr;
+        }
         memset(x, 0, PAGE_SIZE);
         return x;
     }
@@ -63,8 +66,11 @@ namespace HAL::PCI {
     template <typename T>
     inline T zfalloc(size_t mall) {
         T x = reinterpret_cast<T>(KMEM::malloc(mall * sizeof(T)));
-        if (!x) return nullptr;
-        memset(x, 0, PAGE_SIZE);
+        if (!x) {
+            Debug::krnl_print("xHCI", Debug::LOG_ERROR, "Out of memory? KMEM return nullptr!");
+            return nullptr;
+        }
+        memset(x, 0, mall);
         return x;
     }
 
@@ -246,8 +252,8 @@ namespace HAL::PCI {
         mmio_base_virt = (uint64_t)PMEM::map_mmio(mmio_base_phys, MMIO_MAP_PAGES);
         PCI::EnableBusMaster(pci_bus, pci_device, pci_func);
 
-        volatile uint8_t* cap_base = (volatile uint8_t*)mmio_base_virt;
-        uint8_t cap_length = *cap_base;
+        volatile uint32_t cap_length_reg = *reinterpret_cast<volatile uint32_t*>(mmio_base_virt);
+        uint8_t cap_length = static_cast<uint8_t>(cap_length_reg & 0xFF);
 
         auto* hcs_params_ptr = reinterpret_cast<volatile uint32_t*>(mmio_base_virt + XHCI_CAP_HCSPARAMS1);
         uint32_t hcs_params1 = *hcs_params_ptr;
@@ -259,14 +265,19 @@ namespace HAL::PCI {
         run_regs = reinterpret_cast<RuntimeRegisters *>(mmio_base_virt + cap_regs->rts_off);
         db_regs = reinterpret_cast<DoorbellRegister *>(mmio_base_virt + cap_regs->db_off);
 
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Executing BIOS handoff...");
         bios_handoff();
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Resetting controller...");
         reset_controller();
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Enabling MSIX...");
         PCI::EnableMSIX(pci_bus, pci_device, pci_func, IDT::MSIX_VECTOR, ACPI::get_apic_id());
 
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Allocating DCBAAP...");
         op_regs->config = max_slots;
-
         dcbaap_virt = zalloc_page<uint64_t *>();
         op_regs->dcbaap = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)dcbaap_virt);
+
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Allocating Command Ring...");
 
         cmd_ring_virt = zalloc_page<uint64_t *>();
         uint64_t cmd_ring_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)cmd_ring_virt);

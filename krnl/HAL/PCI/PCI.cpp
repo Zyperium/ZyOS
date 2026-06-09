@@ -1,5 +1,7 @@
 #include <HAL/PCI/PCI.hpp>
 #include <HAL/MEM/PMEM.hpp>
+#include <HAL/PCI/xHCI/msix_xhci.hpp>
+#include <HAL/PCI/xHCI/xHCI.hpp>
 
 #include <Library/io.hpp>
 #include <Library/debug.hpp>
@@ -12,8 +14,8 @@ namespace HAL::PCI {
                        ((uint32_t)func << PCI_FUNC_SHIFT) |
                        (offset & PCI_OFFSET_ALIGN);
 
-        outl(CONF_DATA, address);
-        return inl(CONF_ADDR);
+        outl(CONF_ADDR, address);
+        return inl(CONF_DATA);
     }
 
     uint16_t Read16(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset) {
@@ -111,6 +113,11 @@ namespace HAL::PCI {
                     Debug::krnl_print("PCI", Debug::LOG_INFO, "Type of: USB EHCI");
                 else if (prog_if == PCI_PROGIF_USB_XHCI) {
                     Debug::krnl_print("PCI", Debug::LOG_INFO, "Type of: USB xHCI");
+                    if (MSIX::xHCI::curr_count < MSIX::xHCI::MAX_XHCI_INSTANCES - 1) {
+                        EnableBusMaster(bus, device, f);
+                        xHCI *driver = new xHCI(bus, device, f);
+                        driver->initialize();
+                    }
                 }
             }
 
@@ -158,13 +165,14 @@ namespace HAL::PCI {
                 msix_table[0].msg_addr_low = LAPIC_BASE_MSI_ADDR | (apic_id << LAPIC_SHIFT_DEST_ID);
                 msix_table[0].msg_addr_high = 0;
                 msix_table[0].msg_data = vector; 
-                msix_table[0].vector_ctrl &= PCI_MSIX_VECTOR_UNMASK_BIT;
+                msix_table[0].vector_ctrl &= PCI_MSIX_VECTOR_UNMASK_BIT; 
 
                 msg_ctrl |= PCI_MSIX_CTRL_ENABLE_BIT;
                 Write16(bus, device, func, cap_ptr + PCI_MSIX_REG_MSG_CTRL, msg_ctrl);
-
-                cap_ptr = Read8(bus, device, func, cap_ptr + 1) & PCI_CAP_PTR_ALIGN_MASK;
+                return; 
             }
+            
+            cap_ptr = Read8(bus, device, func, cap_ptr + 1) & PCI_CAP_PTR_ALIGN_MASK;
         }
     }
 }

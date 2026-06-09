@@ -34,9 +34,12 @@ SchedulerHandler:
 
     mov rdi, rsp
     call SchedulerSwitch
-    mov rsp, rax
 
+    push rax
     call AckInterrupt
+    pop rax
+
+    mov rsp, rax
 
     pop rax
     pop rbx
@@ -54,7 +57,7 @@ SchedulerHandler:
     pop r14
     pop r15
 
-    test byte [rsp + 8], 3
+    test qword [rsp + 8], 3
     jz .krnl_exit
 
     swapgs
@@ -65,10 +68,8 @@ SchedulerHandler:
     iretq
 
 QuietSwitch:
+    ret
     cld
-
-    ; note the lack of a swapgs here, this would always enter through the kernel, so swapgs
-    ; will always point to the kernel stack. Safe!
 
 .krnl_enter:
     push r15
@@ -107,7 +108,7 @@ QuietSwitch:
     pop r14
     pop r15
 
-    test byte [rsp + 8], 3
+    test qword [rsp + 8], 3
     jz .krnl_exit
 
     swapgs

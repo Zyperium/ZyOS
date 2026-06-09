@@ -8,6 +8,7 @@ extern "C" void isr1();
 extern "C" void isr8();
 extern "C" void isr13();
 extern "C" void isr14();
+extern "C" void SchedulerHandler();
 
 namespace HAL::IDT {
     struct InterruptFrame {
@@ -39,14 +40,6 @@ namespace HAL::IDT {
         uint64_t base;
     } __attribute__((packed));
 
-    constexpr uint32_t LAPIC_ID = 0x020;
-    constexpr uint32_t LAPIC_EOI = 0x0B0;
-    constexpr uint32_t LAPIC_SPURIOUS = 0x0F0;
-    constexpr uint32_t LAPIC_LVT_TIMER = 0x320;
-    constexpr uint32_t LAPIC_TIMER_INITCNT = 0x380;
-    constexpr uint32_t LAPIC_TIMER_CURCNT = 0x390;
-    constexpr uint32_t LAPIC_TIMER_DIV = 0x3E0;
-
     constexpr uint8_t GATE_INTERRUPT = 0x8E;
     constexpr uint8_t GATE_TRAP = 0x8E;
     constexpr uint8_t GATE_USER = 0xEE;
@@ -59,7 +52,9 @@ namespace HAL::IDT {
     constexpr int SHIFT_HIGH = 32;
 
     constexpr uint8_t MSIX_VECTOR = 0x40;
+    constexpr uint8_t LAPIC_VECTOR = 0x89;
     constexpr uint8_t IST_MASK = 0x07;
+    constexpr uint16_t MAX_VECTORS = 256;
 
     enum class ISR_CODES : uint8_t {
         DIV_ZERO,
@@ -83,10 +78,7 @@ namespace HAL::IDT {
         return static_cast<uint8_t>(a) == b;
     }
     
-
     void initialize();
-    void enabled_lapic_on_core();
-    void set_lapic_timer(uint32_t milliseconds);
 
     extern uintptr_t lapic_base_ptr;
 

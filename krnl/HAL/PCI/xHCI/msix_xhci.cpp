@@ -1,10 +1,11 @@
 #include <HAL/PCI/xHCI/xHCI.hpp>
+#include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <Scheduler/Scheduler.hpp>
 
 namespace HAL::PCI {
     namespace MSIX::xHCI {
         using ::HAL::PCI::xHCI;
-        xHCI *xHCI_instances[8];
+        xHCI *xHCI_instances[MAX_XHCI_INSTANCES];
         size_t curr_count = 0;
 
         Scheduler::Task *xHCI_worker;
@@ -14,6 +15,7 @@ namespace HAL::PCI {
         }
 
         void register_xhci_worker(xHCI *class_instance) {
+            if (curr_count >= MAX_XHCI_INSTANCES) return;
             xHCI_instances[curr_count++] = class_instance;
         }
     }

@@ -1,3 +1,5 @@
+#include "HAL/CORE/ThreadLocal.hpp"
+#include "Library/ZyOS.hpp"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -17,11 +19,12 @@ using namespace HAL::MEM;
 extern "C" void QuietSwitch();
 
 namespace Scheduler {
-    bool active{};
+    bool active{false};
     bool event_occured{};
 
     Task *task_queue[TOTAL_SCHD_QUEUES]{};
-    Task *blocked_queue{};
+    Task *blocked_queue[(size_t)BlockReasons::TOTAL_REASONS]{};
+    Task *last_to_yield;
 
     Task ***TaskDirectory;
 
@@ -78,15 +81,33 @@ namespace Scheduler {
             TaskDirectory[i] = nullptr;
         }
 
+        active = false;
+
         TaskDirectory[0] = new Task*[TASK_TABLE_SIZE];
         return;
     }
 
     Task *GetNextTask() {
-        return nullptr;
+        for (auto i{0uz}; i < TOTAL_SCHD_QUEUES; i++) {
+            if (!task_queue[i])
+                continue;
+        
+            if (task_queue[i] == last_to_yield) {
+                task_queue[i] = task_queue[i]->next;
+                if (task_queue[i] == last_to_yield)
+                    continue;
+            }
+            Task *selected_task = task_queue[i];
+            task_queue[i] = task_queue[i]->next;
+
+            return selected_task;
+        }
+
+        return HAL::CORE::get_thread_data()->system_idle_task;
     }
 
     Task::Task() {
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Beginning primitive task setup");
         static size_t next_pid = 0;
         next = nullptr;
         previous = nullptr;
@@ -99,6 +120,18 @@ namespace Scheduler {
             panic(PanicReasons::OUT_OF_PIDs);
         }
 
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Task is being assigned PID of %i, in dir %i and table %i", pid, dir_idx, tbl_idx);
+
+        if (!TaskDirectory[dir_idx]) {
+            Debug::krnl_print("SCHD", Debug::LOG_WARN, "Non-existent directory!");
+        }
+        else if (!TaskDirectory[dir_idx][tbl_idx]) {
+            Debug::krnl_print("SCHD", Debug::LOG_WARN, "Non-existent table!");
+        }
+        else {
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Tables & Directories verified!");
+        }
+
         TaskDirectory[dir_idx][tbl_idx] = this;
 
         heap_ptr = 0;
@@ -108,27 +141,39 @@ namespace Scheduler {
         usr_stack_top = 0;
         krnl_stack_top = 0;
         quantum = 0;
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Fetching core info");
         current_core = HAL::CORE::get_thread_data()->core_id;
         block_while = nullptr;
         current_queue = 0;
         fx_state = new uint8_t;
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished primitive task setup");
     }
 
-    Task::Task(EntryPoint entry, lib::string name) : Task() {
+    Task::Task(EntryPoint entry, lib::string name, bool add_queue) : Task() {
         task_name = name;
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Creating new task %s", task_name.c_str());
 
         krnl_stack_btm = (ZyOS::QWORD *)PMEM::alloc_pages(TASK_STACK_PAGES + 1, VMM::PTE_WRITABLE | VMM::PTE_PRESENT);
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Allocated pages for new task");
 
         VMM::unmap_page(
             reinterpret_cast<uint64_t *>(read_cr3() & VMM::PTE_ADDR_MASK), 
             reinterpret_cast<uint64_t>(krnl_stack_btm)
         );
 
-        krnl_stack_btm += PAGE_SIZE;
-        krnl_stack_top = krnl_stack_btm + (PAGE_SIZE * TASK_STACK_PAGES);
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Unmapped page %x", krnl_stack_btm);
+
+        uintptr_t btm_address = reinterpret_cast<uintptr_t>(krnl_stack_btm);
+        btm_address += PAGE_SIZE;
+        uintptr_t top_address = btm_address + (PAGE_SIZE * TASK_STACK_PAGES);
+
+        krnl_stack_btm = reinterpret_cast<ZyOS::QWORD*>(btm_address);
+        krnl_stack_top = reinterpret_cast<ZyOS::QWORD*>(top_address);
 
         memset(krnl_stack_btm, 0, TASK_STACK_PAGES * PAGE_SIZE);
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Performed memset on kernel stack");
 
         uint64_t *ktop = krnl_stack_top;
         *(--ktop) = 0x10; // Stack Segment. RPL 0
@@ -142,12 +187,20 @@ namespace Scheduler {
         for (auto i{0uz}; i < 15; ++i) *(--ktop) = 0; // zero out the 15 registers.
 
         rsp = reinterpret_cast<uint64_t>(ktop);
-        active = true;
 
         release_lock();
 
-        if (active)
+        if (active) {
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler is active, yielding");
             yield();
+        }
+
+        if (add_queue)
+            enqueue(DEFAULT_SCHD_QUEUE);
+
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler has initialized task %s", task_name.c_str());
+
+        return;
     }
 
     void Task::yield() {
@@ -157,6 +210,10 @@ namespace Scheduler {
     void Task::suicide() {
         block(BlockReasons::GARBAGE);
         for (;;);
+    }
+    
+    ZyOS::QWORD Task::get_pid() {
+        return pid;
     }
 
     void Task::block(BlockReasons reason, uint64_t arg1) {
@@ -168,10 +225,10 @@ namespace Scheduler {
         blc->reason = reason;
         blc->arg1 = arg1;
         
-        if (!blocked_queue) {
+        if (!blocked_queue[(size_t)reason]) {
             next = this;
             previous = this;
-            blocked_queue = this;
+            blocked_queue[(size_t)reason] = this;
             blc->next = nullptr;
             block_while = blc;
             release_lock();
@@ -179,9 +236,9 @@ namespace Scheduler {
             return;
         }
 
-        previous = blocked_queue->previous;
-        blocked_queue->previous = this;
-        next = blocked_queue;
+        previous = blocked_queue[(size_t)reason]->previous;
+        blocked_queue[(size_t)reason]->previous = this;
+        next = blocked_queue[(size_t)reason];
         previous->next = this;
 
         if (!block_while) {
@@ -274,9 +331,15 @@ namespace Scheduler {
     void Task::TerminateTask(Task *term) {
         aquire_lock();
         if (term->block_while) {
-            release_lock();
-            return;
+            TaskBlock *cp = term->block_while;
+            while (cp != nullptr) {
+                TaskBlock *n = cp->next;
+                delete cp;
+                cp = n;
+            }
         }
+
+        term->block(BlockReasons::GARBAGE);
 
         release_lock();
         return;
@@ -296,11 +359,26 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         return current_rsp;
     }
 
+    Scheduler::aquire_lock();
+
+    HAL::CORE::ThreadLocal *thread_data = HAL::CORE::get_thread_data();
+    if (thread_data->current_task) {
+        thread_data->current_task->rsp = current_rsp;
+    }
+
     auto next_rsp{0uz};
+    Scheduler::Task *next_task = Scheduler::GetNextTask();
+
+    next_rsp = next_task->rsp;
+
+    thread_data->current_task = next_task;
+
+    Scheduler::release_lock();
 
     return next_rsp;
 }
 
 extern "C" void AckInterrupt() {
+    HAL::CORE::ack_lapic();
     return;
 }

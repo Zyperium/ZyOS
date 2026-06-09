@@ -1,4 +1,5 @@
 #pragma once
+#include <HAL/IDT/IDT.hpp>
 
 enum class PanicReasons {
     GENERAL_FAULT_KMODE,
@@ -10,7 +11,8 @@ enum class PanicReasons {
     OUT_OF_MEMORY,
     OUT_OF_PIDs, // Note this is only raised if a driver tries to fork while no PIDs are available.
     UNKNOWN_ERROR_CODE,
-    xHCI_CRITICAL_ERROR
+    xHCI_CRITICAL_ERROR,
+    STACK_KERNEL_CORRUPTION
 };
 
-void panic(PanicReasons reason);
+void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe = nullptr);

@@ -7,26 +7,30 @@
 // Init:
 // Syscalls, crash handlers, xHCI, LAPIC timers.
 // Cool.
-
+using namespace HAL::IDT;
 extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
 
-    if (frame->error_code == 0) {
-        panic(PanicReasons::DIVIDE_BY_ZERO_ERROR);
-    }
-    else if (frame->error_code == 13) {
-        panic(PanicReasons::GENERAL_FAULT_KMODE);
-    }
-    else if (frame->error_code == 14) {
-        panic(PanicReasons::PAGE_FAULT_KMODE);
+    switch (static_cast<ISR_CODES>(frame->int_number)) {
+        case ISR_CODES::DIV_ZERO:
+            panic(PanicReasons::DIVIDE_BY_ZERO_ERROR, frame);
+            break;
+        case ISR_CODES::GENERAL_PROTECTION_FAULT:
+            panic(PanicReasons::GENERAL_FAULT_KMODE, frame);
+            break;
+        case ISR_CODES::PAGE_FAULT:
+            panic(PanicReasons::PAGE_FAULT_KMODE, frame);
+            break;
+        default:
+            break;
     }
 
-    panic(PanicReasons::UNKNOWN_ERROR_CODE);
+    panic(PanicReasons::UNKNOWN_ERROR_CODE, frame);
 
     for (;;);
 }
 
 namespace HAL::IDT {
-    static IDTEntry idt[256];
+    static IDTEntry idt[MAX_VECTORS];
     static IDTR idtr;
     uintptr_t lapic_base_ptr = 0;
 
@@ -55,17 +59,9 @@ namespace HAL::IDT {
         idt[vector].zero        = 0;
     }
 
-    // FIX: magic numbers! Do this please!
-    void init_pit(uint32_t freq) {
-        uint32_t divisor = 1193180 / freq;
-        outb(0x43, 0x36);
-        outb(0x40, (uint8_t)(divisor & 0xFF));
-        outb(0x40, (uint8_t)((divisor >> 8) & 0xFF));
-    }
-
     void initialize() {
         Debug::krnl_print("IDT", Debug::LOG_INFO, "Initialize");
-        for (int i = 0; i < 256; i++) {
+        for (int i = 0; i < MAX_VECTORS; i++) {
             set_gate(i, (void*)ignore_handler, GATE_INTERRUPT);
         }
 
@@ -73,6 +69,11 @@ namespace HAL::IDT {
         set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void*)isr13, GATE_INTERRUPT);
         set_gate(ISR_CODES::PAGE_FAULT, (void*)isr14, GATE_INTERRUPT);
 
-        asm volatile("lidt %0" :: "m"(idtr));
+        set_gate(LAPIC_VECTOR, (void*)SchedulerHandler, GATE_INTERRUPT);
+
+        idtr.limit = (sizeof(IDTEntry) * MAX_VECTORS) - 1;
+        idtr.base  = reinterpret_cast<uint64_t>(&idt[0]);
+
+        asm volatile("lidt %0" :: "m"(idtr));        
     }
 }

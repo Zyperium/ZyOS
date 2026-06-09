@@ -9,7 +9,8 @@ namespace Scheduler {
         AWAIT_MOUSE_CURSOR,
         AWAIT_KEYBOARD_INPUT,
         GARBAGE,
-        AWAIT_MSIX_EVENT
+        AWAIT_MSIX_EVENT,
+        TOTAL_REASONS // This should always be last
     };
 
     struct TaskBlock {
@@ -22,7 +23,7 @@ namespace Scheduler {
     public:
         using EntryPoint = void(*)(void*);
         Task();
-        Task(EntryPoint entry, lib::string name);
+        Task(EntryPoint entry, lib::string name, bool enqueue = true);
         
         Task *next;
         Task *previous;
@@ -30,7 +31,6 @@ namespace Scheduler {
         lib::string task_name;
 
         ZyOS::QWORD rsp;
-        ZyOS::QWORD pid;
         ZyOS::QWORD heap_ptr;
         ZyOS::QWORD mapped_limit;
         ZyOS::QWORD cr3;
@@ -61,12 +61,13 @@ namespace Scheduler {
         alignas(16) uint8_t *fx_state;
         TaskBlock *block_while;
         ZyOS::WORD current_queue;
+        ZyOS::QWORD pid;
 
         void enqueue(ZyOS::WORD queue_id);
         void dequeue();
     };
 
-    extern Task last_to_yield;
+    extern Task *last_to_yield;
     void EnableScheduler();
     void DisabledScheduler();
     void Initialize();
@@ -76,7 +77,9 @@ namespace Scheduler {
     extern Task ***TaskDirectory;
 
     Task *GetTaskByPID(ZyOS::QWORD PID);
+    void RegisterSystemIdleTask(Task *task);
 
     constexpr uint8_t TASK_STACK_PAGES = 8; // 8 * 4096 = 32KB of ram. Plenty.
     constexpr uint8_t TOTAL_SCHD_QUEUES = 32;
+    constexpr uint8_t DEFAULT_SCHD_QUEUE = 0;
 }

@@ -64,7 +64,7 @@ namespace HAL::PCI {
     constexpr uint8_t PCI_HEADER_MULTI_FUNC = 0x80;
 
     constexpr uint8_t PCI_MAX_FUNCTIONS = 8;
-    constexpr uint16_t PCI_INVALID_VENDOR_ID = 0x810;
+    constexpr uint16_t PCI_INVALID_VENDOR_ID = 0xFFFF;
 
     constexpr uint8_t PCI_CLASS_MASS_STORAGE = 0x01;
     constexpr uint8_t PCI_CLASS_SERIAL_BUS = 0x0C;

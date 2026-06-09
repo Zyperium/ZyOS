@@ -126,7 +126,7 @@ namespace HAL::PCI {
         input_ctx->slot.info2 = (xhci_port_num << XHCI_SLOT_ROOT_PORT_SHIFT);
 
         uint64_t *transfer_ring = zalloc_page<uint64_t *>();
-        uint64_t tr_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)input_ctx);
+        uint64_t tr_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)transfer_ring);
         
         ep_rings[slot_id][XHCI_EP_INDEX_0] = transfer_ring;
         ep_cycle_states[slot_id][XHCI_EP_INDEX_0] = 1;
@@ -410,7 +410,7 @@ namespace HAL::PCI {
                         slot_states[allocated_slot] = SetupState::STATE_GET_DEV_DESC;
                         uint8_t req_type = USB::REQ_DIR_IN | USB::REQ_TYPE_STANDARD | USB::REQ_REC_DEVICE;
                         uint16_t wValue  = USB::make_wValue(USB::DESC_TYPE_DEVICE, 0);
-                        uint16_t wIndex  = 0x0000; // Language ID. 0, because we don't care.
+                        uint16_t wIndex  = 0x0000;
                         send_control_request(
                             allocated_slot, 
                             req_type, 
@@ -449,7 +449,7 @@ namespace HAL::PCI {
                             config_val, 
                             wIndex, 
                             wLength, 
-                            0 // No physical buffer pointer required since length is 0
+                            0
                         );
                     }
                 }
@@ -506,15 +506,14 @@ namespace HAL::PCI {
                                 uint8_t desc_type = walker[1];
 
                                 if (desc_type == USB::DESC_TYPE_INTERFACE) { 
-                                    auto* intf = reinterpret_cast<USBInterfaceDescriptor*>(walker);
-                                    (void)intf;
-                                    // matched_driver = USBManager::IdentifyAndLoad(
-                                    //     intf->bInterfaceClass, intf->bInterfaceSubClass, intf->bInterfaceProtocol
-                                    // );
+                                    auto* intf = reinterpret_cast<USBInterfaceDescriptor *>(walker);
+                                    matched_driver = LoadNewDriver(
+                                        intf->bInterfaceClass, intf->bInterfaceSubClass, intf->bInterfaceProtocol
+                                    );
                                 } 
                                 else if (desc_type == USB::DESC_TYPE_ENDPOINT && matched_driver) {
                                     if (ep_count < MAX_PARSED_ENDPOINTS) {
-                                        auto* ep_desc = reinterpret_cast<USBEndpointDescriptor*>(walker);
+                                        auto* ep_desc = reinterpret_cast<USBEndpointDescriptor *>(walker);
                                         endpoints[ep_count].address          = ep_desc->bEndpointAddress;
                                         endpoints[ep_count].attributes       = ep_desc->bmAttributes;
                                         endpoints[ep_count].max_packet_size  = ep_desc->wMaxPacketSize;
@@ -541,7 +540,7 @@ namespace HAL::PCI {
                         }
                         case SetupState::STATE_CONFIGURED: {
                             if (attached_drivers[slot]) {
-                                attached_drivers[slot]->on_int(transfer_len);
+                                attached_drivers[slot]->on_int(transfer_len, (event->control & ENDPOINT_ID_BITMASK) << ENDPOINT_ID_SHIFT, event->param);
                             }
                             break;
                         }

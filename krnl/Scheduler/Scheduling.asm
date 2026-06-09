@@ -68,8 +68,13 @@ SchedulerHandler:
     iretq
 
 QuietSwitch:
-    ret
     cld
+
+    ; check kernel state
+    cmp qword [rsp + 8], 0x08
+    je .krnl_enter
+
+    swapgs
 
 .krnl_enter:
     push r15
@@ -90,6 +95,7 @@ QuietSwitch:
 
     mov rdi, rsp
     call SchedulerSwitch
+
     mov rsp, rax
 
     pop rax

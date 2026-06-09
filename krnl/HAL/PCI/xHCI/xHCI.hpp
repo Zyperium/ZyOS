@@ -378,6 +378,8 @@ namespace HAL::PCI {
         static constexpr int16_t PENDING_PORT_COMPLETE = -1;
 
         static constexpr uint32_t XHCI_TRB_IOC_ENABLE = (1U << 5);
+        static constexpr uint64_t ENDPOINT_ID_BITMASK = 0x1F0000;
+        static constexpr uint8_t ENDPOINT_ID_SHIFT = 16;
 
         CapabilityRegisters *cap_regs;
         OperationalRegisters *op_regs;

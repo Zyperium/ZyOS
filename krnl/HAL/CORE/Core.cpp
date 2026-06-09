@@ -2,7 +2,9 @@
 #include <Library/io.hpp>
 #include <Library/debug.hpp>
 #include <Library/regs.h>
+#include <Scheduler/Scheduler.hpp>
 #include <HAL/CORE/Core.hpp>
+#include <HAL/GDT/GDT.hpp>
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/MEM/PMM.hpp>
 #include <HAL/MSR.hpp>
@@ -26,13 +28,75 @@ namespace HAL::CORE {
         init_lapic();
     }
 
+    bool a_core_lock = false;
+    uint64_t cur_rflags = 0;
+    void aquire_lock() {
+        uint64_t rflags = 0;
+        asm volatile("pushfq; pop %0" : "=r"(rflags));
+        asm volatile("cli");
+        while (__atomic_test_and_set(&a_core_lock, __ATOMIC_ACQUIRE)) {
+            asm volatile("pause");
+        }
+
+        cur_rflags = rflags;
+
+        return;
+    }
+
+    void release_lock() {
+        __atomic_clear(&a_core_lock, __ATOMIC_RELEASE);
+        restore_rflags(cur_rflags);
+        cur_rflags = 0;
+        return;
+    }
+
+    volatile uint16_t core_count{1};
+    volatile uint16_t total_cores{1};
     void addi_core_EP() {
-        
+        aquire_lock();
+        Debug::krnl_print("CORE", Debug::LOG_INFO, "New core initializing. Core ID: %i", core_count);
+        HAL::GDT::initialize();
+        HAL::IDT::reload_idt();
+
+        ThreadLocal *data = new ThreadLocal;
+        data->core_id = core_count;
+        core_count += 1;
+        data->self = data;
+        data->kernel_stack = 0;
+        data->lapic_ticks_per_ms = 0;
+        data->current_task = nullptr;
+        init_core(data);
+
+        Scheduler::Task *idle_task = new Scheduler::Task((Scheduler::Task::EntryPoint)idleptr, "System Idle Task", false);
+        idle_task->current_core = data->core_id;
+        data->system_idle_task = idle_task;
+
+        release_lock();
+
+        asm volatile("sti");
+
+        while (true) ;
+    }
+
+    void broadcast_nmi() {
+        Debug::krnl_print("CORE", Debug::LOG_INFO, "Broadcasting NMI from core %i", get_thread_data()->core_id);
+        while (lapic_read(LAPIC_ICR_LOW) & LAPIC_ICR_SEND_PENDING) {
+            asm volatile("pause");
+        }
+
+        lapic_write(LAPIC_ICR_HIGH, 0x0);
+
+        uint32_t icr_low_val = LAPIC_ICR_DELIVERY_NMI | 
+                           LAPIC_ICR_LEVEL_ASSERT | 
+                           LAPIC_ICR_SHORTHAND_ALL_BUT_SELF;
+
+        lapic_write(LAPIC_ICR_LOW, icr_low_val);
+        Debug::krnl_print("CORE", Debug::LOG_INFO, "NMI broadcasted");
     }
 
     void discover_all_cores() {
         limine_mp_response *mp_resp = mp_request.response;
-        uint64_t total_cores = mp_resp->cpu_count;
+        total_cores = mp_resp->cpu_count;
         uint32_t bsp_lapic_id = mp_resp->bsp_lapic_id;
 
         for (auto i{0uz}; i < total_cores; i++) {
@@ -64,6 +128,10 @@ namespace HAL::CORE {
         }
 
         return core_id;
+    }
+
+    bool validate_gs_reg() {
+        return MSR::rdmsr(MSR::IA32_GS_BASE);
     }
 
     void calibrate_lapic() {

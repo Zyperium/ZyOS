@@ -45,8 +45,8 @@ namespace Scheduler {
         ZyOS::WORD current_core;
         ZyOS::WORD lowest_queue;
         ZyOS::WORD highest_queue;
+        bool running;
 
-        void yield();
         void block(BlockReasons reason, ZyOS::QWORD arg = 0);
         void unblock(BlockReasons unreason);
         void suicide();
@@ -71,6 +71,7 @@ namespace Scheduler {
     void EnableScheduler();
     void DisabledScheduler();
     void Initialize();
+    void Yield();
 
     constexpr ZyOS::QWORD TASK_TABLE_SIZE = 1024;
     constexpr ZyOS::DWORD TASK_DIR_SIZE = 32;
@@ -78,6 +79,7 @@ namespace Scheduler {
 
     Task *GetTaskByPID(ZyOS::QWORD PID);
     void RegisterSystemIdleTask(Task *task);
+    Task *StealCoCoreTask();
 
     constexpr uint8_t TASK_STACK_PAGES = 8; // 8 * 4096 = 32KB of ram. Plenty.
     constexpr uint8_t TOTAL_SCHD_QUEUES = 32;

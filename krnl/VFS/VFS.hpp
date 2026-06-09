@@ -18,15 +18,15 @@ namespace VFS {
         VNode(FileType type, uint64_t size);
         virtual ~VNode() = default;
         
-        virtual int Read(uint64_t offset, void* buffer, uint32_t size) = 0;
-        virtual int Write(uint64_t offset, const void* buffer, uint32_t size) = 0;
-        virtual VNode* Lookup(const char* name) = 0;
+        virtual int read(uint64_t offset, void* buffer, uint32_t size) = 0;
+        virtual int write(uint64_t offset, const void* buffer, uint32_t size) = 0;
+        virtual VNode* lookup(const char* name) = 0;
 
-        FileType GetType() const;
-        uint64_t GetSize() const;
+        FileType get_type() const;
+        uint64_t get_size() const;
         
-        void AddRef();
-        void Release();
+        void add_ref();
+        void release();
     };
 
     struct FileHandle {

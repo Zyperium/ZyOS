@@ -80,12 +80,13 @@ ifeq ($(OS),Windows_NT)
 		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log
 else
 	qemu-system-x86_64 -cpu host -m 512M -machine q35,acpi=on -accel kvm \
-		-drive file=$(DISK_BIOS),id=bootdisk,format=raw,if=none  \
-		-device ide-hd,drive=bootdisk,bus=ide.0 \
-		-display sdl -vga std -device qemu-xhci,id=xhci \
+		-drive file=$(DISK_BIOS),id=usbdisk,format=raw,if=none \
+		-device qemu-xhci,id=xhci \
+		-device usb-storage,bus=xhci.0,drive=usbdisk,bootindex=1 \
+		-display sdl -vga std \
 		-device usb-mouse,bus=xhci.0 -device usb-kbd,bus=xhci.0 \
 		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log \
-		-debugcon stdio
+		-debugcon stdio -smp 4
 endif
 
 OVMF_URL = https://github.com/clearlinux/common/raw/master/OVMF.fd

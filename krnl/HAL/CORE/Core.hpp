@@ -8,11 +8,16 @@ namespace HAL::CORE {
     ThreadLocal *get_thread_data();
     void init_lapic();
     void ack_lapic();
+    void broadcast_nmi();
+    bool validate_gs_reg();
     extern void(*idleptr)();
 
     constexpr uint32_t LAPIC_SPURIOUS_VECTOR_MASK = 0xFF;
     constexpr uint32_t LAPIC_APIC_SOFTWARE_ENABLE = 0x100;
     constexpr uint32_t MASK_PIT_TIMER = 0xFF;
+
+    extern volatile uint16_t core_count;
+    extern volatile uint16_t total_cores;
 
     extern uintptr_t lapic_base_ptr;
 
@@ -37,6 +42,13 @@ namespace HAL::CORE {
     constexpr uint64_t LAPIC_ADDR_MASK = 0x0000FFFFFFFFF000ULL;
     constexpr uint32_t LAPIC_LVT_MASKED = 0x10000;
     constexpr uint32_t LAPIC_PERODIC_MODE = (1 << 17);
+
+    constexpr uint32_t LAPIC_ICR_LOW  = 0x300;
+    constexpr uint32_t LAPIC_ICR_HIGH = 0x310;
+    constexpr uint32_t LAPIC_ICR_DELIVERY_NMI = (4 << 8);
+    constexpr uint32_t LAPIC_ICR_LEVEL_ASSERT = (1 << 14);
+    constexpr uint32_t LAPIC_ICR_SHORTHAND_ALL_BUT_SELF = (3 << 18);
+    constexpr uint32_t LAPIC_ICR_SEND_PENDING = (1 << 12);
 
     namespace PIT {
         constexpr uint16_t PORT_CHANNEL0= 0x40;

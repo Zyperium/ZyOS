@@ -1,20 +1,20 @@
 #include <VFS/VFS.hpp>
 
 namespace VFS {
-    void VNode::AddRef() {
+    void VNode::add_ref() {
         ++m_ref_count;
         return;
     }
 
-    void VNode::Release() {
+    void VNode::release() {
         if (--m_ref_count == 0) delete this;
     }
 
-    FileType VNode::GetType() const {
+    FileType VNode::get_type() const {
         return m_type;
     }
 
-    uint64_t VNode::GetSize() const { 
+    uint64_t VNode::get_size() const { 
         return m_size; 
     }
 

@@ -7,6 +7,7 @@ namespace HAL::GDT {
     GDT gdt_table;
     static uint8_t double_fault_stack[8192] __attribute__((aligned(16)));
     static uint8_t timer_stack[8192] __attribute__((aligned(16)));
+    static uint8_t nmi_stack[8192] __attribute__((aligned(16)));
 
     void SetEntry(GDTEntry* entry, uint64_t base, uint32_t limit, uint8_t access, uint8_t gran) {
         entry->base_low = static_cast<uint16_t>(base & 0xFFFF);
@@ -39,8 +40,9 @@ namespace HAL::GDT {
         asm volatile("mov %%rsp, %0" : "=r"(stack_ptr));
         tss.rsp0 = stack_ptr;
 
-        tss.ist[0] = (uint64_t)double_fault_stack + sizeof(double_fault_stack);
-        tss.ist[1] = (uint64_t)timer_stack + sizeof(timer_stack);
+        tss.ist[TSS_IST_DOUBLE_FAULT] = (uint64_t)double_fault_stack + sizeof(double_fault_stack);
+        tss.ist[TSS_IST_TIMER] = (uint64_t)timer_stack + sizeof(timer_stack);
+        tss.ist[TSS_IST_NMI] = (uint64_t)nmi_stack + sizeof(nmi_stack);
 
         SetEntry(&gdt_table.null, 0, 0, 0, 0);
 

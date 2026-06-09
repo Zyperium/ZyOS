@@ -4,6 +4,7 @@
 #include <Library/debug.hpp>
 #include <Library/io.hpp>
 #include <Library/regs.h>
+#include <HAL/CORE/Core.hpp>
 
 namespace Debug {
     constexpr uint8_t nice_col[] = {
@@ -235,6 +236,16 @@ namespace Debug {
         puts("m[");
         puts(class_name);
         puts("]\033[0m ");
+
+        bool da = HAL::CORE::validate_gs_reg();
+        if (da) {
+            puts("[");
+            print_int(HAL::CORE::get_thread_data()->core_id);
+            puts("] ");
+        }
+        else {
+            puts("[0] ");
+        }
 
         puts("\033[");
         print_int(level_color(level));

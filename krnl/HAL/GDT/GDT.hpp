@@ -54,6 +54,11 @@ namespace HAL::GDT {
     void initialize();
     void ReloadSegments();
 
+    constexpr uint8_t TSS_IST_DOUBLE_FAULT = 0;
+    constexpr uint8_t TSS_IST_TIMER = 1;
+    constexpr uint8_t TSS_IST_NMI = 2;
+
+
     namespace Access {
         constexpr uint8_t PRESENT = 1 << 7;
         constexpr uint8_t RING_0 = 0 << 5;

@@ -1,5 +1,7 @@
 #include <HAL/IDT/IDT.hpp>
 #include <HAL/IDT/Panic.hpp>
+#include <HAL/CORE/Core.hpp>
+#include <HAL/GDT/GDT.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/io.hpp>
@@ -8,7 +10,21 @@
 // Syscalls, crash handlers, xHCI, LAPIC timers.
 // Cool.
 using namespace HAL::IDT;
+volatile bool exception_in_progress{};
 extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
+    if (exception_in_progress) {
+        Debug::krnl_print("IDT", Debug::LOG_INFO, "Core %i entering nmi spinloop (fault active)", HAL::CORE::get_thread_data()->core_id);
+        asm volatile("cli");
+        for (;;) asm volatile("hlt");
+    }
+
+    while (__atomic_test_and_set(&exception_in_progress, __ATOMIC_ACQUIRE)) {
+        asm volatile("pause");
+    }
+
+    HAL::CORE::broadcast_nmi();
+
+    Debug::krnl_print("IDT", Debug::LOG_ERROR, "Broadcasted error via NMIs");
 
     switch (static_cast<ISR_CODES>(frame->int_number)) {
         case ISR_CODES::DIV_ZERO:
@@ -26,7 +42,7 @@ extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
 
     panic(PanicReasons::UNKNOWN_ERROR_CODE, frame);
 
-    for (;;);
+    for (;;) asm volatile("hlt");
 }
 
 namespace HAL::IDT {
@@ -66,6 +82,8 @@ namespace HAL::IDT {
         }
 
         set_gate(ISR_CODES::DIV_ZERO, (void*)isr0, GATE_INTERRUPT);
+        set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void*)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI);
+        set_gate(ISR_CODES::DOUBLE_FAULT, (void*)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT);
         set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void*)isr13, GATE_INTERRUPT);
         set_gate(ISR_CODES::PAGE_FAULT, (void*)isr14, GATE_INTERRUPT);
 
@@ -74,6 +92,10 @@ namespace HAL::IDT {
         idtr.limit = (sizeof(IDTEntry) * MAX_VECTORS) - 1;
         idtr.base  = reinterpret_cast<uint64_t>(&idt[0]);
 
-        asm volatile("lidt %0" :: "m"(idtr));        
+        asm volatile("lidt %0" :: "m"(idtr));
+    }
+
+    void reload_idt() {
+        asm volatile("lidt %0" :: "m"(idtr));
     }
 }

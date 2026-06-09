@@ -5,10 +5,12 @@
 extern "C" void ignore_handler();
 extern "C" void isr0();
 extern "C" void isr1();
+extern "C" void isr2();
 extern "C" void isr8();
 extern "C" void isr13();
 extern "C" void isr14();
 extern "C" void SchedulerHandler();
+extern "C" void QuietSwitch();
 
 namespace HAL::IDT {
     struct InterruptFrame {
@@ -53,6 +55,7 @@ namespace HAL::IDT {
 
     constexpr uint8_t MSIX_VECTOR = 0x40;
     constexpr uint8_t LAPIC_VECTOR = 0x89;
+    constexpr uint8_t YIELD_VECTOR = 0x67;
     constexpr uint8_t IST_MASK = 0x07;
     constexpr uint16_t MAX_VECTORS = 256;
 
@@ -79,6 +82,7 @@ namespace HAL::IDT {
     }
     
     void initialize();
+    void reload_idt();
 
     extern uintptr_t lapic_base_ptr;
 

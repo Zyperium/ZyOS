@@ -16,8 +16,6 @@
 
 using namespace HAL::MEM;
 
-extern "C" void QuietSwitch();
-
 namespace Scheduler {
     bool active{false};
     bool event_occured{};
@@ -31,6 +29,7 @@ namespace Scheduler {
     bool a_schd_lock = false;
     uint64_t cur_rflags = 0;
     int core_id_holder = -1;
+
     void aquire_lock() {
         if (core_id_holder == HAL::CORE::get_thread_data()->core_id) {
             return;
@@ -87,16 +86,45 @@ namespace Scheduler {
         return;
     }
 
+    Task *StealCoCoreTask() {
+        for (auto i{0uz}; i < TOTAL_SCHD_QUEUES; i++) {
+            if (!task_queue[i])
+                continue;
+            if (!task_queue[i]->running) {
+                task_queue[i]->current_core = HAL::CORE::get_thread_data()->core_id;
+                Task *selected_task = task_queue[i];
+                task_queue[i] = task_queue[i]->next;
+                return selected_task;
+            }
+        }
+
+        return nullptr;
+    }
+
     Task *GetNextTask() {
         for (auto i{0uz}; i < TOTAL_SCHD_QUEUES; i++) {
             if (!task_queue[i])
                 continue;
+
+            bool only_task_iqueue = task_queue[i] == task_queue[i]->next;
         
             if (task_queue[i] == last_to_yield) {
-                task_queue[i] = task_queue[i]->next;
-                if (task_queue[i] == last_to_yield)
+                if (only_task_iqueue)
                     continue;
+                task_queue[i] = task_queue[i]->next;
             }
+
+            Task *starting_task = task_queue[i];
+            find_workable_core:
+            if (task_queue[i]->current_core != HAL::CORE::get_thread_data()->core_id) {
+                if (only_task_iqueue)
+                    continue;
+                task_queue[i] = task_queue[i]->next;
+                if (task_queue[i] == starting_task)
+                    continue;
+                goto find_workable_core;
+            }
+
             Task *selected_task = task_queue[i];
             task_queue[i] = task_queue[i]->next;
 
@@ -107,6 +135,7 @@ namespace Scheduler {
     }
 
     Task::Task() {
+        aquire_lock();
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Beginning primitive task setup");
         static size_t next_pid = 0;
         next = nullptr;
@@ -141,17 +170,21 @@ namespace Scheduler {
         usr_stack_top = 0;
         krnl_stack_top = 0;
         quantum = 0;
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Fetching core info");
-        current_core = HAL::CORE::get_thread_data()->core_id;
+        HAL::CORE::ThreadLocal *tdata = HAL::CORE::get_thread_data();
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Fetching core info {Core data @ %x}", tdata);
+        current_core = tdata->core_id;
         block_while = nullptr;
         current_queue = 0;
+        running = false;
         fx_state = new uint8_t;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished primitive task setup");
+        release_lock();
     }
 
     Task::Task(EntryPoint entry, lib::string name, bool add_queue) : Task() {
+        aquire_lock();
         task_name = name;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Creating new task %s", task_name.c_str());
 
@@ -182,18 +215,11 @@ namespace Scheduler {
         *(--ktop) = 0x08;
         *(--ktop) = reinterpret_cast<uint64_t>(entry);
 
-        aquire_lock();
-
         for (auto i{0uz}; i < 15; ++i) *(--ktop) = 0; // zero out the 15 registers.
 
         rsp = reinterpret_cast<uint64_t>(ktop);
 
         release_lock();
-
-        if (active) {
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler is active, yielding");
-            yield();
-        }
 
         if (add_queue)
             enqueue(DEFAULT_SCHD_QUEUE);
@@ -203,8 +229,8 @@ namespace Scheduler {
         return;
     }
 
-    void Task::yield() {
-        QuietSwitch();
+    void Yield() {
+        asm volatile("int $0x67");
     }
 
     void Task::suicide() {
@@ -232,7 +258,7 @@ namespace Scheduler {
             blc->next = nullptr;
             block_while = blc;
             release_lock();
-            yield();
+            Yield();
             return;
         }
 
@@ -245,7 +271,7 @@ namespace Scheduler {
             blc->next = nullptr;
             block_while = blc;
             release_lock();
-            yield();
+            Yield();
             return;
         }
 
@@ -253,12 +279,44 @@ namespace Scheduler {
         block_while = blc;
 
         release_lock();
-        yield();
+        Yield();
         return;
     }
 
     void Task::unblock(BlockReasons reason) {
-        (void)reason;
+        if (!block_while) return;
+        Scheduler::aquire_lock();
+
+        TaskBlock *looper = block_while;
+
+        while (looper != nullptr) {
+            if (!looper->next) break;
+
+            if (looper->next->reason == reason) {
+                TaskBlock *nn = looper->next->next;
+                delete looper->next;
+                looper->next = nn;
+                break;
+            }
+
+            looper = looper->next;
+        }
+
+        if (block_while->reason == reason) {
+            TaskBlock *nn = block_while->next;
+            delete block_while;
+            block_while = nn;
+        }
+
+        if (block_while) {
+            Scheduler::release_lock();
+            return;
+        }
+
+        enqueue(DEFAULT_SCHD_QUEUE);
+
+        Scheduler::release_lock();
+        return;
     }
 
     void Task::UnblockAll(BlockReasons reason) {
@@ -298,10 +356,10 @@ namespace Scheduler {
     }
 
     void Task::dequeue() {
-        if (block_while) {
-            Debug::krnl_print("SCHD", Debug::LOG_WARN, "Attempted to dequeue during block?");
-            return;
-        }
+        // if (block_while) {
+        //     Debug::krnl_print("SCHD", Debug::LOG_WARN, "Attempted to dequeue during block?");
+        //     return;
+        // }
 
         aquire_lock();
 

@@ -1,7 +1,6 @@
 #include <HAL/PCI/xHCI/xHCI.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <Scheduler/Scheduler.hpp>
-
 namespace HAL::PCI {
     namespace MSIX::xHCI {
         using ::HAL::PCI::xHCI;
@@ -22,8 +21,10 @@ namespace HAL::PCI {
 
             if (!did_work)
                 current_loops++;
-            if (current_loops >= LOOPS_BEFORE_YIELD)
-                xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
+            else
+                MSIX::xHCI::current_loops = 0;
+            // if (current_loops >= LOOPS_BEFORE_YIELD)
+            //     xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
             goto loop;
         }
 
@@ -42,7 +43,9 @@ namespace HAL::PCI {
 using namespace HAL::PCI;
 
 extern "C" void xHCIIntHandler() {
-    MSIX::xHCI::xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
+    Debug::krnl_print("MSIX", Debug::LOG_INFO, "MSI-X interrupt triggered!");
     MSIX::xHCI::current_loops = 0;
+    MSIX::xHCI::xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
+    
     return;
 }

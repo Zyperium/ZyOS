@@ -13,6 +13,10 @@
 #include <Library/regs.h>
 #include <Library/string.h>
 
+//
+// Functional with 1 device, 2 devices causes a choke!
+//
+
 namespace HAL::PCI {
     using namespace MEM;
 
@@ -144,6 +148,7 @@ namespace HAL::PCI {
         ep_rings[slot_id][XHCI_EP_INDEX_0] = transfer_ring;
         ep_cycle_states[slot_id][XHCI_EP_INDEX_0] = 1;
         ep_enqueue_ptrs[slot_id][XHCI_EP_INDEX_0] = 0;
+        ep_ring_physs[slot_id][XHCI_EP_INDEX_0] = tr_phys;
 
         uint32_t ep_type = static_cast<uint32_t>(xHCIEpType::Control);
 
@@ -191,6 +196,19 @@ namespace HAL::PCI {
             ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
         enqueue++;
 
+        if (enqueue >= XHCI_CMD_RING_INDEX_LIMIT) {
+            TRB* link = &ring_base[XHCI_CMD_RING_INDEX_LIMIT];
+            link->param  = ep_ring_physs[slot_id][XHCI_EP_INDEX_0];
+            link->status = 0;
+            
+            link->control = (TRB_TYPE_LINK << XHCI_TRB_TYPE_SHIFT) | 
+                            XHCI_TRB_LINK_TC | 
+                            ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
+            
+            enqueue = 0;
+            cycle = !cycle;
+        }
+
         if (length > 0) {
             TRB* data_trb = &ring_base[enqueue];
 
@@ -208,6 +226,19 @@ namespace HAL::PCI {
                 ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
 
             enqueue++;
+
+            if (enqueue >= XHCI_CMD_RING_INDEX_LIMIT) {
+                TRB* link = &ring_base[XHCI_CMD_RING_INDEX_LIMIT];
+                link->param  = ep_ring_physs[slot_id][XHCI_EP_INDEX_0];
+                link->status = 0;
+
+                link->control = (TRB_TYPE_LINK << XHCI_TRB_TYPE_SHIFT) | 
+                                XHCI_TRB_LINK_TC | 
+                                ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
+
+                enqueue = 0;
+                cycle = !cycle;
+            }
         }
 
         uint32_t status_dir = XHCI_TRB_STATUS_DIR_OUT;
@@ -229,6 +260,19 @@ namespace HAL::PCI {
 
         enqueue++;
 
+        if (enqueue >= XHCI_CMD_RING_INDEX_LIMIT) {
+            TRB* link = &ring_base[XHCI_CMD_RING_INDEX_LIMIT];
+            link->param  = ep_ring_physs[slot_id][XHCI_EP_INDEX_0];
+            link->status = 0;
+
+            link->control = (TRB_TYPE_LINK << XHCI_TRB_TYPE_SHIFT) | 
+                            XHCI_TRB_LINK_TC | 
+                            ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
+
+            enqueue = 0;
+            cycle = !cycle;
+        }
+
         ep_enqueue_ptrs[slot_id][XHCI_EP_INDEX_0] = enqueue;
 
         db_regs[slot_id].value = XHCI_DB_TARGET_EP0;
@@ -243,6 +287,8 @@ namespace HAL::PCI {
         ep_cycle_states = zfalloc<uint8_t **>(USB_TOTAL_xHCI_SLOTS);
         ep_enqueue_ptrs = zfalloc<uint64_t **>(USB_TOTAL_xHCI_SLOTS);
         ep_ring_physs = zfalloc<uint64_t **>(USB_TOTAL_xHCI_SLOTS);
+        config_descriptor_buffer = zfalloc<uint8_t **>(USB_TOTAL_xHCI_SLOTS);
+        descriptor_buffer = zfalloc<void **>(USB_TOTAL_xHCI_SLOTS);
         pending_config_value = zfalloc<uint8_t *>(USB_TOTAL_xHCI_SLOTS);
 
         for(auto i{0uz}; i < USB_TOTAL_xHCI_SLOTS; i++) {
@@ -433,8 +479,8 @@ namespace HAL::PCI {
                         pending_port_setup = PENDING_PORT_COMPLETE;
                     }
                     else if (cmd_type == TRB_TYPE_ADDRESS_DEVICE) {
-                        descriptor_buffer = zfalloc<uint8_t *>(USB::DEVICE_DESCRIPTOR_SIZE);
-                        uint64_t descriptor_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)descriptor_buffer);
+                        descriptor_buffer[allocated_slot] = zfalloc<uint8_t *>(USB::DEVICE_DESCRIPTOR_SIZE);
+                        uint64_t descriptor_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)descriptor_buffer[allocated_slot]);
                         slot_states[allocated_slot] = SetupState::STATE_GET_DEV_DESC;
 
                         uint8_t req_type = USB::REQ_DIR_IN | USB::REQ_TYPE_STANDARD | USB::REQ_REC_DEVICE;
@@ -481,10 +527,10 @@ namespace HAL::PCI {
                 if (completion_code == XHCI_COMP_SUCCESS || completion_code == XHCI_COMP_SHORT_PACKET) {
                     switch (slot_states[slot]) {
                         case SetupState::STATE_GET_DEV_DESC: {
-                            KMEM::free(descriptor_buffer);
-                            descriptor_buffer = nullptr;
-                            config_descriptor_buffer = zfalloc<uint8_t *>(CONFIG_HEADER_SIZE);
-                            uint64_t phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)config_descriptor_buffer);
+                            KMEM::free(descriptor_buffer[slot]);
+                            descriptor_buffer[slot] = nullptr;
+                            config_descriptor_buffer[slot] = zfalloc<uint8_t *>(CONFIG_HEADER_SIZE);
+                            uint64_t phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)config_descriptor_buffer[slot]);
                             slot_states[slot] = SetupState::STATE_GET_CONFIG_DESC_HEADER;
                 
                             uint8_t  req_type = USB::REQ_DIR_IN | USB::REQ_TYPE_STANDARD | USB::REQ_REC_DEVICE;
@@ -494,11 +540,11 @@ namespace HAL::PCI {
                             break;
                         }
                         case SetupState::STATE_GET_CONFIG_DESC_HEADER: {
-                            auto *cfg = reinterpret_cast<USBConfigDescriptor*>(config_descriptor_buffer);
+                            auto *cfg = reinterpret_cast<USBConfigDescriptor*>(config_descriptor_buffer[slot]);
                             uint16_t total_len = cfg->wTotalLength;
-                            KMEM::free(config_descriptor_buffer);
-                            config_descriptor_buffer = zfalloc<uint8_t *>(total_len);
-                            uint64_t phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)config_descriptor_buffer);
+                            KMEM::free(config_descriptor_buffer[slot]);
+                            config_descriptor_buffer[slot] = zfalloc<uint8_t *>(total_len);
+                            uint64_t phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)config_descriptor_buffer[slot]);
                             slot_states[slot] = SetupState::STATE_GET_CONFIG_DESC_FULL;
 
                             uint8_t  req_type = USB::REQ_DIR_IN | USB::REQ_TYPE_STANDARD | USB::REQ_REC_DEVICE;
@@ -507,9 +553,9 @@ namespace HAL::PCI {
                             break;
                         }
                         case SetupState::STATE_GET_CONFIG_DESC_FULL: {
-                            auto *cfg = reinterpret_cast<USBConfigDescriptor*>(config_descriptor_buffer);
-                            uint8_t *walker = config_descriptor_buffer + cfg->bLength;
-                            uint8_t *end = config_descriptor_buffer + cfg->wTotalLength;
+                            auto *cfg = reinterpret_cast<USBConfigDescriptor*>(config_descriptor_buffer[slot]);
+                            uint8_t *walker = config_descriptor_buffer[slot] + cfg->bLength;
+                            uint8_t *end = config_descriptor_buffer[slot] + cfg->wTotalLength;
 
                             xHCIDriver* matched_driver = nullptr;
                             ParsedEndpoint endpoints[MAX_PARSED_ENDPOINTS]; 
@@ -520,11 +566,12 @@ namespace HAL::PCI {
                                 uint8_t desc_type = walker[1];
 
                                 if (desc_type == USB::DESC_TYPE_INTERFACE) { 
+                                    if (matched_driver) break;
                                     auto* intf = reinterpret_cast<USBInterfaceDescriptor *>(walker);
                                     matched_driver = LoadNewDriver(
                                         intf->bInterfaceClass, intf->bInterfaceSubClass, intf->bInterfaceProtocol
                                     );
-                                } 
+                                }
                                 else if (desc_type == USB::DESC_TYPE_ENDPOINT && matched_driver) {
                                     if (ep_count < MAX_PARSED_ENDPOINTS) {
                                         auto* ep_desc = reinterpret_cast<USBEndpointDescriptor *>(walker);
@@ -533,9 +580,6 @@ namespace HAL::PCI {
                                         endpoints[ep_count].max_packet_size  = ep_desc->wMaxPacketSize;
                                         ep_count++;
                                     }
-                                }
-                                else if (desc_type == USB::DESC_TYPE_INTERFACE && matched_driver) {
-                                    break;
                                 }
                             
                                 walker += length;
@@ -548,8 +592,8 @@ namespace HAL::PCI {
                                 conf_interface_endpoints(slot, endpoints, ep_count);
                             }
 
-                            KMEM::free(config_descriptor_buffer);
-                            config_descriptor_buffer = nullptr;
+                            KMEM::free(config_descriptor_buffer[slot]);
+                            config_descriptor_buffer[slot] = nullptr;
                             break;
                         }
                         case SetupState::STATE_CONFIGURED: {
@@ -639,11 +683,11 @@ namespace HAL::PCI {
         slot_states[slot_id] = SetupState::STATE_CONFIGURING_EP;
         send_command(TRB_TYPE_CONFIGURE_EP, input_phys, slot_id);
 
-        while(slot_states[slot_id] == SetupState::STATE_CONFIGURING_EP) {
-            asm volatile("pause");
-        }
+        // while(slot_states[slot_id] == SetupState::STATE_CONFIGURING_EP) {
+        //     asm volatile("pause");
+        // }
 
-        PMEM::free_page(input_ctx);
+        // PMEM::free_page(input_ctx);
     }
 
     void xHCI::conf_interface_endpoints(uint8_t slot_id, ParsedEndpoint* endpoints, int ep_count) {
@@ -705,11 +749,11 @@ namespace HAL::PCI {
 
         send_command(TRB_TYPE_CONFIGURE_EP, input_phys, slot_id);
 
-        while(slot_states[slot_id] == SetupState::STATE_CONFIGURING_EP) {
-            asm volatile("pause");
-        }
+        // while(slot_states[slot_id] == SetupState::STATE_CONFIGURING_EP) {
+        //     asm volatile("pause");
+        // }
 
-        PMEM::free_page(input_ctx);
+        // PMEM::free_page(input_ctx);
     }
     
     void xHCI::check_ports() {
@@ -763,24 +807,21 @@ namespace HAL::PCI {
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
         uint8_t dci = (ep_num * 2) + (is_in ? 1 : 0);
 
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "QBT slot_id: %x", slot_id);
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "QBT dci: %x", dci);
-
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Targeting ep_rings[%i][%i] = %x", slot_id, dci, ep_rings[slot_id][dci]);
-
-        if (ep_rings[slot_id][dci] == nullptr) {
-            Debug::krnl_print("xHCI", Debug::LOG_ERROR, "FATAL: ep_rings[%i][%i] is NULL!", slot_id, dci);
-            for(int i = 0; i < 16; i++) {
-                if(ep_rings[slot_id][i] != nullptr) {
-                    Debug::krnl_print("xHCI", Debug::LOG_INFO, "  -> Found valid ring instead at DCI %i: %x", i, ep_rings[slot_id][i]);
-                }            
-            }
-            panic(PanicReasons::xHCI_CRITICAL_ERROR);
-        }
-
         TRB *ring = reinterpret_cast<TRB*>(ep_rings[slot_id][dci]);
         uint64_t idx = ep_enqueue_ptrs[slot_id][dci];
         uint8_t cycle = ep_cycle_states[slot_id][dci];
+
+        if (idx == XHCI_CMD_RING_INDEX_LIMIT) {
+            TRB* link = &ring[XHCI_CMD_RING_INDEX_LIMIT];
+            link->param  = ep_ring_physs[slot_id][dci];
+            link->status = 0;
+            link->control = (TRB_TYPE_LINK << XHCI_TRB_TYPE_SHIFT) | 
+                            XHCI_TRB_LINK_TC | 
+                            ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
+
+            idx = 0;
+            cycle = !cycle;
+        }
 
         ring[idx].param = buffer_phys;
         ring[idx].status = buffer_size;
@@ -791,7 +832,7 @@ namespace HAL::PCI {
 
         idx++;
 
-        if (idx == USB_TOTAL_xHCI_SLOTS) {
+        if (idx >= XHCI_CMD_RING_INDEX_LIMIT) {
             TRB* link = &ring[XHCI_CMD_RING_INDEX_LIMIT];
             link->param  = ep_ring_physs[slot_id][dci];
             link->status = 0;
@@ -809,9 +850,6 @@ namespace HAL::PCI {
 
         *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
 
-        for (auto i{0uz}; i < 1000; i++)
-            asm volatile("pause");
-
         return;
     }
 
@@ -823,6 +861,18 @@ namespace HAL::PCI {
         TRB* ring     = reinterpret_cast<TRB*>(ep_rings[slot_id][dci]);
         uint64_t idx  = ep_enqueue_ptrs[slot_id][dci];
         uint8_t cycle = ep_cycle_states[slot_id][dci];
+
+        if (idx == XHCI_CMD_RING_INDEX_LIMIT) {
+            TRB* link = &ring[XHCI_CMD_RING_INDEX_LIMIT];
+            link->param  = ep_ring_physs[slot_id][dci];
+            link->status = 0;
+            link->control = (TRB_TYPE_LINK << XHCI_TRB_TYPE_SHIFT) | 
+                            XHCI_TRB_LINK_TC | 
+                            ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
+
+            idx = 0;
+            cycle = !cycle;
+        }
 
         ring[idx].param  = buffer_phys;
         ring[idx].status = buffer_size;
@@ -850,5 +900,6 @@ namespace HAL::PCI {
 
         ep_enqueue_ptrs[slot_id][dci] = idx;
         ep_cycle_states[slot_id][dci] = cycle;
+        *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
     }
 }

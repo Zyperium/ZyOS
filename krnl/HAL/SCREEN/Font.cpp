@@ -4,6 +4,7 @@
 namespace Font
 {
     bool get_pixel(char c, int local_x, int local_y) {
+        if (c == ' ') return true;
         if (c < 32) return false;
 
         if (local_y < PAD_Y || local_y >= PAD_Y + GLYPH_HEIGHT) return false;

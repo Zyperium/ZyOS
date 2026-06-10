@@ -89,6 +89,7 @@ namespace HAL::PCI {
     constexpr uint8_t PCI_CAP_PTR_ALIGN_MASK = 0xFC;
 
     constexpr uint8_t PCI_CAP_ID_MSIX = 0x11;
+    constexpr uint8_t PCI_CAP_ID_MSI = 0x5;
 
     constexpr uint8_t PCI_MSIX_REG_MSG_CTRL = 2;
     constexpr uint8_t PCI_MSIX_REG_TABLE_OFF = 4;
@@ -98,5 +99,5 @@ namespace HAL::PCI {
 
     constexpr uint32_t LAPIC_BASE_MSI_ADDR = 0xFEE00000;
     constexpr uint32_t LAPIC_SHIFT_DEST_ID = 12;
-    constexpr uint32_t PCI_MSIX_VECTOR_UNMASK_BIT = ~1;
+    constexpr uint32_t PCI_MSIX_VECTOR_UNMASK_BIT = 1;
 }

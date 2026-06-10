@@ -123,7 +123,7 @@ namespace HAL::DISK::USB {
     void USBStorage::write_sectors(uint32_t lba, uint16_t count, void *buffer) {
         (void)lba;
         (void)count;
-        (void)buffer;        
+        (void)buffer;
 
         return;
     }

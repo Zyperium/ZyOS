@@ -54,9 +54,18 @@ namespace lib {
     }
 
     string::string(string&& other) noexcept {
-        memcpy(this, &other, sizeof(string));
+        if (other.is_local()) {
+            memcpy(local.data, other.local.data, SSO_CAPACITY + 1);
+            local.info = other.local.info;
+        } else {
+            remote.data = other.remote.data;
+            remote.size = other.remote.size;
+            remote.capacity = other.remote.capacity;
+            local.info = 0xFF;
+        }
+
         other.local.data[0] = '\0';
-        other.local.info = 0; 
+        other.local.info = 0;
     }
 
     string& string::operator=(const string& other) {
@@ -107,16 +116,103 @@ namespace lib {
         return *this;
     }
 
+    string& string::operator--() {
+        size_t len = length();
+        
+        if (len == 0) return *this;
+
+        size_t new_len = len - 1;
+
+        if (is_local()) {
+            local.data[new_len] = '\0';
+            local.info = static_cast<unsigned char>(new_len);
+        } else {
+            remote.data[new_len] = '\0';
+            remote.size = new_len;
+        }
+
+        return *this;
+    }
+
+    string string::operator--(int) {
+        string duplicate(*this);
+        --(*this);
+        return duplicate;
+    }
+
+    string& string::operator+=(char c) {
+        size_t len = length();
+        size_t new_len = len + 1;
+
+        if (is_local()) {
+            if (new_len <= SSO_CAPACITY) {
+                local.data[len] = c;
+                local.data[new_len] = '\0';
+                local.info = static_cast<unsigned char>(new_len);
+            } else {
+                size_t new_cap = new_len * 2;
+                char* new_data = new char[new_cap + 1];
+
+                memcpy(new_data, local.data, len);
+                new_data[len] = c;
+                new_data[new_len] = '\0';
+
+                remote.data = new_data;
+                remote.size = new_len;
+                remote.capacity = new_cap;
+                local.info = 0xFF;
+            }
+        } else {
+            if (new_len <= remote.capacity) {
+                remote.data[len] = c;
+                remote.data[new_len] = '\0';
+                remote.size = new_len;
+            } else {
+                size_t new_cap = remote.capacity * 2;
+                char* new_data = new char[new_cap + 1];
+
+                memcpy(new_data, remote.data, len);
+                new_data[len] = c;
+                new_data[new_len] = '\0';
+
+                delete[] remote.data;
+                remote.data = new_data;
+                remote.size = new_len;
+                remote.capacity = new_cap;
+            }
+        }
+
+        return *this;
+    }
+
+    string& string::operator+=(const char* s) {
+        if (!s) return *this;
+    
+        for (size_t i = 0; s[i] != '\0'; ++i) {
+            *this += s[i];
+        }
+        return *this;
+    }
+
     string& string::operator=(string&& other) noexcept {
         if (this == &other) return *this;
+        if (!is_local()) {
+            delete[] remote.data;
+        }
 
-        if (!is_local()) delete[] remote.data;
+        if (other.is_local()) {
+            memcpy(local.data, other.local.data, SSO_CAPACITY + 1);
+            local.info = other.local.info;
+        } else {
+            remote.data = other.remote.data;
+            remote.size = other.remote.size;
+            remote.capacity = other.remote.capacity;
+            local.info = 0xFF;
+        }
 
-        memcpy(this, &other, sizeof(string));
-        
         other.local.data[0] = '\0';
         other.local.info = 0;
-        
+
         return *this;
     }
 

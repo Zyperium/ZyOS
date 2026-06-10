@@ -399,7 +399,7 @@ namespace HAL::PCI {
         uint64_t **ep_enqueue_ptrs;
         uint64_t **ep_ring_physs;
 
-        void *descriptor_buffer = nullptr;
+        void **descriptor_buffer = nullptr;
 
         xHCIDriver **attached_drivers;
 
@@ -415,7 +415,7 @@ namespace HAL::PCI {
         };
 
         volatile SetupState *slot_states;
-        uint8_t *config_descriptor_buffer = nullptr;
+        uint8_t **config_descriptor_buffer = nullptr;
         uint8_t *pending_config_value;
 
         void reset_controller();

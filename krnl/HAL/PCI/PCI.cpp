@@ -152,6 +152,7 @@ namespace HAL::PCI {
         while (cap_ptr) {
             uint8_t cap_id = Read8(bus, device, func, cap_ptr);
             if (cap_id == PCI_CAP_ID_MSIX) {
+                Debug::krnl_print("PCI", Debug::LOG_INFO, "Enabling MSI-X");
                 uint16_t msg_ctrl = Read16(bus, device, func, cap_ptr + PCI_MSIX_REG_MSG_CTRL);
                 uint32_t table_offset_bir = Read32(bus, device, func, cap_ptr + PCI_MSIX_REG_TABLE_OFF);
                 
@@ -165,11 +166,18 @@ namespace HAL::PCI {
                 msix_table[0].msg_addr_low = LAPIC_BASE_MSI_ADDR | (apic_id << LAPIC_SHIFT_DEST_ID);
                 msix_table[0].msg_addr_high = 0;
                 msix_table[0].msg_data = vector; 
-                msix_table[0].vector_ctrl &= PCI_MSIX_VECTOR_UNMASK_BIT; 
+                msix_table[0].vector_ctrl &= ~PCI_MSIX_VECTOR_UNMASK_BIT; 
 
                 msg_ctrl |= PCI_MSIX_CTRL_ENABLE_BIT;
                 Write16(bus, device, func, cap_ptr + PCI_MSIX_REG_MSG_CTRL, msg_ctrl);
                 return; 
+            }
+
+            if (cap_id == PCI_CAP_ID_MSI) {
+                Debug::krnl_print("PCI", Debug::LOG_INFO, "Disabling MSI");
+                uint16_t msi_msg_ctrl = Read16(bus, device, func, cap_ptr + 2);
+                msi_msg_ctrl &= ~1;
+                Write16(bus, device, func, cap_ptr + 2, msi_msg_ctrl);
             }
             
             cap_ptr = Read8(bus, device, func, cap_ptr + 1) & PCI_CAP_PTR_ALIGN_MASK;

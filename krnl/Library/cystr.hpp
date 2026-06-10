@@ -49,5 +49,9 @@ namespace lib {
         bool operator==(const string& other) const;
         bool operator!=(const char* other) const;
         bool operator!=(const string& other) const;
+        string& operator+=(char c);
+        string& operator+=(const char* s);
+        string& operator--();
+        string operator--(int);
     };
 }

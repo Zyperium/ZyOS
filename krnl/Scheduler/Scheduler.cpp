@@ -233,7 +233,7 @@ namespace Scheduler {
     }
 
     void Yield() {
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Yield called");
+        // Debug::krnl_print("SCHD", Debug::LOG_INFO, "Yield called");
         asm volatile("int $0x67");
     }
 

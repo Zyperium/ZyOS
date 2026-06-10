@@ -1,4 +1,5 @@
 #include <HAL/PCI/xHCI/xHCIDriver.hpp>
+#include <HAL/PCI/xHCI/HID/xHCIKeyboard.hpp>
 #include <HAL/DISK/USB/USBStorage.hpp>
 
 namespace HAL::PCI {
@@ -12,7 +13,7 @@ namespace HAL::PCI {
             if (subClass == BOOT_IFACE_SUBCLASS) {
                 if (protocol == PROT_HID_KEYBOARD) {
                     Debug::krnl_print("xHCI", Debug::LOG_INFO, "Discovered USB Keyboard");
-                    return nullptr;
+                    return new HID::USBKeyboard;
                 }
                 else if (protocol == PROT_HID_MOUSE) {
                     Debug::krnl_print("xHCI", Debug::LOG_INFO, "Discovered USB Mouse");

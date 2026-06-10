@@ -65,6 +65,7 @@ namespace HAL::DISK::USB {
     void USBStorage::on_int(uint32_t bytes_transferred, uint32_t endpoint_id, uint64_t param_event) {
         (void)bytes_transferred;
         (void)param_event;
+
         switch (state) {
             case STATE_WAIT_CBW:
                 if (endpoint_id == bulk_out_ep) {
@@ -118,6 +119,10 @@ namespace HAL::DISK::USB {
 
         Disk *ndisk = Disk::CreateDisk(fs_usbptr);
         ndisk->initializefs();
+
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "USB Storage finished initializing FS!");
+
+        return;
     }
     
     void USBStorage::write_sectors(uint32_t lba, uint16_t count, void *buffer) {
@@ -167,7 +172,7 @@ namespace HAL::DISK::USB {
             controller->queue_bulk_transfer(slot_id, bulk_out_ep, cbw_phys, CBW_SIZE);
 
             while (io_pending) {
-                poll_xhci();
+                Scheduler::Yield();
                 asm volatile("pause");
             }
 

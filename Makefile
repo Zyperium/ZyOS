@@ -80,12 +80,12 @@ ifeq ($(OS),Windows_NT)
 		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log
 else
 	qemu-system-x86_64 -cpu host -m 512M -machine q35,acpi=on -accel kvm \
-		-drive file=$(DISK_BIOS),id=satadisk,format=raw,if=none \
-		-device ide-hd,bus=ide.0,drive=satadisk,bootindex=1 \
+		-drive file=$(DISK_BIOS),id=usbdisk,format=raw,if=none \
 		-device qemu-xhci,id=xhci \
-		-display sdl -vga std \
+		-device usb-storage,bus=xhci.0,drive=usbdisk,bootindex=1 \
 		-device usb-kbd,bus=xhci.0 \
-		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log \
+		-display sdl -vga std \
+		-rtc base=localtime -d int,cpu_reset,trace:usb_xhci* -no-reboot -no-shutdown -D qemu.log \
 		-debugcon stdio -smp 1
 endif
 

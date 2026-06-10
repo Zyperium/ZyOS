@@ -53,6 +53,7 @@ namespace HAL::PCI::HID {
         controller->queue_bulk_transfer(slot_id, interrupt_in_ep, report_phys, BOOT_REPORT_SIZE);
     }
 
+    size_t looped = 0;
     void USBKeyboard::on_int(uint32_t bytes_transferred, uint32_t endpoint_id, uint64_t param_event) {
         (void)param_event;
 
@@ -65,7 +66,7 @@ namespace HAL::PCI::HID {
             KeyboardBootReport current_report = *report_virt;
             process_report(current_report);
         }
-
+        
         controller->queue_bulk_transfer(slot_id, interrupt_in_ep, report_phys, BOOT_REPORT_SIZE);
     }
 

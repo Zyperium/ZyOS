@@ -30,6 +30,11 @@ namespace TTY {
             return;
         }
 
+        if (off_x >= MAX_TERMINAL_TEXT) {
+            Debug::krnl_print("TTY", Debug::LOG_INFO, "Max text length reached!");
+            return;
+        }
+
         cur_input[off_x] = c;
         if (c != ' ')
             draw_char(c, off_x * Font::WIDTH, off_y * Font::HEIGHT, COL::WHITE);

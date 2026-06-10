@@ -429,6 +429,10 @@ namespace Scheduler {
         if (!TaskDirectory[dir]) return nullptr;
         return TaskDirectory[dir][idx];
     }
+
+    void Suicide() {
+        HAL::CORE::get_thread_data()->current_task->suicide();
+    }
 }
 
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {

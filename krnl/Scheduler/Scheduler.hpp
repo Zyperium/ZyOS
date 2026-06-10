@@ -76,6 +76,7 @@ namespace Scheduler {
     void DisabledScheduler();
     void Initialize();
     void Yield();
+    void Suicide();
 
     constexpr ZyOS::QWORD TASK_TABLE_SIZE = 1024;
     constexpr ZyOS::DWORD TASK_DIR_SIZE = 32;

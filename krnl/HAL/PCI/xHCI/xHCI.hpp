@@ -33,10 +33,15 @@ namespace HAL::PCI {
         void queue_int_transfer(uint8_t slot_id, uint8_t endpoint_index, uint64_t buffer_phys, uint32_t buffer_size);
         void queue_bulk_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size);
         void conf_interface_endpoints(uint8_t slot_id, ParsedEndpoint* endpoints, int ep_count);
+        void process_deferred_start();
         static uint8_t GetPortSpeed(uint32_t portsc);
+
+        xHCIDriver **attached_drivers;
+        volatile uint32_t proc_id = 0;
 
     private:
         uint8_t pci_bus, pci_device, pci_func;
+        uint8_t slot_to_start = 0;
         uint64_t mmio_base_phys;
         uint64_t mmio_base_virt;
 
@@ -328,10 +333,10 @@ namespace HAL::PCI {
         
         static constexpr uint32_t USB_SETUP_PACKET_SIZE = 8;
         static constexpr uint32_t USB_TOTAL_xHCI_SLOTS = 256;
-        static constexpr uint32_t XHCI_CMD_RING_INDEX_LIMIT = USB_TOTAL_xHCI_SLOTS - 1;
+        static constexpr uint32_t XHCI_CMD_RING_INDEX_LIMIT = USB_TOTAL_xHCI_SLOTS - 15;
         static constexpr uint32_t XHCI_HC_DOORBELL = 0;
         static constexpr uint32_t XHCI_DB_TARGET_HC = 0;
-        static constexpr uint32_t XHCI_EVENT_RING_TRBS = 512;
+        static constexpr uint32_t XHCI_EVENT_RING_TRBS = 256;
         static constexpr uint32_t DEVICE_CONTEXT_ENTRIES = 32;
 
         static constexpr uint64_t XHCI_DEQ_CYCLE_STATE_START = (1ULL << 0);
@@ -400,8 +405,6 @@ namespace HAL::PCI {
         uint64_t **ep_ring_physs;
 
         void **descriptor_buffer = nullptr;
-
-        xHCIDriver **attached_drivers;
 
         enum class SetupState {
             STATE_NONE,

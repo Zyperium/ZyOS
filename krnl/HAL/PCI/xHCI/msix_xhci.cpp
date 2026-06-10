@@ -25,6 +25,10 @@ namespace HAL::PCI {
                 MSIX::xHCI::current_loops = 0;
             // if (current_loops >= LOOPS_BEFORE_YIELD)
             //     xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
+
+            for (auto i{0uz}; i < 1000; i++) {
+                asm volatile("pause");
+            }
             goto loop;
         }
 

@@ -110,13 +110,6 @@ namespace HAL::DISK::USB {
         fs_usbptr = new xHCIDD;
         fs_usbptr->usbptr = this;
 
-        uint8_t *scrap_buf = (uint8_t *)PMEM::alloc_page(VMM::PTE_PRESENT | VMM::PTE_WRITABLE | VMM::PTE_CACHELESS);
-        read_sectors(0, 1, scrap_buf);
-        
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Scrap buffer test result: %i %i %i %i", scrap_buf[0], scrap_buf[1], scrap_buf[2], scrap_buf[3]);
-
-        PMEM::free_page(scrap_buf);
-
         Disk *ndisk = Disk::CreateDisk(fs_usbptr);
         ndisk->initializefs();
 

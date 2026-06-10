@@ -1,5 +1,6 @@
 #pragma once
 #include <Scheduler/Scheduler.hpp>
+#include <HAL/SCREEN/Screen.hpp>
 #include <stdint.h>
 #include <stddef.h>
 #include <Library/cystr.hpp>
@@ -11,6 +12,7 @@ namespace TTY {
         ConHost();
 
         void send_input(char c);
+        void draw_string(const char *str, HAL::SCREEN::COL colour = HAL::SCREEN::COL::WHITE);
         void reset_view();
 
         void worker();

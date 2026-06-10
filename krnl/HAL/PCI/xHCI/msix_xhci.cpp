@@ -39,6 +39,8 @@ namespace HAL::PCI {
 
         void create_xhci_worker() {
             xHCI_worker = new Scheduler::Task((Scheduler::Task::EntryPoint)worker, "xHCI Runner");
+            xHCI_worker->core_pinned = true;
+            xHCI_worker->current_core = 0;
             return;
         }
     }

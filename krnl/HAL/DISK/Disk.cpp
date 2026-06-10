@@ -58,6 +58,7 @@ namespace HAL::DISK {
         }
 
         Disk *n_disk = new Disk(letter, dev);
+        disks[letter - 'A'] = n_disk;
 
         char disk_name[] = {letter, ':', '/', 0};
         Debug::krnl_print("DISK", Debug::LOG_INFO, "New disk successfully configured (Drive: %s). Remember to initialize the FS!", disk_name);
@@ -193,5 +194,10 @@ namespace HAL::DISK {
         }
 
         return 0;
+    }
+
+    bool IsValidDisk(char ch) {
+        if (disks[ch - 'A']) return true;
+        return false;
     }
 }

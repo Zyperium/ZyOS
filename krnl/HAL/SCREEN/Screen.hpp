@@ -8,7 +8,13 @@ namespace HAL::SCREEN {
         BLACK = 0xFF000000,
         RED = 0xFFFF0000,
         GREEN = 0xFF00FF00,
-        BLUE = 0xFF0000FF
+        BLUE = 0xFF0000FF,
+        YELLOW = 0xFFFFFF00
+    };
+
+    struct screen_dim {
+        uint32_t width, height;
+        uint32_t pitch;
     };
 
     void initialize(limine_framebuffer_response *response);
@@ -18,4 +24,5 @@ namespace HAL::SCREEN {
     void set_pixel(int x, int y, uint32_t col);
     void draw_char(char c, int x, int y, uint32_t col);
     void draw_char(char c, int x, int y, COL col);
+    screen_dim get_dim();
 }

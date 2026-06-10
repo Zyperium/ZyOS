@@ -33,6 +33,7 @@ namespace HAL::DISK {
     VFS::VNode *GetRootOfDrive(char drive);
     bool IsCapital(char ch);
     char GetValidDriveLabel();
+    bool IsValidDisk(char ch);
     void InitDiskData();
 
     constexpr uint32_t SIZE_OF_UUID = 16;

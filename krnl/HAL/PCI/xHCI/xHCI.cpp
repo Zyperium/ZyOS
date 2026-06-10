@@ -670,7 +670,9 @@ namespace HAL::PCI {
                             while (proc_id > 0) asm volatile("pause");
 
                             proc_id = slot;
-                            new Scheduler::Task(
+                            char _name[16];
+                            Debug::snprintf(_name, 16, "xHCI Subtask %i", slot);
+                            Scheduler::Task *res = new Scheduler::Task(
                                 (Scheduler::Task::EntryPoint)[](void *xHCI_ptr) {
                                     xHCI *ptr = static_cast<xHCI *>(xHCI_ptr);
                                     int ptr_id = ptr->proc_id;
@@ -681,10 +683,13 @@ namespace HAL::PCI {
 
                                     while (true);
                                 },
-                                "Driver Init Worker",
+                                _name,
                                 true,
                                 this
                             );
+
+                            res->core_pinned = true;
+                            res->current_core = 0;
                         
                             check_ports();
                             break;

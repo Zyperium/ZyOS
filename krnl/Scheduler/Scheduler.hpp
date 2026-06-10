@@ -45,6 +45,7 @@ namespace Scheduler {
         
         ZyOS::QWORD quantum;
 
+        bool core_pinned{};
         ZyOS::WORD current_core;
         ZyOS::WORD lowest_queue;
         ZyOS::WORD highest_queue;

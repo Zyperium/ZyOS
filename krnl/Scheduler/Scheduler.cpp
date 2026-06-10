@@ -83,6 +83,9 @@ namespace Scheduler {
         active = false;
 
         TaskDirectory[0] = new Task*[TASK_TABLE_SIZE];
+        for (auto i{0uz}; i < TASK_TABLE_SIZE; i++) {
+            TaskDirectory[0][i] = nullptr;
+        }
         return;
     }
 
@@ -90,7 +93,7 @@ namespace Scheduler {
         for (auto i{0uz}; i < TOTAL_SCHD_QUEUES; i++) {
             if (!task_queue[i])
                 continue;
-            if (!task_queue[i]->running) {
+            if (!task_queue[i]->running && !task_queue[i]->core_pinned) {
                 task_queue[i]->current_core = HAL::CORE::get_thread_data()->core_id;
                 Task *selected_task = task_queue[i];
                 task_queue[i] = task_queue[i]->next;
@@ -153,9 +156,6 @@ namespace Scheduler {
 
         if (!TaskDirectory[dir_idx]) {
             Debug::krnl_print("SCHD", Debug::LOG_WARN, "Non-existent directory!");
-        }
-        else if (!TaskDirectory[dir_idx][tbl_idx]) {
-            Debug::krnl_print("SCHD", Debug::LOG_WARN, "Non-existent table!");
         }
         else {
             Debug::krnl_print("SCHD", Debug::LOG_INFO, "Tables & Directories verified!");

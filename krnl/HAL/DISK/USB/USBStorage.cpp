@@ -1,13 +1,29 @@
+#include <HAL/DISK/Disk.hpp>
+#include <HAL/PCI/xHCI/xHCI.hpp>
+#include <HAL/PCI/xHCI/msix_xhci.hpp>
+#include <Library/debug.hpp>
 #include <HAL/DISK/USB/USBStorage.hpp>
 #include <HAL/MEM/PMEM.hpp>
 #include <HAL/MEM/VMM.hpp>
+#include <Scheduler/Scheduler.hpp>
 #include <Library/regs.h>
 #include <Library/string.h>
 
 using namespace HAL::MEM;
 
 namespace HAL::DISK::USB {
+    void poll_xhci() {
+        for (auto i{0uz}; i < PCI::MSIX::xHCI::MAX_XHCI_INSTANCES; i++) {
+            if (!PCI::MSIX::xHCI::xHCI_instances[i]) continue;
+
+            PCI::MSIX::xHCI::xHCI_instances[i]->poll_event_ring();
+        }
+
+        return;
+    }
+
     void xHCIDD::read(uint64_t sector, uint32_t count, void *buffer) {
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "USB mass storage read begin");
         usbptr->read_sectors(sector, count, buffer);
     }
 
@@ -19,20 +35,16 @@ namespace HAL::DISK::USB {
         controller = _ctrl;
         slot_id = _slot;
 
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "USB mass storage initialization");
+
         auto* eps = reinterpret_cast<PCI::xHCI::ParsedEndpoint *>(endpoints_ptr);
 
         for (int i = 0; i < ep_count; i++) {
             uint8_t ep_addr = eps[i].address;
             bool is_in = (ep_addr & EP_DIR_MASK) != 0;
-            uint8_t ep_num = ep_addr & EP_NUM_MASK;
-            uint8_t dci = (ep_num * 2) + (is_in ? 1 : 0);
-
             if ((eps[i].attributes & EP_ATTR_TYPE_MASK) == EP_ATTR_BULK) {
-                if (is_in) {
-                    bulk_in_ep = dci;
-                } else {
-                    bulk_out_ep = dci;
-                }
+                if (is_in) bulk_in_ep = ep_addr;
+                else       bulk_out_ep = ep_addr;
             }
         }
 
@@ -46,6 +58,8 @@ namespace HAL::DISK::USB {
         bounce_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)bounce_virt);
 
         initialized = true;
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Finished initialization!");
+        return;
     }
 
     void USBStorage::on_int(uint32_t bytes_transferred, uint32_t endpoint_id, uint64_t param_event) {
@@ -60,7 +74,7 @@ namespace HAL::DISK::USB {
                         controller->queue_bulk_transfer(slot_id, data_ep, current_data_phys, current_data_len);
                     } else {
                         state = STATE_WAIT_CSW;
-                        controller->queue_bulk_transfer(slot_id, bulk_in_ep, csw_phys, CSW_SIZE);
+                        controller->queue_bulk_transfer(slot_id, bulk_in_ep, csw_phys, BULK_BUFF_SIZE);
                     }
                 }
                 break;
@@ -83,6 +97,7 @@ namespace HAL::DISK::USB {
                 break;
 
             default:
+                Debug::krnl_print("xHCI", Debug::LOG_WARN, "Unknown state on xHCI interrupt (USB mass storage). Id: %i", state);
                 break;
         }
     }
@@ -90,6 +105,19 @@ namespace HAL::DISK::USB {
     void USBStorage::start() {
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Starting USB mass storage driver");
         state = STATE_IDLE;
+
+        fs_usbptr = new xHCIDD;
+        fs_usbptr->usbptr = this;
+
+        uint8_t *scrap_buf = (uint8_t *)PMEM::alloc_page(VMM::PTE_PRESENT | VMM::PTE_WRITABLE | VMM::PTE_CACHELESS);
+        read_sectors(0, 1, scrap_buf);
+        
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Scrap buffer test result: %i %i %i %i", scrap_buf[0], scrap_buf[1], scrap_buf[2], scrap_buf[3]);
+
+        PMEM::free_page(scrap_buf);
+
+        Disk *ndisk = Disk::CreateDisk(fs_usbptr);
+        ndisk->initializefs();
     }
     
     void USBStorage::write_sectors(uint32_t lba, uint16_t count, void *buffer) {
@@ -138,7 +166,10 @@ namespace HAL::DISK::USB {
             state = STATE_WAIT_CBW;
             controller->queue_bulk_transfer(slot_id, bulk_out_ep, cbw_phys, CBW_SIZE);
 
-            while (io_pending) { asm volatile("pause"); }
+            while (io_pending) {
+                poll_xhci();
+                asm volatile("pause");
+            }
 
             memcpy(dest, bounce_virt, chunk_bytes);
 

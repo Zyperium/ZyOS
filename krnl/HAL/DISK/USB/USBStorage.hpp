@@ -39,15 +39,15 @@ namespace HAL::DISK::USB {
         virtual void on_int(uint32_t bytes_transferred, uint32_t endpoint_id, uint64_t param_event) override;
         virtual void start() override;
 
+        uint8_t bulk_in_ep;
+        uint8_t bulk_out_ep;
+
         bool initialized = false;
 
     private:
         PCI::xHCI *controller;
         xHCIDD *fs_usbptr;
         uint8_t slot_id;
-
-        uint8_t bulk_in_ep;
-        uint8_t bulk_out_ep;
 
         void read_sectors(uint32_t lba, uint16_t count, void *buffer);
         void write_sectors(uint32_t lba, uint16_t count, void *buffer);

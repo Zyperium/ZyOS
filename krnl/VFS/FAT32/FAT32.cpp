@@ -1,3 +1,5 @@
+#include "HAL/DISK/Disk.hpp"
+#include "Library/debug.hpp"
 #include <VFS/FAT32/FAT32.hpp>
 #include <stdint.h>
 #include <stddef.h>
@@ -11,7 +13,9 @@ namespace VFS::FAT32 {
     bool FAT32FileSystem::initialize() {
         uint8_t sector_buffer[SCRATCH_BUF_SIZE];
         
-        m_disk_device->dev->read(VOL_BOOT_REC_SECT, VOL_BOOT_REC_SIZE, sector_buffer);
+        Debug::krnl_print("FAT32", Debug::LOG_INFO, "Attempting sector read! [init]");
+        m_disk_device->dev->read(HAL::DISK::find_fat32_lba(m_disk_device->dev), VOL_BOOT_REC_SIZE, sector_buffer);
+        Debug::krnl_print("FAT32", Debug::LOG_INFO, "Passed sector read!");
         memcpy(&m_bs, sector_buffer, sizeof(BootSector));
 
         if (m_bs.boot_sector_signature != BS_SIGNATURE) {
@@ -32,6 +36,7 @@ namespace VFS::FAT32 {
 
         m_total_clusters = data_sectors / m_bs.sectors_per_cluster;
 
+        Debug::krnl_print("FAT32", Debug::LOG_INFO, "Verifying additional clusters");
         if (m_bs.fs_info_sector != 0) {
             m_disk_device->dev->read(m_bs.fs_info_sector, 1, sector_buffer);
             memcpy(&m_fsi, sector_buffer, sizeof(FSInfo));
@@ -93,5 +98,13 @@ namespace VFS::FAT32 {
         PMEM::free_page(sector_buffer);
 
         return true;
+    }
+
+    VFS::VNode* FAT32FileSystem::get_root_node() {
+        return nullptr;
+    }
+    
+    FAT32FileSystem::FAT32FileSystem(HAL::DISK::Disk *disk_device) : m_disk_device(disk_device) {
+
     }
 }

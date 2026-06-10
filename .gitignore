@@ -3,4 +3,5 @@ compile_commands.json
 *.log
 .cache/
 .vscode/
+.limine/
 krnl/build/

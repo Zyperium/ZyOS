@@ -7,10 +7,11 @@ namespace HAL::PCI {
     namespace MSIX::xHCI {
         constexpr uint8_t MAX_XHCI_INSTANCES = 8;
         extern size_t curr_count;
+        extern ::HAL::PCI::xHCI *xHCI_instances[];
         void worker();
         void register_xhci_worker(::HAL::PCI::xHCI *class_instance);
         void create_xhci_worker();
 
-        constexpr int LOOPS_BEFORE_YIELD = 1000;
+        constexpr int LOOPS_BEFORE_YIELD = 300;
     }
 }

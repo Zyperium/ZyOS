@@ -1,5 +1,5 @@
-#include "HAL/CORE/ThreadLocal.hpp"
-#include "Library/ZyOS.hpp"
+#include <HAL/CORE/ThreadLocal.hpp>
+#include <Library/ZyOS.hpp>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -21,7 +21,7 @@ namespace Scheduler {
     bool event_occured{};
 
     Task *task_queue[TOTAL_SCHD_QUEUES]{};
-    Task *blocked_queue[(size_t)BlockReasons::TOTAL_REASONS]{};
+    TaskBlock *blocked_queue[(size_t)BlockReasons::TOTAL_REASONS]{};
     Task *last_to_yield;
 
     Task ***TaskDirectory;
@@ -173,7 +173,6 @@ namespace Scheduler {
         HAL::CORE::ThreadLocal *tdata = HAL::CORE::get_thread_data();
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Fetching core info {Core data @ %x}", tdata);
         current_core = tdata->core_id;
-        block_while = nullptr;
         current_queue = 0;
         running = false;
         fx_state = new uint8_t;
@@ -183,7 +182,7 @@ namespace Scheduler {
         release_lock();
     }
 
-    Task::Task(EntryPoint entry, lib::string name, bool add_queue) : Task() {
+    Task::Task(EntryPoint entry, lib::string name, bool add_queue, void *p_arg) : Task() {
         aquire_lock();
         task_name = name;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Creating new task %s", task_name.c_str());
@@ -202,8 +201,8 @@ namespace Scheduler {
         btm_address += PAGE_SIZE;
         uintptr_t top_address = btm_address + (PAGE_SIZE * TASK_STACK_PAGES);
 
-        krnl_stack_btm = reinterpret_cast<ZyOS::QWORD*>(btm_address);
-        krnl_stack_top = reinterpret_cast<ZyOS::QWORD*>(top_address);
+        krnl_stack_btm = reinterpret_cast<ZyOS::QWORD *>(btm_address);
+        krnl_stack_top = reinterpret_cast<ZyOS::QWORD *>(top_address);
 
         memset(krnl_stack_btm, 0, TASK_STACK_PAGES * PAGE_SIZE);
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Performed memset on kernel stack");
@@ -219,6 +218,10 @@ namespace Scheduler {
 
         rsp = reinterpret_cast<uint64_t>(ktop);
 
+        constexpr uint8_t RDI_OFFSET_ASM = 5;
+        uint64_t *RDI_REG = &ktop[RDI_OFFSET_ASM];
+        *RDI_REG = (uint64_t)p_arg;
+
         release_lock();
 
         if (add_queue)
@@ -230,6 +233,7 @@ namespace Scheduler {
     }
 
     void Yield() {
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Yield called");
         asm volatile("int $0x67");
     }
 
@@ -245,38 +249,40 @@ namespace Scheduler {
     void Task::block(BlockReasons reason, uint64_t arg1) {
         aquire_lock();
 
+        if (blockmap[(size_t)reason]) {
+            release_lock();
+            return;
+        }
+
+        blockmap[(size_t)reason] = true;
+
         dequeue();
-        
-        TaskBlock *blc = new TaskBlock;
-        blc->reason = reason;
-        blc->arg1 = arg1;
-        
-        if (!blocked_queue[(size_t)reason]) {
-            next = this;
-            previous = this;
-            blocked_queue[(size_t)reason] = this;
-            blc->next = nullptr;
-            block_while = blc;
+
+        TaskBlock *n_block = new TaskBlock {
+            reason,
+            arg1,
+            this,
+            nullptr,
+            nullptr
+        };
+
+
+        TaskBlock *r_block = blocked_queue[(size_t)reason];
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Blocked task %s", task_name.c_str());
+
+        if (!r_block) {
+            n_block->next = n_block;
+            n_block->prev = n_block;
+            blocked_queue[(size_t)reason] = n_block;
             release_lock();
             Yield();
             return;
         }
 
-        previous = blocked_queue[(size_t)reason]->previous;
-        blocked_queue[(size_t)reason]->previous = this;
-        next = blocked_queue[(size_t)reason];
-        previous->next = this;
-
-        if (!block_while) {
-            blc->next = nullptr;
-            block_while = blc;
-            release_lock();
-            Yield();
-            return;
-        }
-
-        blc->next = block_while;
-        block_while = blc;
+        n_block->next = r_block;
+        n_block->prev = r_block->prev;
+        r_block->prev = n_block;
+        n_block->prev->next = n_block;
 
         release_lock();
         Yield();
@@ -284,38 +290,51 @@ namespace Scheduler {
     }
 
     void Task::unblock(BlockReasons reason) {
-        if (!block_while) return;
-        Scheduler::aquire_lock();
+        aquire_lock();
+        if (!blockmap[(size_t)reason]) {
 
-        TaskBlock *looper = block_while;
-
-        while (looper != nullptr) {
-            if (!looper->next) break;
-
-            if (looper->next->reason == reason) {
-                TaskBlock *nn = looper->next->next;
-                delete looper->next;
-                looper->next = nn;
-                break;
-            }
-
-            looper = looper->next;
-        }
-
-        if (block_while->reason == reason) {
-            TaskBlock *nn = block_while->next;
-            delete block_while;
-            block_while = nn;
-        }
-
-        if (block_while) {
-            Scheduler::release_lock();
+            release_lock();
             return;
         }
 
-        enqueue(DEFAULT_SCHD_QUEUE);
+        blockmap[(size_t)reason] = false;
+    
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Unblocked task %s", task_name.c_str());
 
-        Scheduler::release_lock();
+        TaskBlock *found_self_block = blocked_queue[(size_t)reason];
+        while (found_self_block->t_ptr != this) {
+            found_self_block = found_self_block->next;
+            if (found_self_block == blocked_queue[(size_t)reason]) {
+                release_lock();
+                return;
+            }
+        }
+        
+        if (found_self_block->prev == found_self_block) {
+            blocked_queue[(size_t)reason] = nullptr;
+            delete found_self_block;
+        }
+        else if (found_self_block == blocked_queue[(size_t)reason]) {
+            blocked_queue[(size_t)reason] = blocked_queue[(size_t)reason]->next;
+            found_self_block->prev->next = found_self_block->next;
+            found_self_block->next->prev = found_self_block->prev;
+            delete found_self_block;
+        }
+
+        bool requeue_task{true};
+
+        for (auto i{0uz}; i < (size_t)BlockReasons::TOTAL_REASONS; ++i) {
+            if (blockmap[i]) {
+                requeue_task = false;
+                break;
+            }
+        }
+
+        if (requeue_task) {
+            enqueue(DEFAULT_SCHD_QUEUE);
+        }
+
+        release_lock();
         return;
     }
 
@@ -368,11 +387,17 @@ namespace Scheduler {
             return;
         }
 
+        if (current_queue == (ZyOS::WORD)-1) {
+            release_lock();
+            return;
+        }
+
         if (next == this) {
             task_queue[current_queue] = nullptr;
             next = nullptr;
             previous = nullptr;
             release_lock();
+            current_queue = -1;
             return;
         }
 
@@ -382,20 +407,14 @@ namespace Scheduler {
         next = nullptr;
         previous = nullptr;
 
+        current_queue = -1;
+
         release_lock();
         return;
     }
 
     void Task::TerminateTask(Task *term) {
         aquire_lock();
-        if (term->block_while) {
-            TaskBlock *cp = term->block_while;
-            while (cp != nullptr) {
-                TaskBlock *n = cp->next;
-                delete cp;
-                cp = n;
-            }
-        }
 
         term->block(BlockReasons::GARBAGE);
 

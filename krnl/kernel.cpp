@@ -7,6 +7,7 @@
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/CORE/Core.hpp>
 
+#include <TTY/TTY.hpp>
 #include <Scheduler/Scheduler.hpp>
 
 #include <Library/debug.hpp>
@@ -32,6 +33,10 @@ void SysIdleTask() {
     }
 }
 
+void TTY_Task(void *tty_cast) {
+    static_cast<TTY::ConHost *>(tty_cast)->worker();
+}
+
 extern "C" void krnlmain() {
     initialize();
 
@@ -50,10 +55,10 @@ extern "C" void krnlmain() {
 
     HAL::PCI::MSIX::xHCI::create_xhci_worker();
 
-    asm volatile("sti");
+    TTY::ConHost *default_host = new TTY::ConHost;
+    default_host->contask = new Scheduler::Task((Scheduler::Task::EntryPoint)TTY_Task, "TTY0", true, default_host);
 
-    SCREEN::fill_screen(SCREEN::COL::GREEN);
-    SCREEN::flip_buffer();
+    asm volatile("sti");
 
     Scheduler::EnableScheduler();
 

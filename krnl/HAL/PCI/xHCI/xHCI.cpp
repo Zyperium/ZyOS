@@ -1,3 +1,4 @@
+#include <HAL/MEM/PMM.hpp>
 #include <HAL/PCI/xHCI/xHCI.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/PCI/PCI.hpp>
@@ -49,6 +50,10 @@ namespace HAL::PCI {
                     }
                 }
             }
+
+            uint8_t next = (val >> 8) & 0xFF;
+            if (next == 0) break;
+            cap_offset += next * 4;
         }
     }
 
@@ -65,12 +70,13 @@ namespace HAL::PCI {
 
     template <typename T>
     inline T zfalloc(size_t mall) {
+        size_t total_bytes = mall * sizeof(T);
         T x = reinterpret_cast<T>(KMEM::malloc(mall * sizeof(T)));
         if (!x) {
             Debug::krnl_print("xHCI", Debug::LOG_ERROR, "Out of memory? KMEM return nullptr!");
             return nullptr;
         }
-        memset(x, 0, mall);
+        memset(x, 0, total_bytes);
         return x;
     }
 
@@ -127,6 +133,13 @@ namespace HAL::PCI {
 
         uint64_t *transfer_ring = zalloc_page<uint64_t *>();
         uint64_t tr_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)transfer_ring);
+
+        memset(transfer_ring, 0, PAGE_SIZE);
+
+        size_t max_trbs = PAGE_SIZE / sizeof(TRB); // 256
+        TRB* link_trb = reinterpret_cast<TRB*>(&transfer_ring[(max_trbs - 1) * (sizeof(TRB)/8)]); 
+        link_trb->param = tr_phys;
+        link_trb->control = (TRB_TYPE_LINK << XHCI_TRB_TYPE_SHIFT) | XHCI_TRB_LINK_TC | (1U << XHCI_TRB_CYCLE_SHIFT);
         
         ep_rings[slot_id][XHCI_EP_INDEX_0] = transfer_ring;
         ep_cycle_states[slot_id][XHCI_EP_INDEX_0] = 1;
@@ -376,8 +389,9 @@ namespace HAL::PCI {
         db_regs[XHCI_HC_DOORBELL].value = XHCI_DB_TARGET_HC;
     }
 
-    void xHCI::poll_event_ring() {
+    bool xHCI::poll_event_ring() {
         TRB *event_ring = reinterpret_cast<TRB *>(event_ring_virt);
+        bool events_proc{};
         
         for (auto i{0uz}; i < XHCI_MAX_EVENTS_PER_INTR; i++) {
             TRB *event = &event_ring[event_ring_dequeue_ptr];
@@ -386,15 +400,30 @@ namespace HAL::PCI {
                 break;
             }
 
+            events_proc = true;
+
             uint32_t type = (event->control >> XHCI_TRB_TYPE_SHIFT) & XHCI_TRB_TYPE_MASK;
             uint32_t slot = (event->control >> XHCI_TRB_SLOT_ID_SHIFT) & XHCI_TRB_SLOT_ID_MASK;
 
             if (type == TRB_TYPE_CMD_COMPLETE) {
                 uint32_t code = (event->status >> XHCI_TRB_COMP_CODE_SHIFT) & XHCI_TRB_COMP_CODE_MASK;
+                
                 uint8_t allocated_slot = (event->control >> XHCI_TRB_SLOT_ID_SHIFT) & XHCI_TRB_SLOT_ID_MASK;
+                if (allocated_slot == 0) {
+                    for (uint32_t s = 1; s < USB_TOTAL_xHCI_SLOTS; s++) {
+                        if (slot_states[s] == SetupState::STATE_CONFIGURING_EP ||
+                            slot_states[s] == SetupState::STATE_ADDRESSING) {
+                            allocated_slot = s;
+                            break;
+                        }
+                    }
+                }
 
-                if (code == XHCI_CODE_SUCCESS) {
-                    if (pending_port_setup != PENDING_PORT_COMPLETE) {
+                if (code == XHCI_CODE_SUCCESS && allocated_slot != 0) {
+                    TRB *completed_cmd_trb = reinterpret_cast<TRB *>(event->param + PMM::hhdm_offset);
+                    uint8_t cmd_type = (completed_cmd_trb->control >> XHCI_TRB_TYPE_SHIFT) & XHCI_TRB_TYPE_MASK;
+
+                    if (cmd_type == TRB_TYPE_ENABLE_SLOT) {
                         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Slot assigned: %i", allocated_slot);
 
                         slot_states[allocated_slot] = SetupState::STATE_ADDRESSING;
@@ -403,54 +432,39 @@ namespace HAL::PCI {
                         addr_device(allocated_slot, pending_port_setup);
                         pending_port_setup = PENDING_PORT_COMPLETE;
                     }
-
-                    else if (slot_states[allocated_slot] == SetupState::STATE_ADDRESSING) {
+                    else if (cmd_type == TRB_TYPE_ADDRESS_DEVICE) {
                         descriptor_buffer = zfalloc<uint8_t *>(USB::DEVICE_DESCRIPTOR_SIZE);
                         uint64_t descriptor_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)descriptor_buffer);
                         slot_states[allocated_slot] = SetupState::STATE_GET_DEV_DESC;
+
                         uint8_t req_type = USB::REQ_DIR_IN | USB::REQ_TYPE_STANDARD | USB::REQ_REC_DEVICE;
                         uint16_t wValue  = USB::make_wValue(USB::DESC_TYPE_DEVICE, 0);
-                        uint16_t wIndex  = 0x0000;
-                        send_control_request(
-                            allocated_slot, 
-                            req_type, 
-                            USB::REQ_GET_DESCRIPTOR, 
-                            wValue, 
-                            wIndex, 
-                            USB::DEVICE_DESCRIPTOR_SIZE, 
-                            descriptor_phys
-                        );
+                        send_control_request(allocated_slot, req_type, USB::REQ_GET_DESCRIPTOR, wValue, 0, USB::DEVICE_DESCRIPTOR_SIZE, descriptor_phys);
                     }
-                    
+                    else if (cmd_type == TRB_TYPE_CONFIGURE_EP) {
+                        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Endpoints Configured. Setting Device Configuration...");
+                        slot_states[allocated_slot] = SetupState::STATE_SETTING_CONFIG;
+
+                        uint8_t req_type = USB::REQ_DIR_OUT | USB::REQ_TYPE_STANDARD | USB::REQ_REC_DEVICE;
+                        uint16_t config_val = pending_config_value[allocated_slot] ? pending_config_value[allocated_slot] : USB::DEFAULT_CONFIGURATION_VALUE;
+
+                        send_control_request(allocated_slot, req_type, USB::REQ_SET_CONFIGURATION, config_val, 0, 0, 0);
+                    }
+
+                    // if (pending_port_setup != PENDING_PORT_COMPLETE) {
+                    //     Debug::krnl_print("xHCI", Debug::LOG_INFO, "Slot assigned: %i", allocated_slot);
+
+                    //     slot_states[allocated_slot] = SetupState::STATE_ADDRESSING;
+                    //     port_slot_mapping[pending_port_setup] = allocated_slot;
+
+                    //     addr_device(allocated_slot, pending_port_setup);
+                    //     pending_port_setup = PENDING_PORT_COMPLETE;
+                    // }
+
                     if (slot_states[allocated_slot] == SetupState::STATE_CONFIGURED) {
                         if (attached_drivers[allocated_slot]) {
                             check_ports();
                         }
-                    }
-
-                    if (slot_states[allocated_slot] == SetupState::STATE_CONFIGURING_EP) {
-                        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Endpoints Configured. Setting Device Configuration...");
-
-                        slot_states[allocated_slot] = SetupState::STATE_SETTING_CONFIG;
-
-                        uint8_t req_type = USB::REQ_DIR_OUT | USB::REQ_TYPE_STANDARD | USB::REQ_REC_DEVICE;
-                        uint16_t wIndex{0};
-                        uint16_t wLength{0};
-
-                        uint16_t config_val = pending_config_value[allocated_slot];
-                        if (config_val == 0) {
-                            config_val = USB::DEFAULT_CONFIGURATION_VALUE;
-                        }
-
-                        send_control_request(
-                            allocated_slot, 
-                            req_type, 
-                            USB::REQ_SET_CONFIGURATION, 
-                            config_val, 
-                            wIndex, 
-                            wLength, 
-                            0
-                        );
                     }
                 }
                 else {
@@ -540,8 +554,14 @@ namespace HAL::PCI {
                         }
                         case SetupState::STATE_CONFIGURED: {
                             if (attached_drivers[slot]) {
-                                attached_drivers[slot]->on_int(transfer_len, (event->control & ENDPOINT_ID_BITMASK) << ENDPOINT_ID_SHIFT, event->param);
-                            }
+                                uint32_t dci = (event->control >> ENDPOINT_ID_SHIFT) & 0x1F;
+                                
+                                uint8_t ep_num = dci / 2;
+                                bool is_in = (dci % 2) != 0;
+                                uint8_t raw_ep_addr = ep_num | (is_in ? USB::USB_EP_DIR_IN : 0);
+                                
+                                attached_drivers[slot]->on_int(transfer_len, raw_ep_addr, event->param);
+                                }
                             break;
                         }
                         case SetupState::STATE_SETTING_CONFIG: {
@@ -566,15 +586,20 @@ namespace HAL::PCI {
             }
 
             event_ring_dequeue_ptr++;
-            if (event_ring_dequeue_ptr >= USB_TOTAL_xHCI_SLOTS) {
+            if (event_ring_dequeue_ptr >= XHCI_EVENT_RING_TRBS) {
                 event_ring_dequeue_ptr = XHCI_ERST_PRIMARY_SEGMENT;
                 event_ring_cycle_state = !event_ring_cycle_state;
             }
         }
 
-        uint64_t erdp = erst_virt[XHCI_ERST_PRIMARY_SEGMENT].base_address + 
+        if (events_proc) {
+            uint64_t erdp = erst_virt[XHCI_ERST_PRIMARY_SEGMENT].base_address + 
                     (event_ring_dequeue_ptr * XHCI_TRB_SIZE_BYTES);
-        run_regs->irs[XHCI_PRIMARY_INTERRUPTER].erdp = erdp | XHCI_ERDP_EHB;
+            run_regs->irs[XHCI_PRIMARY_INTERRUPTER].erdp = erdp | XHCI_ERDP_EHB;
+            run_regs->irs[XHCI_PRIMARY_INTERRUPTER].iman |= XHCI_IMAN_IP;
+        }
+
+        return events_proc;
     }
 
     void xHCI::conf_endpoint(uint8_t slot_id, uint8_t endpoint_address, uint8_t endpoint_type, uint16_t max_packet_size) {
@@ -584,12 +609,12 @@ namespace HAL::PCI {
 
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Configuring endpoint DCI: %i", dci);
 
-        auto* input_ctx = reinterpret_cast<InputControlContext*>(zalloc_page<void*>());
+        auto* input_ctx = zalloc_page<InputControlContext *>();
         uint64_t input_phys = VMM::GetPhysicalAddress(read_cr3(), reinterpret_cast<uint64_t>(input_ctx));
         input_ctx->add_flags = XHCI_INPUT_ADD_SLOT_CONTEXT | (1U << dci);
         input_ctx->slot.info = (dci << XHCI_SLOT_CONTEXT_ENTRIES_SHIFT);
 
-        auto* ring_virt = reinterpret_cast<uint64_t*>(zalloc_page<void*>());
+        auto* ring_virt = zalloc_page<uint64_t *>();
         uint64_t ring_phys = VMM::GetPhysicalAddress(read_cr3(),reinterpret_cast<uint64_t>(ring_virt));
 
         ep_rings[slot_id][dci]        = ring_virt;
@@ -600,7 +625,7 @@ namespace HAL::PCI {
         uint8_t type_base   = is_in ? XHCI_EP_TYPE_IN_SHIFT : XHCI_EP_TYPE_OUT_SHIFT;
         uint8_t xhci_ep_type = type_base + (endpoint_type & USB::USB_EP_TYPE_MASK);
 
-        volatile EndpointContext* ep_ctx = &input_ctx->endpoints[dci];
+        volatile EndpointContext* ep_ctx = &input_ctx->endpoints[dci - 1];
 
         ep_ctx->ep_info2 = (static_cast<uint32_t>(xhci_ep_type) << XHCI_EP_TYPE_SHIFT) | 
                        (static_cast<uint32_t>(max_packet_size) << XHCI_EP_MAX_PACKET_SHIFT);
@@ -611,7 +636,13 @@ namespace HAL::PCI {
 
         ep_ctx->tx_info = XHCI_EP_DEFAULT_TRB_LEN;
 
+        slot_states[slot_id] = SetupState::STATE_CONFIGURING_EP;
         send_command(TRB_TYPE_CONFIGURE_EP, input_phys, slot_id);
+
+        while(slot_states[slot_id] == SetupState::STATE_CONFIGURING_EP) {
+            asm volatile("pause");
+        }
+
         PMEM::free_page(input_ctx);
     }
 
@@ -642,7 +673,7 @@ namespace HAL::PCI {
             uint8_t type_base    = is_in ? XHCI_EP_TYPE_IN_SHIFT : XHCI_EP_TYPE_OUT_SHIFT;
             uint8_t xhci_ep_type = type_base + usb_type;
 
-            volatile EndpointContext* ep_ctx = &input_ctx->endpoints[dci];
+            volatile EndpointContext* ep_ctx = &input_ctx->endpoints[dci - 1];
             
             ep_ctx->ep_info2 = (static_cast<uint32_t>(xhci_ep_type) << XHCI_EP_TYPE_SHIFT) | 
                                (static_cast<uint32_t>(endpoints[i].max_packet_size) << XHCI_EP_MAX_PACKET_SHIFT);
@@ -673,6 +704,11 @@ namespace HAL::PCI {
         slot_states[slot_id] = SetupState::STATE_CONFIGURING_EP;
 
         send_command(TRB_TYPE_CONFIGURE_EP, input_phys, slot_id);
+
+        while(slot_states[slot_id] == SetupState::STATE_CONFIGURING_EP) {
+            asm volatile("pause");
+        }
+
         PMEM::free_page(input_ctx);
     }
     
@@ -700,7 +736,6 @@ namespace HAL::PCI {
 
                         pending_port_setup = i;
                         send_command(TRB_TYPE_ENABLE_SLOT, 0, 0);
-                        return;
                     }
                 }
             }
@@ -728,7 +763,22 @@ namespace HAL::PCI {
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
         uint8_t dci = (ep_num * 2) + (is_in ? 1 : 0);
 
-        TRB* ring = reinterpret_cast<TRB*>(ep_rings[slot_id][dci]);
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "QBT slot_id: %x", slot_id);
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "QBT dci: %x", dci);
+
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Targeting ep_rings[%i][%i] = %x", slot_id, dci, ep_rings[slot_id][dci]);
+
+        if (ep_rings[slot_id][dci] == nullptr) {
+            Debug::krnl_print("xHCI", Debug::LOG_ERROR, "FATAL: ep_rings[%i][%i] is NULL!", slot_id, dci);
+            for(int i = 0; i < 16; i++) {
+                if(ep_rings[slot_id][i] != nullptr) {
+                    Debug::krnl_print("xHCI", Debug::LOG_INFO, "  -> Found valid ring instead at DCI %i: %x", i, ep_rings[slot_id][i]);
+                }            
+            }
+            panic(PanicReasons::xHCI_CRITICAL_ERROR);
+        }
+
+        TRB *ring = reinterpret_cast<TRB*>(ep_rings[slot_id][dci]);
         uint64_t idx = ep_enqueue_ptrs[slot_id][dci];
         uint8_t cycle = ep_cycle_states[slot_id][dci];
 
@@ -757,7 +807,12 @@ namespace HAL::PCI {
         ep_enqueue_ptrs[slot_id][dci] = idx;
         ep_cycle_states[slot_id][dci] = cycle;
 
-        db_regs[slot_id].value = dci;
+        *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
+
+        for (auto i{0uz}; i < 1000; i++)
+            asm volatile("pause");
+
+        return;
     }
 
     void xHCI::queue_int_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size) {

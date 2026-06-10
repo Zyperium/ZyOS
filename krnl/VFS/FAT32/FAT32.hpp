@@ -95,11 +95,11 @@ namespace VFS::FAT32 {
     };
 
     struct LongNameEntry {
-        uint8_t  order;
+        uint8_t order;
         char16_t name1[5];
-        uint8_t  attr;
-        uint8_t  type;
-        uint8_t  checksum;
+        uint8_t attr;
+        uint8_t type;
+        uint8_t checksum;
         char16_t name2[6];
         uint16_t first_cluster;
         char16_t name3[2];
@@ -138,12 +138,12 @@ namespace VFS::FAT32 {
         uint32_t m_data_start_sector;
         uint32_t m_total_clusters;
     public:
-        FAT32FileSystem(void *disk_device);
+        FAT32FileSystem(HAL::DISK::Disk *disk_dev);
         ~FAT32FileSystem() = default;
         bool initialize();
         int read_sectors(uint64_t sector, void* buffer, uint32_t count);
         int write_sectors(uint64_t sector, const void* buffer, uint32_t count);
-        
+
         uint32_t cluster_to_sector(uint32_t cluster) const;
         uint32_t read_FAT_entry(uint32_t cluster);
         bool write_FAT_entry(uint32_t cluster, uint32_t value);

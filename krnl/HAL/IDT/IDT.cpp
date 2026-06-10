@@ -88,6 +88,7 @@ namespace HAL::IDT {
         set_gate(ISR_CODES::PAGE_FAULT, (void*)isr14, GATE_INTERRUPT);
 
         set_gate(LAPIC_VECTOR, (void*)SchedulerHandler, GATE_INTERRUPT);
+        set_gate(YIELD_VECTOR, (void*)QuietSwitch, GATE_INTERRUPT);
 
         idtr.limit = (sizeof(IDTEntry) * MAX_VECTORS) - 1;
         idtr.base  = reinterpret_cast<uint64_t>(&idt[0]);

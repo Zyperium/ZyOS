@@ -1,4 +1,5 @@
 #include <HAL/PCI/xHCI/xHCIDriver.hpp>
+#include <HAL/DISK/USB/USBStorage.hpp>
 
 namespace HAL::PCI {
     xHCIDriver *LoadNewDriver(uint8_t classCode, uint8_t subClass, uint8_t protocol) {
@@ -22,7 +23,7 @@ namespace HAL::PCI {
 
         if (classCode == CLASS_MASS_STORAGE) {
             Debug::krnl_print("xHCI", Debug::LOG_INFO, "Discovered USB Mass Storage");
-            return nullptr;
+            return new DISK::USB::USBStorage;
         }
 
         return nullptr;

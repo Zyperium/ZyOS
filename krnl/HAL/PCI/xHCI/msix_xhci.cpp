@@ -13,14 +13,17 @@ namespace HAL::PCI {
         int current_loops{};
         void worker() {
             loop:
+            bool did_work = false;
             for (auto i{0uz}; i < MAX_XHCI_INSTANCES; ++i) {
                 if (!xHCI_instances[i]) continue;
 
-                xHCI_instances[i]->poll_event_ring();
+                did_work = did_work || xHCI_instances[i]->poll_event_ring();
             }
-            if (current_loops > LOOPS_BEFORE_YIELD)
+
+            if (!did_work)
+                current_loops++;
+            if (current_loops >= LOOPS_BEFORE_YIELD)
                 xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
-            current_loops++;
             goto loop;
         }
 
@@ -39,7 +42,6 @@ namespace HAL::PCI {
 using namespace HAL::PCI;
 
 extern "C" void xHCIIntHandler() {
-    // basically just tell the scheduler to unblock the worker.
     MSIX::xHCI::xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
     MSIX::xHCI::current_loops = 0;
     return;

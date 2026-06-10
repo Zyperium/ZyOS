@@ -71,23 +71,22 @@ $(DISK_UEFI):
 	@echo "UEFI Disk Image Built: $(DISK_UEFI)"
 
 run: $(DISK_BIOS)
-ifeq ($(OS),Windows_NT)
-	qemu-system-x86_64 -cpu qemu64 -m 512M -machine pc,hpet=off -accel whpx,kernel-irqchip=off \
-		-drive file=$(DISK_BIOS),id=bootdisk,format=raw,if=none \
-		-device ich9-ahci,id=ahci -device ide-hd,drive=bootdisk,bus=ahci.0 \
-		-display sdl -vga std -device qemu-xhci,id=xhci \
-		-device usb-mouse,bus=xhci.0 -device usb-kbd,bus=xhci.0 \
-		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log
-else
+# 	ifeq ($(OS),Windows_NT)
+# 		qemu-system-x86_64 -cpu qemu64 -m 512M -machine pc,hpet=off -accel whpx,kernel-irqchip=off \
+# 			-drive file=$(DISK_BIOS),id=bootdisk,format=raw,if=none \
+# 			-device ich9-ahci,id=ahci -device ide-hd,drive=bootdisk,bus=ahci.0 \
+# 			-display sdl -vga std -device qemu-xhci,id=xhci \
+# 			-device usb-mouse,bus=xhci.0 -device usb-kbd,bus=xhci.0 \
+# 			-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log
+# 	else
 	qemu-system-x86_64 -cpu host -m 512M -machine q35,acpi=on -accel kvm \
 		-drive file=$(DISK_BIOS),id=usbdisk,format=raw,if=none \
 		-device qemu-xhci,id=xhci \
-		-device usb-storage,bus=xhci.0,drive=usbdisk,bootindex=1 \
+		-device usb-storage,drive=usbdisk,bootindex=1 \
 		-display sdl -vga std \
-		-device usb-mouse,bus=xhci.0 -device usb-kbd,bus=xhci.0 \
-		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log \
-		-debugcon stdio -smp 4
-endif
+		-rtc base=localtime -d int,trace:usb_xhci_* -no-reboot -no-shutdown -D qemu.log \
+		-debugcon stdio -smp 2
+# 	endif
 
 OVMF_URL = https://github.com/clearlinux/common/raw/master/OVMF.fd
 

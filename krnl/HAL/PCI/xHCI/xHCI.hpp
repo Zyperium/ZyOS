@@ -22,7 +22,7 @@ namespace HAL::PCI {
 
         void initialize();
         void send_command(uint32_t type, uint64_t param, uint32_t slot_id_or_status);
-        void poll_event_ring();
+        bool poll_event_ring();
         void check_ports();
         void reset_ports(int port_index);
         void bios_handoff();
@@ -414,7 +414,7 @@ namespace HAL::PCI {
             STATE_CONFIGURED
         };
 
-        SetupState *slot_states;
+        volatile SetupState *slot_states;
         uint8_t *config_descriptor_buffer = nullptr;
         uint8_t *pending_config_value;
 

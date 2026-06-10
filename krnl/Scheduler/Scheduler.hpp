@@ -13,17 +13,20 @@ namespace Scheduler {
         TOTAL_REASONS // This should always be last
     };
 
+    class Task;
     struct TaskBlock {
         BlockReasons reason;
         uint64_t arg1;
+        Task *t_ptr;
         TaskBlock *next;
+        TaskBlock *prev;
     };
 
     class alignas(ZyOS::sbQWORD) Task {
     public:
         using EntryPoint = void(*)(void*);
         Task();
-        Task(EntryPoint entry, lib::string name, bool enqueue = true);
+        Task(EntryPoint entry, lib::string name, bool enqueue = true, void *p_arg = nullptr);
         
         Task *next;
         Task *previous;
@@ -52,16 +55,17 @@ namespace Scheduler {
         void suicide();
         ZyOS::QWORD get_pid();
         void fork();
-        // try not to call this externally.
+        // try not to call this externally. (but you can)
         void change_queue(ZyOS::DWORD to);
 
         static void TerminateTask(Task *term);
         static void UnblockAll(BlockReasons whoisblocking);
     private:
         alignas(16) uint8_t *fx_state;
-        TaskBlock *block_while;
         ZyOS::WORD current_queue;
         ZyOS::QWORD pid;
+        bool blockmap[(size_t)BlockReasons::TOTAL_REASONS]{false};
+        void *_arg;
 
         void enqueue(ZyOS::WORD queue_id);
         void dequeue();

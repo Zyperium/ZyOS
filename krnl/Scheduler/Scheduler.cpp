@@ -239,7 +239,7 @@ namespace Scheduler {
 
     void Task::suicide() {
         block(BlockReasons::GARBAGE);
-        for (;;);
+        for (;;) asm volatile("hlt");
     }
     
     ZyOS::QWORD Task::get_pid() {
@@ -433,6 +433,52 @@ namespace Scheduler {
     void Suicide() {
         HAL::CORE::get_thread_data()->current_task->suicide();
     }
+    
+    void ClearGarbage() {
+        return;
+        if (!blocked_queue[(size_t)BlockReasons::GARBAGE]) return;
+
+        Task *exclude = HAL::CORE::get_thread_data()->current_task;
+        TaskBlock *root_task = blocked_queue[(size_t)BlockReasons::GARBAGE];
+        TaskBlock *reset_to{};
+
+        do {
+            if (root_task->t_ptr == exclude) {
+                reset_to = root_task;
+                root_task = root_task->next;
+                Debug::krnl_print("SCHD", Debug::LOG_INFO, "Can't remove %s because its the active task!", reset_to->t_ptr->task_name.c_str());
+                continue;
+            }
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Cleaing up task %s", reset_to->t_ptr->task_name.c_str());
+
+            uint32_t pid = root_task->t_ptr->get_pid();
+
+            ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;
+            ZyOS::QWORD idx = pid % TASK_TABLE_SIZE;
+
+            TaskDirectory[dir][idx] = nullptr;
+
+            ZyOS::QWORD krnl_cr3 = read_cr3();
+            if (root_task->t_ptr->cr3 != krnl_cr3) {
+                VMM::FreeProcessPages(root_task->t_ptr->cr3);
+            }
+
+            if (root_task->t_ptr->krnl_stack_btm)
+                PMEM::free_pages(root_task->t_ptr->krnl_stack_btm, TASK_STACK_PAGES);
+
+            delete root_task->t_ptr;
+            root_task->t_ptr = nullptr;
+
+            root_task = root_task->next;
+        } while (root_task != blocked_queue[(size_t)BlockReasons::GARBAGE]);
+
+        if (reset_to) {
+            reset_to->next = reset_to;
+            reset_to->prev = reset_to;
+        }
+
+        blocked_queue[(size_t)BlockReasons::GARBAGE] = reset_to;
+    }
 }
 
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
@@ -441,6 +487,8 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     }
 
     Scheduler::aquire_lock();
+
+    Scheduler::ClearGarbage();
 
     HAL::CORE::ThreadLocal *thread_data = HAL::CORE::get_thread_data();
     if (thread_data->current_task) {

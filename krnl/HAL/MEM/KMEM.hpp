@@ -46,6 +46,7 @@ void *operator new(size_t size);
 void *operator new(size_t size, std::align_val_t align);
 void *operator new[](size_t size);
 void operator delete(void* p);
+void operator delete(void* p, uint64_t someval, std::align_val_t align);
 void operator delete[](void* p);
 void operator delete(void* p, size_t size);
 void operator delete[](void* p, size_t size);

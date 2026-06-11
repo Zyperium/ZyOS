@@ -238,6 +238,7 @@ namespace HAL::MEM::KMEM {
 void *operator new(size_t size) { return HAL::MEM::KMEM::malloc(size); }
 void *operator new(size_t size, std::align_val_t align) { (void)align; return HAL::MEM::KMEM::malloc(size); }
 void *operator new[](size_t size) { return HAL::MEM::KMEM::malloc(size); }
+void operator delete(void* p, uint64_t some_val, std::align_val_t align) { (void)align; (void)some_val; HAL::MEM::KMEM::free(p); }
 void operator delete(void* p) { HAL::MEM::KMEM::free(p); }
 void operator delete[](void* p) { HAL::MEM::KMEM::free(p); }
 void operator delete(void* p, size_t size) { (void)size; HAL::MEM::KMEM::free(p); }

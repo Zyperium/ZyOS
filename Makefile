@@ -86,7 +86,7 @@ else
 		-device usb-kbd,bus=xhci.0 \
 		-display sdl -vga std \
 		-rtc base=localtime -d int,cpu_reset,trace:usb_xhci* -no-reboot -no-shutdown -D qemu.log \
-		-debugcon stdio -smp 2
+		-debugcon stdio -smp 1
 endif
 
 OVMF_URL = https://github.com/clearlinux/common/raw/master/OVMF.fd

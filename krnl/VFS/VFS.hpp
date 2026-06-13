@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <Library/cystr.hpp>
 
 namespace VFS {
     enum class FileType {
@@ -27,6 +28,8 @@ namespace VFS {
         
         void add_ref();
         void release();
+
+        VFS::VNode* resolve_path_to_vnode(const lib::string& path);
     };
 
     struct FileHandle {

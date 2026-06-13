@@ -1,8 +1,10 @@
-#include "HAL/MEM/PMEM.hpp"
-#include "HAL/MEM/VMM.hpp"
+#include <HAL/MEM/PMEM.hpp>
+#include <HAL/MEM/VMM.hpp>
 #include <HAL/IDT/Panic.hpp>
+#include <HAL/CORE/Core.hpp>
 #include <HAL/DISK/Disk.hpp>
 #include <Library/debug.hpp>
+#include <Library/regs.h>
 #include <VFS/FAT32/FAT32.hpp>
 #include <limine.h>
 
@@ -15,10 +17,45 @@ static constinit volatile limine_executable_file_request exec_file_request = {
 namespace HAL::DISK {
     Disk *disks[MAX_DISKS]{nullptr};
 
+    bool a_kmem_lock = false;
+    uint64_t cur_rflags = 0;
+    uint64_t core_id_holder = -1;
+    int reentrancy = 0;
+    void aquire_lock() {
+        if (core_id_holder == HAL::CORE::get_thread_data()->current_task->get_pid()) {
+            ++reentrancy;
+            return;
+        }
+        uint64_t rflags = 0;
+        asm volatile("pushfq; pop %0" : "=r"(rflags));
+        asm volatile("cli");
+        while (__atomic_test_and_set(&a_kmem_lock, __ATOMIC_ACQUIRE)) {
+            asm volatile("pause");
+        }
+
+        cur_rflags = rflags;
+        core_id_holder = HAL::CORE::get_thread_data()->current_task->get_pid();
+
+        return;
+    }
+
+    void release_lock() {
+        if (reentrancy > 0) {
+            --reentrancy;
+            return;
+        }
+
+        restore_rflags(cur_rflags);
+        cur_rflags = 0;
+
+        __atomic_clear(&a_kmem_lock, __ATOMIC_RELEASE);
+        return;
+    }
+
     Disk::Disk(char letter, DiskDevice *dev) : drv_ltr(letter), dev(dev) {}
 
     bool Disk::initializefs() {
-        // this needs to let the VFS' test the drive for a valid Filesystem.
+        aquire_lock();
         Debug::krnl_print("DISK", Debug::LOG_INFO, "Begin filesystem init!");
         if (initialized) {
             Debug::krnl_print("DISK", Debug::LOG_WARN, "Reinitializing disk!");
@@ -31,6 +68,7 @@ namespace HAL::DISK {
         if (!fs->initialize()) {
             Debug::krnl_print("DISK", Debug::LOG_WARN, "Failed to initialize FS (incorrect format?)");
             delete fs;
+            release_lock();
             return false;
         }
 
@@ -39,6 +77,7 @@ namespace HAL::DISK {
         rootnode = fs->get_root_node();
 
         initialized = true;
+        release_lock();
         return true;
     }
 
@@ -47,13 +86,16 @@ namespace HAL::DISK {
     }
 
     Disk *Disk::CreateDisk(DiskDevice *dev, char letter) {
+        aquire_lock();
         if (!IsCapital(letter)) {
             letter = GetValidDriveLabel();
+            release_lock();
             if (!letter) return nullptr;
         }
 
         if (disks[letter - 'A']) {
             letter = GetValidDriveLabel();
+            release_lock();
             if (!letter) return nullptr;
         }
 
@@ -62,6 +104,7 @@ namespace HAL::DISK {
 
         char disk_name[] = {letter, ':', '/', 0};
         Debug::krnl_print("DISK", Debug::LOG_INFO, "New disk successfully configured (Drive: %s). Remember to initialize the FS!", disk_name);
+        release_lock();
         return n_disk;
     }
 
@@ -136,12 +179,23 @@ namespace HAL::DISK {
         return false;
     }
 
+    VFS::VNode *GetRootOfDrive(char drive) {
+        if (!IsValidDisk(drive))
+            return nullptr;
+
+        Disk *d = disks[drive - 'A'];
+        return d->rootnode;
+    }
+
+    // FIX: Magic Numbers here!
     uint64_t find_fat32_lba(DiskDevice* dev) {
+        aquire_lock();
         uint8_t *sector_buffer = (uint8_t *)MEM::PMEM::alloc_page(MEM::VMM::PTE_PRESENT | MEM::VMM::PTE_WRITABLE);
         dev->read(0, 1, sector_buffer);
 
         if (sector_buffer[510] != 0x55 || sector_buffer[511] != 0xAA) {
             Debug::krnl_print("PART", Debug::LOG_ERROR, "Invalid MBR signature!");
+            release_lock();
             return 0; 
         }
 
@@ -152,6 +206,7 @@ namespace HAL::DISK {
         for (int i = 0; i < 4; i++) {
             if (mbr_entries[i].type == 0x0B || mbr_entries[i].type == 0x0C) {
                 Debug::krnl_print("PART", Debug::LOG_INFO, "Found MBR FAT32 Partition at LBA %x", mbr_entries[i].lba_start);
+                release_lock();
                 return mbr_entries[i].lba_start;
             }
             if (mbr_entries[i].type == 0xEE) {
@@ -168,6 +223,7 @@ namespace HAL::DISK {
 
             if (gpt_header->signature != 0x5452415020494645ULL) {
                 Debug::krnl_print("PART", Debug::LOG_ERROR, "Invalid GPT Signature!");
+                release_lock();
                 return 0;
             }
 
@@ -186,12 +242,16 @@ namespace HAL::DISK {
                 if (is_empty) continue;
 
                 Debug::krnl_print("PART", Debug::LOG_INFO, "Found GPT Partition at LBA %x", entry->starting_lba);
+                release_lock();
                 return entry->starting_lba;
             }
 
             Debug::krnl_print("PART", Debug::LOG_ERROR, "No valid partition found!");
+            release_lock();
             return 0;
         }
+
+        release_lock();
 
         return 0;
     }
@@ -199,5 +259,10 @@ namespace HAL::DISK {
     bool IsValidDisk(char ch) {
         if (disks[ch - 'A']) return true;
         return false;
+    }
+
+    Disk *GetDisk(char ch) {
+        if (!IsValidDisk(ch)) return nullptr;
+        return disks[ch - 'A'];
     }
 }

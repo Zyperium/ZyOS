@@ -10,8 +10,8 @@ namespace HAL::DISK {
 
     class DiskDevice {
     public:
-        virtual void read(uint64_t sector, uint32_t count, void *buffer) = 0;
-        virtual void write(uint64_t sector, uint32_t count, void* buffer) = 0;
+        virtual int read(uint64_t sector, uint32_t count, void *buffer) = 0;
+        virtual int write(uint64_t sector, uint32_t count, void* buffer) = 0;
     };
 
     class Disk {
@@ -35,6 +35,7 @@ namespace HAL::DISK {
     char GetValidDriveLabel();
     bool IsValidDisk(char ch);
     void InitDiskData();
+    Disk *GetDisk(char ch);
 
     constexpr uint32_t SIZE_OF_UUID = 16;
 

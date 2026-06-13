@@ -12,23 +12,14 @@
 using namespace HAL::MEM;
 
 namespace HAL::DISK::USB {
-    void poll_xhci() {
-        for (auto i{0uz}; i < PCI::MSIX::xHCI::MAX_XHCI_INSTANCES; i++) {
-            if (!PCI::MSIX::xHCI::xHCI_instances[i]) continue;
-
-            PCI::MSIX::xHCI::xHCI_instances[i]->poll_event_ring();
-        }
-
-        return;
+    int xHCIDD::read(uint64_t sector, uint32_t count, void *buffer) {
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "USB mass storage read begin (Sector %x)", sector);
+        return usbptr->read_sectors(sector, count, buffer);
     }
 
-    void xHCIDD::read(uint64_t sector, uint32_t count, void *buffer) {
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "USB mass storage read begin");
-        usbptr->read_sectors(sector, count, buffer);
-    }
-
-    void xHCIDD::write(uint64_t sector, uint32_t count, void* buffer) {
+    int xHCIDD::write(uint64_t sector, uint32_t count, void* buffer) {
         usbptr->write_sectors(sector, count, buffer);
+        return -1;
     }
 
     void USBStorage::initialize(PCI::xHCI* _ctrl, uint8_t _slot, void *endpoints_ptr, int ep_count) {
@@ -66,16 +57,18 @@ namespace HAL::DISK::USB {
         (void)bytes_transferred;
         (void)param_event;
 
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "On interrupt called in xHCI usb storage");
+
         switch (state) {
             case STATE_WAIT_CBW:
                 if (endpoint_id == bulk_out_ep) {
                     if (current_cbw->data_transfer_len > 0) {
                         state = STATE_WAIT_DATA;
                         uint8_t data_ep = (current_cbw->flags & EP_DIR_MASK) ? bulk_in_ep : bulk_out_ep;
-                        controller->queue_bulk_transfer(slot_id, data_ep, current_data_phys, current_data_len);
+                        PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, data_ep, current_data_phys, current_data_len);
                     } else {
                         state = STATE_WAIT_CSW;
-                        controller->queue_bulk_transfer(slot_id, bulk_in_ep, csw_phys, BULK_BUFF_SIZE);
+                        PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, bulk_in_ep, csw_phys, BULK_BUFF_SIZE);
                     }
                 }
                 break;
@@ -83,7 +76,7 @@ namespace HAL::DISK::USB {
             case STATE_WAIT_DATA:
                 if (endpoint_id == bulk_in_ep || endpoint_id == bulk_out_ep) {
                     state = STATE_WAIT_CSW;
-                    controller->queue_bulk_transfer(slot_id, bulk_in_ep, csw_phys, BULK_BUFF_SIZE);
+                    PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, bulk_in_ep, csw_phys, BULK_BUFF_SIZE);
                 }
                 break;
 
@@ -93,7 +86,7 @@ namespace HAL::DISK::USB {
                         Debug::krnl_print("xHCI", Debug::LOG_WARN, "SCSI command failed!");
                     }
                     state = STATE_IDLE;
-                    io_pending = false; 
+                    __atomic_clear(&io_pending, __ATOMIC_RELEASE);
                 }
                 break;
 
@@ -126,19 +119,21 @@ namespace HAL::DISK::USB {
         return;
     }
 
-    void USBStorage::read_sectors(uint32_t lba, uint16_t count, void *buffer) {
+    int USBStorage::read_sectors(uint32_t lba, uint16_t count, void *buffer) {
         uint8_t *dest = static_cast<uint8_t*>(buffer);
         uint32_t sectors_left = count;
         uint32_t current_lba = lba;
+        uint32_t total_sectors_read = 0;
 
         const uint16_t MAX_SECTORS_PER_CHUNK = 8; 
 
         while (sectors_left > 0) {
             uint16_t chunk_sectors = (sectors_left > MAX_SECTORS_PER_CHUNK) ? MAX_SECTORS_PER_CHUNK : sectors_left;
             uint32_t chunk_bytes = chunk_sectors * 512;
+            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Reading sector %x, (%i remaining)", lba, count - total_sectors_read);
 
             while (io_pending) { asm volatile("pause"); }
-            io_pending = true;
+            __atomic_test_and_set(&io_pending, __ATOMIC_ACQUIRE);
 
             current_data_phys = bounce_phys;
             current_data_len  = chunk_bytes;
@@ -162,7 +157,8 @@ namespace HAL::DISK::USB {
             current_cbw->scsi_command[8] = chunk_sectors & 0xFF;
 
             state = STATE_WAIT_CBW;
-            controller->queue_bulk_transfer(slot_id, bulk_out_ep, cbw_phys, CBW_SIZE);
+            PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, bulk_out_ep, cbw_phys, CBW_SIZE);
+            // controller->queue_bulk_transfer(slot_id, bulk_out_ep, cbw_phys, CBW_SIZE);
 
             while (io_pending) {
                 Scheduler::Yield();
@@ -174,6 +170,9 @@ namespace HAL::DISK::USB {
             dest += chunk_bytes;
             current_lba += chunk_sectors;
             sectors_left -= chunk_sectors;
+            total_sectors_read += chunk_sectors;
         }
+
+        return total_sectors_read;
     }
 }

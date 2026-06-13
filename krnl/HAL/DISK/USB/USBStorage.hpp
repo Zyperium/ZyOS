@@ -27,8 +27,8 @@ namespace HAL::DISK::USB {
     private:
         USBStorage *usbptr;
     public:
-        virtual void read(uint64_t sector, uint32_t count, void *buffer) override;
-        virtual void write(uint64_t sector, uint32_t count, void* buffer) override;
+        virtual int read(uint64_t sector, uint32_t count, void *buffer) override;
+        virtual int write(uint64_t sector, uint32_t count, void* buffer) override;
 
         friend USBStorage;
     };
@@ -49,10 +49,8 @@ namespace HAL::DISK::USB {
         xHCIDD *fs_usbptr;
         uint8_t slot_id;
 
-        void read_sectors(uint32_t lba, uint16_t count, void *buffer);
+        int read_sectors(uint32_t lba, uint16_t count, void *buffer);
         void write_sectors(uint32_t lba, uint16_t count, void *buffer);
-        void read_single_sector(uint32_t lba, void *buffer);
-        void write_single_sector(uint32_t lba, void *buffer);
 
         enum MSCState {
             STATE_IDLE,

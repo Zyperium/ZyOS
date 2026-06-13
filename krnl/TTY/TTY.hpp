@@ -14,10 +14,13 @@ namespace TTY {
         void send_input(char c);
         void draw_string(const char *str, HAL::SCREEN::COL colour = HAL::SCREEN::COL::WHITE);
         void reset_view();
+        char _ltrdrive;
+        lib::string current_wd = "/";
 
         void worker();
+        void print_cwd();
 
-        Scheduler::Task *contask{};
+        volatile Scheduler::Task *contask{};
 
     protected:
         void evaluate_command();

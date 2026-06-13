@@ -1,6 +1,7 @@
 #include <HAL/PCI/xHCI/HID/xHCIKeyboard.hpp>
 #include <HAL/PCI/xHCI/HID/xHCIKeymap.hpp>
 #include <HAL/PCI/xHCI/xHCI.hpp>
+#include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/MEM/PMEM.hpp>
 #include <HAL/MEM/VMM.hpp>
 #include <Library/debug.hpp>
@@ -50,7 +51,7 @@ namespace HAL::PCI::HID {
 
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Starting HID USB Keyboard Polling Loop");
 
-        controller->queue_bulk_transfer(slot_id, interrupt_in_ep, report_phys, BOOT_REPORT_SIZE);
+        PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, interrupt_in_ep, report_phys, BOOT_REPORT_SIZE);
     }
 
     size_t looped = 0;
@@ -67,7 +68,7 @@ namespace HAL::PCI::HID {
             process_report(current_report);
         }
         
-        controller->queue_bulk_transfer(slot_id, interrupt_in_ep, report_phys, BOOT_REPORT_SIZE);
+        PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, interrupt_in_ep, report_phys, BOOT_REPORT_SIZE);
     }
 
     void USBKeyboard::process_report(const KeyboardBootReport& report) {
@@ -88,10 +89,6 @@ namespace HAL::PCI::HID {
                 if (report.modifiers & ModifierMask::MOD_LEFT_SHIFT) {
                     full_convert = USBKeymap::Get(code).shifted;
                 }
-
-
-                // char ke[2] = { full_convert, 0 };
-                // Debug::krnl_print("KB", Debug::LOG_INFO, "Sending key! %s", ke);
 
                 if (TTY::conhosts[TTY::active_host]) {
                     TTY::conhosts[TTY::active_host]->send_input(full_convert);

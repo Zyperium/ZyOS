@@ -45,11 +45,13 @@ namespace Scheduler {
         
         ZyOS::QWORD quantum;
 
-        bool core_pinned{};
         ZyOS::WORD current_core;
         ZyOS::WORD lowest_queue;
         ZyOS::WORD highest_queue;
+        alignas(16) uint8_t *fx_state;
+        uint8_t *malignedfx;
         bool running;
+        bool core_pinned{};
 
         void block(BlockReasons reason, ZyOS::QWORD arg = 0);
         void unblock(BlockReasons unreason);
@@ -62,7 +64,6 @@ namespace Scheduler {
         static void TerminateTask(Task *term);
         static void UnblockAll(BlockReasons whoisblocking);
     private:
-        alignas(16) uint8_t *fx_state;
         ZyOS::WORD current_queue;
         ZyOS::QWORD pid;
         bool blockmap[(size_t)BlockReasons::TOTAL_REASONS]{false};
@@ -81,6 +82,7 @@ namespace Scheduler {
 
     constexpr ZyOS::QWORD TASK_TABLE_SIZE = 1024;
     constexpr ZyOS::DWORD TASK_DIR_SIZE = 32;
+    constexpr ZyOS::DWORD FX_STATE_SIZE = 0x200 + 0x10;
     extern Task ***TaskDirectory;
 
     Task *GetTaskByPID(ZyOS::QWORD PID);

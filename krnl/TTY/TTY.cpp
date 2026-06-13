@@ -1,11 +1,15 @@
-#include "Scheduler/Scheduler.hpp"
+#include <Scheduler/Scheduler.hpp>
 #include <Library/debug.hpp>
 #include <Library/string.h>
+#include <Library/io.hpp>
 #include <TTY/TTY.hpp>
+#include <TTY/Commands.hpp>
 
 #include <HAL/SCREEN/Screen.hpp>
 #include <HAL/SCREEN/Font.hpp>
 #include <HAL/DISK/Disk.hpp>
+#include <HAL/IDT/IOAPIC/IOAPIC.hpp>
+#include <HAL/PS2/PS2KB.hpp>
 
 using namespace HAL::SCREEN;
 
@@ -17,8 +21,8 @@ namespace TTY {
     size_t off_y = 0;
     size_t raw_x = 0;
     size_t raw_y = 0;
-
-    char drv_str[] = {'[', '?', ':', '/', '>', ' ', 0};
+    size_t scr_height = 0;
+    size_t scr_width = 0;
 
     int kernel_atoi(const char* str) {
         if (!str || *str == '\0') {
@@ -52,49 +56,9 @@ namespace TTY {
     */
     void ProcessCommand(const char *str) {
         ConHost *r_host = conhosts[active_host];
-        if (strcmp(str, "help")) {
-            r_host->draw_string("== HELP ==\n");
-            r_host->draw_string("echo : Echo arguments back\n");
-            r_host->draw_string("pid  : Arg1: int (PID); Fetch information on some PID given in Arg1\n");
-            r_host->draw_string("help : Show this dialog\n\n");
-            if (drv_str[1] == '?') {
-                r_host->draw_string("Warning: ", COL::YELLOW);
-                r_host->draw_string("you are currently on the "); r_host->draw_string("unknown disk ", COL::RED);
-                r_host->draw_string("[?/:>. Default drive is typically [A:/>. Type 'A:/' to swap to it.\n");
-                r_host->draw_string("(This may render some commands useless)\n");
-            }
-        }
-        else if (str[1] == ':' && str[2] == '/') {
-            if (HAL::DISK::IsValidDisk(str[0])) {
-                drv_str[1] = str[0];
-            }
-            else {
-                r_host->draw_string("Error: ", COL::RED);
-                r_host->draw_string("drive is unavailable! [It may be on a different letter]\n");
-            }
-        }
-        else if (str[0] == 'p' && str[1] == 'i' && str[2] == 'd' && str[3] == ' ' && str[4] != 0) {
-            int kint = kernel_atoi(&str[4]);
-            Scheduler::Task *val_ = Scheduler::GetTaskByPID(kint);
-            char mini_buf[64]{0};
-            if (!val_) {
-                Debug::snprintf(mini_buf, 64, "PID %i is non-existant.\n", kint);
-            }
-            else {
-                Debug::snprintf(mini_buf, 64, "PID %i is named %s and is operating on core %i\n", kint, val_->task_name.c_str(), val_->current_core);
-            }
+        r_host->draw_string(Commands::evaluate_cmd(str).c_str());
 
-            r_host->draw_string(mini_buf);
-        }
-        else if (str[0] == 'e' && str[1] == 'c' && str[2] == 'h' && str[3] == 'o' && str[4] == ' ') {
-            r_host->draw_string(&str[5]);
-            r_host->draw_string("\n");
-        }
-        else if (strcmp(str, "clear")) {
-            r_host->reset_view();
-        }
-
-        r_host->draw_string(drv_str);
+        r_host->print_cwd();
         return;
     }
 
@@ -104,6 +68,14 @@ namespace TTY {
         cur_input = new char[MAX_TERMINAL_TEXT];
         memset(cur_input, 0, MAX_TERMINAL_TEXT);
         return;
+    }
+
+    void ConHost::print_cwd() {
+        draw_string("[");
+        char t[3] = { _ltrdrive, ':', 0 };
+        draw_string(t);
+        draw_string(current_wd.c_str());
+        draw_string("> ");
     }
 
     void ConHost::draw_string(const char *str, COL colour) {
@@ -166,16 +138,40 @@ namespace TTY {
     }
     
     void ConHost::worker() {
+        asm volatile("cli");
         Debug::krnl_print("TTY", Debug::LOG_INFO, "ConHost %i worker begin", cohost_id);
         fill_screen(COL::BLACK);
         draw_string("Welcome", COL::GREEN);
         draw_string(" to ZyOS!\n");
-        draw_string(drv_str);
+        _ltrdrive = '?';
+        print_cwd();
         flip_buffer();
+
+        screen_dim dim = get_dim();
+        scr_height = dim.height;
+        scr_width = dim.width;
+
+        if (!contask) {
+            Debug::krnl_print("TTY", Debug::LOG_WARN, "TTY doesn't know it's own task!");
+            asm volatile("sti");
+            Scheduler::Yield();
+            while (!contask) asm volatile("pause");
+        }
+
+        Debug::krnl_print("TTY", Debug::LOG_INFO, "Initialized");
         contask->core_pinned = false;
+        asm volatile("sti");
         for (;;) {
             if (!contask) continue;
-            contask->block(Scheduler::BlockReasons::AWAIT_KEYBOARD_INPUT);
+            // contask->block(Scheduler::BlockReasons::AWAIT_KEYBOARD_INPUT);
+            
+            uint8_t ps2_status = inb(0x64); 
+            if (ps2_status & 0x01) {
+                PS2::Keyboard::HandleInterrupt();
+            }
+            else {
+                asm volatile("pause"); 
+            }
         }
     }
 }

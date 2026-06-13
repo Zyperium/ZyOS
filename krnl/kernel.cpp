@@ -6,11 +6,14 @@
 #include <HAL/SCREEN/Screen.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/CORE/Core.hpp>
+#include <HAL/PS2/PS2KB.hpp>
+#include <HAL/IDT/IOAPIC/IOAPIC.hpp>
 
 #include <TTY/TTY.hpp>
 #include <Scheduler/Scheduler.hpp>
 
 #include <Library/debug.hpp>
+#include <Library/regs.h>
 unsigned long __stack_chk_guard = 0xDEADDEADDEADDEAD;
 
 extern "C" void __stack_chk_fail() {
@@ -59,9 +62,21 @@ extern "C" void krnlmain() {
     default_host->contask = new Scheduler::Task((Scheduler::Task::EntryPoint)TTY_Task, "TTY0", true, default_host);
     default_host->contask->core_pinned = true;
 
-    asm volatile("sti");
+    uint64_t rflags;
 
+    asm volatile("pushfq; pop %0" : "=r"(rflags));
+    if (rflags & (1 << 9)) {
+        Debug::krnl_print("KRNL", Debug::LOG_INFO, "Interrupts enabled too soon?");
+    }
+
+    PS2::Keyboard::Initialize();
+
+    Debug::krnl_print("KRNL", Debug::LOG_INFO, "Enabling scheduler");
     Scheduler::EnableScheduler();
+
+    IDT::IOAPIC::debug_dump_keyboard_gsi();
+
+    asm volatile("sti");
 
     for (;;) {
         asm volatile("hlt");

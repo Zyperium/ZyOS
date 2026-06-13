@@ -28,11 +28,15 @@ namespace Scheduler {
 
     bool a_schd_lock = false;
     uint64_t cur_rflags = 0;
-    int core_id_holder = -1;
+    uint64_t core_id_holder = -1;
+    int reentrancy = 0;
 
     void aquire_lock() {
-        if (core_id_holder == HAL::CORE::get_thread_data()->core_id) {
-            return;
+        if (HAL::CORE::get_thread_data()->current_task) {
+            if (core_id_holder == HAL::CORE::get_thread_data()->current_task->get_pid()) {
+                ++reentrancy;
+                return;
+            }
         }
 
         uint64_t rflags = 0;
@@ -40,19 +44,28 @@ namespace Scheduler {
         asm volatile("cli");
         while (__atomic_test_and_set(&a_schd_lock, __ATOMIC_ACQUIRE)) {
             asm volatile("pause");
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "STUCK!");
         }
 
         cur_rflags = rflags;
-        core_id_holder = HAL::CORE::get_thread_data()->core_id;
+        if (HAL::CORE::get_thread_data()->current_task)
+            core_id_holder = HAL::CORE::get_thread_data()->current_task->get_pid();
+
 
         return;
     }
 
     void release_lock() {
-        __atomic_clear(&a_schd_lock, __ATOMIC_RELEASE);
+        if (reentrancy > 0) {
+            --reentrancy;
+            return;
+        }
+        
         restore_rflags(cur_rflags);
         cur_rflags = 0;
         core_id_holder = -1;
+
+        __atomic_clear(&a_schd_lock, __ATOMIC_RELEASE);
         return;
     }
 
@@ -138,7 +151,6 @@ namespace Scheduler {
     }
 
     Task::Task() {
-        aquire_lock();
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Beginning primitive task setup");
         static size_t next_pid = 0;
         next = nullptr;
@@ -175,15 +187,20 @@ namespace Scheduler {
         current_core = tdata->core_id;
         current_queue = 0;
         running = false;
-        fx_state = new uint8_t;
+        malignedfx = new uint8_t[FX_STATE_SIZE];
+
+        auto addr = reinterpret_cast<uint64_t>(malignedfx);
+        if (addr % 0x10 != 0) {
+            addr = (addr + 0x10) & ~0xF;
+        }
+
+        fx_state = reinterpret_cast<uint8_t *>(addr);
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished primitive task setup");
-        release_lock();
     }
 
     Task::Task(EntryPoint entry, lib::string name, bool add_queue, void *p_arg) : Task() {
-        aquire_lock();
         task_name = name;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Creating new task %s", task_name.c_str());
 
@@ -222,19 +239,19 @@ namespace Scheduler {
         uint64_t *RDI_REG = &ktop[RDI_OFFSET_ASM];
         *RDI_REG = (uint64_t)p_arg;
 
-        release_lock();
-
         if (add_queue)
             enqueue(DEFAULT_SCHD_QUEUE);
 
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler has initialized task %s", task_name.c_str());
-
         return;
     }
 
     void Yield() {
         // Debug::krnl_print("SCHD", Debug::LOG_INFO, "Yield called");
-        asm volatile("int $0x67");
+        uint64_t _rflags;
+        asm volatile("pushfq; pop %0" : "=r"(_rflags));
+        asm volatile("sti\nint $0x67");
+        restore_rflags(_rflags);
     }
 
     void Task::suicide() {
@@ -248,6 +265,10 @@ namespace Scheduler {
 
     void Task::block(BlockReasons reason, uint64_t arg1) {
         aquire_lock();
+        
+        if (this == HAL::CORE::get_thread_data()->current_task) {
+            asm volatile("sti");
+        }
 
         if (blockmap[(size_t)reason]) {
             release_lock();
@@ -486,7 +507,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         return current_rsp;
     }
 
-    Scheduler::aquire_lock();
+    // Scheduler::aquire_lock();
 
     Scheduler::ClearGarbage();
 
@@ -497,12 +518,29 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     auto next_rsp{0uz};
     Scheduler::Task *next_task = Scheduler::GetNextTask();
-
+    
     next_rsp = next_task->rsp;
 
+    auto prev_task = thread_data->current_task;
     thread_data->current_task = next_task;
 
-    Scheduler::release_lock();
+    if (next_task != prev_task) {
+        if (prev_task) {
+            if (prev_task->cr3 != next_task->cr3) {
+                asm volatile("mov %0, %%cr3" :: "r"(next_task->cr3) : "memory");
+            }
+
+            if (prev_task->fx_state) {
+                asm volatile("fxsave %0" : "=m"(*prev_task->fx_state));
+            }
+        }
+
+        if (next_task->fx_state) {
+            asm volatile("fxrstor %0" : : "m"(*next_task->fx_state));
+        }
+    }
+
+    // Scheduler::release_lock();
 
     return next_rsp;
 }

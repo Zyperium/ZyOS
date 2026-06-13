@@ -22,35 +22,42 @@ namespace HAL::PCI {
 
     bool a_xhci_lock = false;
     uint64_t cur_rflags = 0;
-    int core_id_holder = -1;
+    uint64_t core_id_holder = -1;
+    int reentrancy = 0;
 
     // I don't know why, but these locks cause it to break.
 
     void aquire_lock() {
         return;
-        if (core_id_holder == HAL::CORE::get_thread_data()->core_id) {
+        if (core_id_holder == HAL::CORE::get_thread_data()->current_task->get_pid()) {
+            reentrancy++;
             return;
         }
 
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         while (__atomic_test_and_set(&a_xhci_lock, __ATOMIC_ACQUIRE)) {
-            Scheduler::Yield();
             asm volatile("pause");
         }
 
         cur_rflags = rflags;
-        core_id_holder = HAL::CORE::get_thread_data()->core_id;
+        core_id_holder = HAL::CORE::get_thread_data()->current_task->get_pid();
 
         return;
     }
 
     void release_lock() {
         return;
-        __atomic_clear(&a_xhci_lock, __ATOMIC_RELEASE);
+        if (reentrancy > 0) {
+            reentrancy--;
+            return;
+        }
+        
         restore_rflags(cur_rflags);
         cur_rflags = 0;
         core_id_holder = -1;
+
+        __atomic_clear(&a_xhci_lock, __ATOMIC_RELEASE);
         return;
     }
 
@@ -534,6 +541,8 @@ namespace HAL::PCI {
                     TRB *completed_cmd_trb = reinterpret_cast<TRB *>(event->param + PMM::hhdm_offset);
                     uint8_t cmd_type = (completed_cmd_trb->control >> XHCI_TRB_TYPE_SHIFT) & XHCI_TRB_TYPE_MASK;
 
+
+                    asm volatile("cli");
                     if (cmd_type == TRB_TYPE_ENABLE_SLOT) {
                         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Slot assigned: %i", allocated_slot);
 
@@ -542,6 +551,7 @@ namespace HAL::PCI {
 
                         addr_device(allocated_slot, pending_port_setup);
                         pending_port_setup = PENDING_PORT_COMPLETE;
+                        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Setting IF");
                     }
                     else if (cmd_type == TRB_TYPE_ADDRESS_DEVICE) {
                         descriptor_buffer[allocated_slot] = zfalloc<uint8_t *>(USB::DEVICE_DESCRIPTOR_SIZE);
@@ -567,6 +577,8 @@ namespace HAL::PCI {
                             check_ports();
                         }
                     }
+
+                    asm volatile("sti");
                 }
                 else {
                     Debug::krnl_print("xHCI", Debug::LOG_WARN, "Command failed. Code: %x", code);
@@ -674,6 +686,7 @@ namespace HAL::PCI {
                             Debug::snprintf(_name, 16, "xHCI Subtask %i", slot);
                             Scheduler::Task *res = new Scheduler::Task(
                                 (Scheduler::Task::EntryPoint)[](void *xHCI_ptr) {
+                                    Debug::krnl_print("xHCI", Debug::LOG_INFO, "Subtask entry");
                                     xHCI *ptr = static_cast<xHCI *>(xHCI_ptr);
                                     int ptr_id = ptr->proc_id;
                                     ptr->proc_id = 0;
@@ -728,6 +741,7 @@ namespace HAL::PCI {
         return events_proc;
     }
 
+    void *stat_addr = nullptr;
     void xHCI::conf_endpoint(uint8_t slot_id, uint8_t endpoint_address, uint8_t endpoint_type, uint16_t max_packet_size) {
         uint8_t ep_num = endpoint_address & USB::USB_EP_NUM_MASK;
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
@@ -735,7 +749,10 @@ namespace HAL::PCI {
 
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Configuring endpoint DCI: %i", dci);
 
-        auto* input_ctx = zalloc_page<InputControlContext *>();
+        if (!stat_addr) {
+            stat_addr = zalloc_page<InputControlContext *>();
+        }
+        auto* input_ctx = static_cast<InputControlContext *>(stat_addr);
         uint64_t input_phys = VMM::GetPhysicalAddress(read_cr3(), reinterpret_cast<uint64_t>(input_ctx));
         input_ctx->add_flags = XHCI_INPUT_ADD_SLOT_CONTEXT | (1U << dci);
         input_ctx->slot.info = (dci << XHCI_SLOT_CONTEXT_ENTRIES_SHIFT);
@@ -775,8 +792,12 @@ namespace HAL::PCI {
         // PMEM::free_page(input_ctx);
     }
 
+    void *cie_addr{nullptr};
     void xHCI::conf_interface_endpoints(uint8_t slot_id, ParsedEndpoint* endpoints, int ep_count) {
-        auto* input_ctx = reinterpret_cast<InputControlContext*>(zalloc_page<void*>());
+        if (!cie_addr) {
+            cie_addr = zalloc_page<void *>();
+        }
+        auto* input_ctx = static_cast<InputControlContext*>(cie_addr);
         uint64_t input_phys = VMM::GetPhysicalAddress(read_cr3(), reinterpret_cast<uint64_t>(input_ctx));
         input_ctx->add_flags = XHCI_INPUT_ADD_SLOT_CONTEXT; 
         uint32_t highest_dci = 1;
@@ -897,6 +918,7 @@ namespace HAL::PCI {
     }
 
     void xHCI::queue_bulk_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size) {
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Queuing a bulk transfer!");
         aquire_lock();
         uint8_t ep_num = endpoint_address & USB::USB_EP_NUM_MASK;
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
@@ -955,6 +977,8 @@ namespace HAL::PCI {
 
         ep_enqueue_ptrs[slot_id][dci] = idx;
         ep_cycle_states[slot_id][dci] = cycle;
+
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Ringing doorbell for slot %i, dci %i", slot_id, dci);
 
         *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
         release_lock();

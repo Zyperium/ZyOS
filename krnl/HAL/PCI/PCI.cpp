@@ -2,12 +2,41 @@
 #include <HAL/MEM/PMEM.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/PCI/xHCI/xHCI.hpp>
+#include <HAL/CORE/Core.hpp>
 
 #include <Library/io.hpp>
 #include <Library/debug.hpp>
+#include <Library/regs.h>
 
 namespace HAL::PCI {
+    bool a_msix_lock = false;
+    uint64_t pci_cur_rflags = 0;
+        
+    void pci_aquire_lock() {
+        return;
+        uint64_t rflags = 0;
+        asm volatile("pushfq; pop %0" : "=r"(rflags));
+        while (__atomic_test_and_set(&a_msix_lock, __ATOMIC_ACQUIRE)) {
+            asm volatile("pause");
+        }
+
+        asm volatile("cli");
+        pci_cur_rflags = rflags;
+        return;
+    }
+
+    void pci_release_lock() {
+        return;
+        restore_rflags(pci_cur_rflags);
+
+        pci_cur_rflags = 0;
+
+        __atomic_clear(&a_msix_lock, __ATOMIC_RELEASE);
+        return;
+    }
+
     uint32_t Read32(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset) {
+        pci_aquire_lock();
         uint32_t address = PCI_ENABLE_BIT |
                        ((uint32_t)bus << PCI_BUS_SHIFT) |
                        ((uint32_t)device << PCI_DEVICE_SHIFT) |
@@ -15,6 +44,7 @@ namespace HAL::PCI {
                        (offset & PCI_OFFSET_ALIGN);
 
         outl(CONF_ADDR, address);
+        pci_release_lock();
         return inl(CONF_DATA);
     }
 
@@ -31,6 +61,7 @@ namespace HAL::PCI {
     }
 
     void Write32(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset, uint32_t value) {
+        pci_aquire_lock();
         uint32_t address = PCI_ENABLE_BIT |
                        ((uint32_t)bus << PCI_BUS_SHIFT) |
                        ((uint32_t)device << PCI_DEVICE_SHIFT) |
@@ -39,6 +70,8 @@ namespace HAL::PCI {
 
         outl(CONF_ADDR, address);
         outl(CONF_DATA, value);
+        pci_release_lock();
+        return;
     }
 
     void Write16(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset, uint16_t value) {

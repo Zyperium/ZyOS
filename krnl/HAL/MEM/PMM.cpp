@@ -19,6 +19,7 @@ namespace HAL::MEM::PMM {
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         asm volatile("cli");
         while (__atomic_test_and_set(&a_pmm_lock, __ATOMIC_ACQUIRE)) {
+            Debug::krnl_print("PMM", Debug::LOG_INFO, "Locked!");
             asm volatile("pause");
         }
 
@@ -47,9 +48,10 @@ namespace HAL::MEM::PMM {
     }
 
     void release_lock() {
-        __atomic_clear(&a_pmm_lock, __ATOMIC_RELEASE);
         restore_rflags(cur_rflags);
         cur_rflags = 0;
+
+        __atomic_clear(&a_pmm_lock, __ATOMIC_RELEASE);
         return;
     }
 

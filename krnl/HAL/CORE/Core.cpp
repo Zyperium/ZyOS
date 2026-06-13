@@ -44,9 +44,9 @@ namespace HAL::CORE {
     }
 
     void release_lock() {
-        __atomic_clear(&a_core_lock, __ATOMIC_RELEASE);
         restore_rflags(cur_rflags);
         cur_rflags = 0;
+        __atomic_clear(&a_core_lock, __ATOMIC_RELEASE);
         return;
     }
 
@@ -95,6 +95,7 @@ namespace HAL::CORE {
     }
 
     void discover_all_cores() {
+        return;
         limine_mp_response *mp_resp = mp_request.response;
         total_cores = mp_resp->cpu_count;
         uint32_t bsp_lapic_id = mp_resp->bsp_lapic_id;
@@ -179,7 +180,7 @@ namespace HAL::CORE {
         uint32_t spurious_reg = lapic_read(LAPIC_SPURIOUS);
 
         spurious_reg &= ~LAPIC_SPURIOUS_VECTOR_MASK;
-        spurious_reg |= LAPIC_APIC_SOFTWARE_ENABLE | IDT::LAPIC_VECTOR;
+        spurious_reg |= LAPIC_APIC_SOFTWARE_ENABLE | IDT::LAPIC_SPURIOUS_VECTOR;
         lapic_write(LAPIC_SPURIOUS, spurious_reg);
         Debug::krnl_print("CORE", Debug::LOG_INFO, "Lapic initialized!");
 

@@ -19,6 +19,7 @@ namespace HAL::SCREEN {
 
     void initialize(limine_framebuffer_response *response);
     void flip_buffer();
+    void scroll_screen(int x, int y);
     void fill_screen(uint32_t col);
     void fill_screen(COL col);
     void set_pixel(int x, int y, uint32_t col);

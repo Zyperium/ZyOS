@@ -17,10 +17,12 @@ namespace HAL::MEM::KMEM {
     void aquire_lock() {
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
-        asm volatile("cli");
         while (__atomic_test_and_set(&a_kmem_lock, __ATOMIC_ACQUIRE)) {
+            Debug::krnl_print("KMEM", Debug::LOG_INFO, "Locked!");
             asm volatile("pause");
         }
+
+        asm volatile("cli");
 
         cur_rflags = rflags;
 
@@ -28,9 +30,10 @@ namespace HAL::MEM::KMEM {
     }
 
     void release_lock() {
-        __atomic_clear(&a_kmem_lock, __ATOMIC_RELEASE);
         restore_rflags(cur_rflags);
         cur_rflags = 0;
+
+        __atomic_clear(&a_kmem_lock, __ATOMIC_RELEASE);
         return;
     }
 
@@ -86,6 +89,7 @@ namespace HAL::MEM::KMEM {
     }
 
     void expand_heap(size_t length, HeapSegmentHeader* last_known_segment) {
+        aquire_lock();
         uint64_t old_heap_end = current_heap_end;
         length = align_up(length, PAGE_SIZE);
 
@@ -117,10 +121,10 @@ namespace HAL::MEM::KMEM {
             current->next = new_segment;
             new_segment->last = current;
         }
+        release_lock();
     }
 
     void *malloc(size_t size) {
-        aquire_lock();
 
         if (size == 0) {
             release_lock();
@@ -138,7 +142,6 @@ namespace HAL::MEM::KMEM {
 
         for (;;) {
             if (current->magic != SEGMENT_MAGIC) {
-                release_lock();
                 return nullptr;
             }
 
@@ -146,8 +149,6 @@ namespace HAL::MEM::KMEM {
                 if (current->length >= size) {
                     current->free = false;
                     uint64_t payloadAddr = (uint64_t)current + sizeof(HeapSegmentHeader);
-                    memset((void*)payloadAddr, 0xCC, size);
-                    release_lock();
                     return (void*)payloadAddr;
                 }
             }
@@ -156,7 +157,6 @@ namespace HAL::MEM::KMEM {
                 expand_heap(size + sizeof(HeapSegmentHeader), current);
 
                 if (current->next == nullptr) {
-                    release_lock();
                     return nullptr;
                 }
             }
@@ -164,12 +164,10 @@ namespace HAL::MEM::KMEM {
             current = current->next;
 
             if (current == nullptr) {
-                release_lock();
                 return nullptr;
             }
         }
 
-        release_lock();
         return nullptr;
     }
 
@@ -188,10 +186,10 @@ namespace HAL::MEM::KMEM {
 
     void free(void *addr) {
         if (!addr) return;
-
-        aquire_lock();
+        Debug::krnl_print("KMEM", Debug::LOG_INFO, "Freeing address %x", addr);
 
         HeapSegmentHeader* header = (HeapSegmentHeader*)((uint64_t)addr - sizeof(HeapSegmentHeader));
+        memset(addr, MEM_POISON_VALUE, header->length);
 
         if (header->magic != SEGMENT_MAGIC) {
             release_lock();
@@ -208,7 +206,6 @@ namespace HAL::MEM::KMEM {
             combine_free_segments(header->last, header);
         }
 
-        release_lock();
         return;
     }
 

@@ -28,9 +28,10 @@ namespace Debug {
     }
 
     void release_lock() {
-        __atomic_clear(&a_debug_lock, __ATOMIC_RELEASE);
         restore_rflags(cur_rflags);
         cur_rflags = 0;
+
+        __atomic_clear(&a_debug_lock, __ATOMIC_RELEASE);
         return;
     }
 
@@ -60,7 +61,14 @@ namespace Debug {
     }
 
     inline void putc(char c) {
+        #if DISABLE_DEBUG_LOGS
+        (void)c;
+        return;
+        #endif
+        // I actually don't know if C++ has unreachable code warnings.
+        #if !DISABLE_DEBUG_LOGS
         outb(0xE9, c);
+        #endif
     }
 
     void puts(const char* s) {
@@ -230,7 +238,6 @@ namespace Debug {
                LogLevel level,
                const char* fmt, ...)
     {
-        aquire_lock();
         puts("\033[");
         print_int(str_to_col(class_name));
         puts("m[");
@@ -259,6 +266,5 @@ namespace Debug {
         va_end(args);
 
         putc('\n');
-        release_lock();
     }
 }

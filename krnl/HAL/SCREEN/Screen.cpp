@@ -85,4 +85,60 @@ namespace HAL::SCREEN {
             }
         }
     }
+
+    screen_dim get_dim() {
+        screen_dim s;
+        s.height = screen_h;
+        s.width = screen_w;
+        s.pitch = screen_p;
+        return s;
+    }
+
+    void scroll_screen(int shift_x, int shift_y) {
+        if (!backbuffer) return;
+        if (shift_x == 0 && shift_y == 0) return;
+        if (shift_y != 0) {
+            if (abs(shift_y) >= screen_h) {
+                FMEM::FastFill32(backbuffer, 0, screen_w * screen_h);
+            } else if (shift_y > 0) {
+                int rows_to_copy = screen_h - shift_y;
+                uint32_t* dest = backbuffer;
+                uint32_t* src = backbuffer + (shift_y * screen_w);
+
+                FMEM::FastCopy(dest, src, rows_to_copy * screen_w * sizeof(uint32_t));
+
+                uint32_t* clear_start = backbuffer + (rows_to_copy * screen_w);
+                FMEM::FastFill32(clear_start, 0, shift_y * screen_w);
+            } else {
+                int shift_abs = -shift_y;
+                int rows_to_copy = screen_h - shift_abs;
+                uint32_t* dest = backbuffer + (shift_abs * screen_w);
+                uint32_t* src = backbuffer;
+                FMEM::FastCopy(dest, src, rows_to_copy * screen_w * sizeof(uint32_t));
+                FMEM::FastFill32(backbuffer, 0, shift_abs * screen_w);
+            }
+        }
+        if (shift_x != 0) {
+            if (abs(shift_x) >= screen_w) {
+                FMEM::FastFill32(backbuffer, 0, screen_w * screen_h);
+                return;
+            }
+            for (int y = 0; y < screen_h; y++) {
+                uint32_t* row_start = backbuffer + (y * screen_w);
+
+                if (shift_x > 0) {
+                    int pixels_to_copy = screen_w - shift_x;
+                    FMEM::FastCopy(row_start, row_start + shift_x, pixels_to_copy * sizeof(uint32_t));
+
+                    FMEM::FastFill32(row_start + pixels_to_copy, 0, shift_x);
+                } else {
+                    int shift_abs = -shift_x;
+                    int pixels_to_copy = screen_w - shift_abs;
+                    FMEM::FastCopy(row_start + shift_abs, row_start, pixels_to_copy * sizeof(uint32_t));
+
+                    FMEM::FastFill32(row_start, 0, shift_abs);
+                }
+            }
+        }
+    }
 }

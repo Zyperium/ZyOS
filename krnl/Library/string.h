@@ -14,6 +14,21 @@ inline void memset32(void* ptr, uint32_t value, size_t count) {
     );
 }
 
+inline int abs(int a) {
+    int out;
+    __asm__ (
+        "movl %1, %%eax\n\t"
+        "cltd\n\t"
+        "xorl %%edx, %%eax\n\t"
+        "subl %%edx, %%eax\n\t"
+        "movl %%eax, %0"
+        : "=r" (out)
+        : "r" (a)
+        : "eax", "edx"
+    );
+    return out;
+}
+
 inline void memset(void *ptr, int value, size_t num) {
     unsigned char *p = (unsigned char*)ptr;
     while (num--) {

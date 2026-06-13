@@ -133,7 +133,7 @@ namespace VFS::FAT32 {
         HAL::DISK::Disk *m_disk_device;
         BootSector m_bs;
         FSInfo m_fsi;
-        
+
         uint32_t m_fat_start_sector;
         uint32_t m_data_start_sector;
         uint32_t m_total_clusters;
@@ -146,7 +146,10 @@ namespace VFS::FAT32 {
 
         uint32_t cluster_to_sector(uint32_t cluster) const;
         uint32_t read_FAT_entry(uint32_t cluster);
+        uint32_t get_cluster_size() const;
+        uint32_t get_bytes_per_sector() const;
         bool write_FAT_entry(uint32_t cluster, uint32_t value);
         VFS::VNode* get_root_node();
+        HAL::DISK::Disk *get_disk_device() const;
     };
 }

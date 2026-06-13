@@ -6,6 +6,7 @@ namespace HAL::MEM::KMEM {
     constexpr uint64_t SEGMENT_MAGIC = 0xDEADBEEF;
     constexpr uint64_t INITIAL_PAGES = 10;
     constexpr uint64_t DEFAULT_KMEM_START = 0xFFFF900000000000;
+    constexpr uint8_t MEM_POISON_VALUE = 0xCC;
 
     extern uint64_t* pml4_root;
 

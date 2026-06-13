@@ -1,7 +1,9 @@
 #include <HAL/IDT/IDT.hpp>
 #include <HAL/IDT/Panic.hpp>
+#include <HAL/IDT/IOAPIC/IOAPIC.hpp>
 #include <HAL/CORE/Core.hpp>
 #include <HAL/GDT/GDT.hpp>
+#include <HAL/PS2/PS2KB.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/io.hpp>
@@ -48,7 +50,6 @@ extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
 namespace HAL::IDT {
     static IDTEntry idt[MAX_VECTORS];
     static IDTR idtr;
-    uintptr_t lapic_base_ptr = 0;
 
     void set_gate(uint8_t vector, void* handler, uint8_t flags, uint8_t ist = 0) {
         const uint64_t addr = reinterpret_cast<uint64_t>(handler);
@@ -81,17 +82,26 @@ namespace HAL::IDT {
             set_gate(i, (void*)ignore_handler, GATE_INTERRUPT);
         }
 
-        set_gate(ISR_CODES::DIV_ZERO, (void*)isr0, GATE_INTERRUPT);
-        set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void*)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI);
-        set_gate(ISR_CODES::DOUBLE_FAULT, (void*)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT);
-        set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void*)isr13, GATE_INTERRUPT);
-        set_gate(ISR_CODES::PAGE_FAULT, (void*)isr14, GATE_INTERRUPT);
 
-        set_gate(LAPIC_VECTOR, (void*)SchedulerHandler, GATE_INTERRUPT);
-        set_gate(YIELD_VECTOR, (void*)QuietSwitch, GATE_INTERRUPT);
+        set_gate(KEYBOARD_VECTOR, (void *)PS2Keyboard, GATE_INTERRUPT);
+        set_gate(ISR_CODES::DIV_ZERO, (void *)isr0, GATE_INTERRUPT);
+        set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void *)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI);
+        set_gate(ISR_CODES::DOUBLE_FAULT, (void *)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT);
+        set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void *)isr13, GATE_INTERRUPT);
+        set_gate(ISR_CODES::PAGE_FAULT, (void *)isr14, GATE_INTERRUPT);
+
+        set_gate(LAPIC_VECTOR, (void *)SchedulerHandler, GATE_INTERRUPT);
+        set_gate(YIELD_VECTOR, (void *)QuietSwitch, GATE_INTERRUPT);
 
         idtr.limit = (sizeof(IDTEntry) * MAX_VECTORS) - 1;
         idtr.base  = reinterpret_cast<uint64_t>(&idt[0]);
+
+        outb(PIC1_DATA, PIC_FULL_MASK);
+        outb(PIC2_DATA, PIC_FULL_MASK);
+
+        IOAPIC::initialize();
+
+        IOAPIC::set_redirect(DEFAULT_KB_VECTOR, KEYBOARD_VECTOR, 0);
 
         asm volatile("lidt %0" :: "m"(idtr));
     }

@@ -11,6 +11,7 @@ extern "C" void isr13();
 extern "C" void isr14();
 extern "C" void SchedulerHandler();
 extern "C" void QuietSwitch();
+extern "C" void PS2Keyboard();
 
 namespace HAL::IDT {
     struct InterruptFrame {
@@ -43,8 +44,9 @@ namespace HAL::IDT {
     } __attribute__((packed));
 
     constexpr uint8_t GATE_INTERRUPT = 0x8E;
-    constexpr uint8_t GATE_TRAP = 0x8E;
-    constexpr uint8_t GATE_USER = 0xEE;
+    constexpr uint8_t GATE_TRAP = 0x8F;
+    constexpr uint8_t GATE_USER_INT = 0xEE;
+    constexpr uint8_t GATE_USER_TRAP = 0xEF;
 
     constexpr uint64_t AMASK_LOW_16  = 0x000000000000FFFFULL;
     constexpr uint64_t AMASK_MID_16  = 0x00000000FFFF0000ULL;
@@ -55,9 +57,19 @@ namespace HAL::IDT {
 
     constexpr uint8_t MSIX_VECTOR = 0x40;
     constexpr uint8_t LAPIC_VECTOR = 0x89;
+    constexpr uint8_t LAPIC_SPURIOUS_VECTOR = 0x8A;
     constexpr uint8_t YIELD_VECTOR = 0x67;
+    constexpr uint8_t DEFAULT_KB_VECTOR = 0x1;
+    constexpr uint8_t KEYBOARD_VECTOR = 0x21;
     constexpr uint8_t IST_MASK = 0x07;
     constexpr uint16_t MAX_VECTORS = 256;
+
+    constexpr uint8_t PIC1_COMMAND = 0x20;
+    constexpr uint8_t PIC1_DATA = 0x21;
+    constexpr uint8_t PIC2_COMMAND = 0xA0;
+    constexpr uint8_t PIC2_DATA = 0xA1;
+    constexpr uint8_t PIC_EOI = 0x20;
+    constexpr uint8_t PIC_FULL_MASK = 0xFF;
 
     enum class ISR_CODES : uint8_t {
         DIV_ZERO,
@@ -83,16 +95,6 @@ namespace HAL::IDT {
     
     void initialize();
     void reload_idt();
-
-    extern uintptr_t lapic_base_ptr;
-
-    static inline void lapic_write(uint32_t reg, uint32_t value) {
-        *((volatile uint32_t*)(lapic_base_ptr + reg)) = value;
-    }
-
-    static inline uint32_t lapic_read(uint32_t reg) {
-        return *((volatile uint32_t*)(lapic_base_ptr + reg));
-    }
 
     static inline uint16_t get_code_segment() {
         uint16_t cs;

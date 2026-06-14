@@ -1,8 +1,11 @@
 #include <HAL/IDT/Panic.hpp>
+#include <HAL/SCREEN/Screen.hpp>
 
 #include <Library/debug.hpp>
 
 void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
+    HAL::SCREEN::fill_screen(HAL::SCREEN::COL::RED);
+    HAL::SCREEN::flip_buffer();
     Debug::krnl_print("IDT", Debug::LOG_INFO, "Panic!");
     switch (reason) {
         case PanicReasons::DIVIDE_BY_ZERO_ERROR:

@@ -8,8 +8,9 @@
 
 namespace HAL::SCREEN {
     int screen_w, screen_h, screen_p;
-    uint32_t *screen_addr;
-    uint32_t *backbuffer;
+    uint32_t *screen_addr{};
+    uint32_t *backbuffer{};
+    uint32_t *debug_layer{};
 
     void initialize(limine_framebuffer_response *response) {
         Debug::krnl_print("SCRN", Debug::LOG_INFO, "Initialize");
@@ -39,14 +40,17 @@ namespace HAL::SCREEN {
     }
 
     void fill_screen(uint32_t col) {
+        if (!backbuffer) return;
         FMEM::FastFill32(backbuffer, col, screen_w * screen_h);
     }
 
     void fill_screen(COL col) {
+        if (!backbuffer) return;
         FMEM::FastFill32(backbuffer, static_cast<uint32_t>(col), screen_w * screen_h);
     }
 
     void set_pixel(int x, int y, uint32_t col) {
+        if (!backbuffer) return;
         if (x < 0 || x >= screen_w || y < 0 || y >= screen_h) {
             return;
         }
@@ -87,6 +91,7 @@ namespace HAL::SCREEN {
     }
 
     screen_dim get_dim() {
+        if (!backbuffer) return {};
         screen_dim s;
         s.height = screen_h;
         s.width = screen_w;

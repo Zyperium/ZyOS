@@ -103,13 +103,19 @@ run-uefi: $(DISK_UEFI)
 		-debugcon stdio -vga std -rtc base=localtime
 
 dbg: $(DISK_BIOS)
-	qemu-system-x86_64 -cpu qemu64 -m 512M -machine pc \
-		-drive file=$(DISK_BIOS),id=bootdisk,format=raw,if=none \
-		-device ich9-ahci,id=ahci -device ide-hd,drive=bootdisk,bus=ahci.0 \
-		-display sdl -vga std -device qemu-xhci,id=xhci \
-		-device usb-mouse,bus=xhci.0 -device usb-kbd,bus=xhci.0 \
-		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log -s \
-		-debugcon stdio
+	sudo qemu-system-x86_64 -cpu max -m 512M \
+        -machine q35,kernel-irqchip=off \
+        -device pcie-root-port,id=pcie.1,bus=pcie.0,slot=1,chassis=1 \
+        -drive file=disk_bios.img,id=satadisk,format=raw,if=none \
+        -device ide-hd,bus=ide.0,unit=0,drive=satadisk,bootindex=1 \
+        -device qemu-xhci,id=xhci,bus=pcie.1,addr=00.0 \
+        -device usb-host,vendorid=0x090c,productid=0x1000 \
+        -display sdl -vga std \
+        -rtc base=localtime \
+        -d int,cpu_reset,guest_errors \
+        -trace "usb_xhci_*" \
+        -no-reboot -no-shutdown -D qemu.log \
+        -debugcon stdio -smp 1
 
 clean:
 	rm -rf $(DISK_BIOS) $(DISK_UEFI) qemu.log

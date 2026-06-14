@@ -972,11 +972,11 @@ namespace HAL::PCI {
             cycle = !cycle;
         }
 
-        asm volatile("sfence" ::: "memory"); 
-        asm volatile("mfence" ::: "memory");
-
         ep_enqueue_ptrs[slot_id][dci] = idx;
         ep_cycle_states[slot_id][dci] = cycle;
+
+        asm volatile("sfence" ::: "memory"); 
+        asm volatile("mfence" ::: "memory");
 
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Ringing doorbell for slot %i, dci %i", slot_id, dci);
 
@@ -1046,11 +1046,12 @@ namespace HAL::PCI {
             cycle = !cycle;
         }
 
+        ep_enqueue_ptrs[slot_id][dci] = idx;
+        ep_cycle_states[slot_id][dci] = cycle;
+
         asm volatile("sfence" ::: "memory"); 
         asm volatile("mfence" ::: "memory");
 
-        ep_enqueue_ptrs[slot_id][dci] = idx;
-        ep_cycle_states[slot_id][dci] = cycle;
         *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
         release_lock();
         return;

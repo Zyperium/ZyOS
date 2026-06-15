@@ -124,6 +124,7 @@ namespace HAL::PCI {
             uint32_t val0 = Read32(bus, device, f, PCI_REG_IDENTIFICATION);
             uint16_t v_id = val0 & PCI_16BIT_MASK;
             uint16_t d_id = (val0 >> PCI_BUS_SHIFT) & PCI_16BIT_MASK;
+            (void)d_id;
 
             if (v_id == PCI_INVALID_VENDOR_ID) continue;
 
@@ -132,10 +133,10 @@ namespace HAL::PCI {
             uint8_t subclass = (val8 >> 16) & PCI_8BIT_MASK;
             uint8_t prog_if = (val8 >> 8)  & PCI_8BIT_MASK;
 
-            Debug::krnl_print("PCI", Debug::LOG_INFO, "Found new device. Data:");
-            Debug::krnl_print("PCI", Debug::LOG_INFO, "Address: %i:%i:%i", bus, device, f);
-            Debug::krnl_print("PCI", Debug::LOG_INFO, "Vendor: %x, Device: %x", v_id, d_id);
-            Debug::krnl_print("PCI", Debug::LOG_INFO, "Class: %x, Sub: %x, ProgIF: %x", class_code, subclass, prog_if);
+            // Debug::krnl_print("PCI", Debug::LOG_INFO, "Found new device. Data:");
+            // Debug::krnl_print("PCI", Debug::LOG_INFO, "Address: %i:%i:%i", bus, device, f);
+            // Debug::krnl_print("PCI", Debug::LOG_INFO, "Vendor: %x, Device: %x", v_id, d_id);
+            // Debug::krnl_print("PCI", Debug::LOG_INFO, "Class: %x, Sub: %x, ProgIF: %x", class_code, subclass, prog_if);
 
             if (class_code == PCI_CLASS_SERIAL_BUS && subclass == PCI_SUBCLASS_USB) {
                 if (prog_if == PCI_PROGIF_USB_UHCI) 
@@ -156,10 +157,10 @@ namespace HAL::PCI {
 
             if (class_code == PCI_CLASS_MASS_STORAGE) {
                 if (subclass == PCI_SUBCLASS_IDE) {
-                    Debug::krnl_print("PCI", Debug::LOG_INFO, "Type of: IDE CONTROLLER");
+                    // Debug::krnl_print("PCI", Debug::LOG_INFO, "Type of: IDE CONTROLLER");
                 }
                 else if (subclass == PCI_SUBCLASS_SATA) {
-                    Debug::krnl_print("PCI", Debug::LOG_INFO, "Type of: SATA AHCI Controller");
+                    // Debug::krnl_print("PCI", Debug::LOG_INFO, "Type of: SATA AHCI Controller");
                 }
             }
         }

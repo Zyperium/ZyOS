@@ -15,14 +15,13 @@ namespace HAL::MEM::KMEM {
     bool a_kmem_lock = false;
     uint64_t cur_rflags = 0;
     void aquire_lock() {
+        asm volatile("cli");
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         while (__atomic_test_and_set(&a_kmem_lock, __ATOMIC_ACQUIRE)) {
             Debug::krnl_print("KMEM", Debug::LOG_INFO, "Locked!");
             asm volatile("pause");
         }
-
-        asm volatile("cli");
 
         cur_rflags = rflags;
 
@@ -43,10 +42,10 @@ namespace HAL::MEM::KMEM {
 
         pml4_root = kernel_pml4;
 
-        uint64_t kernel_limit = heap_start_addr + (128ULL * 1024 * 1024 * 1024);
-        for (uint64_t addr = heap_start_addr; addr < kernel_limit; addr += (2 * 1024 * 1024)) {
-            VMM::map_page(pml4_root, addr, 0x0, 0);
-        }
+        // uint64_t kernel_limit = heap_start_addr + (128ULL * 1024 * 1024 * 1024);
+        // for (uint64_t addr = heap_start_addr; addr < kernel_limit; addr += (2 * 1024 * 1024)) {
+        //     VMM::map_page(pml4_root, addr, 0x0, 0);
+        // }
 
         current_heap_end = heap_start_addr;
         expand_heap(initial_pages * PAGE_SIZE);

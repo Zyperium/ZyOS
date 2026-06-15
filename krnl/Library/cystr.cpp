@@ -240,7 +240,7 @@ namespace lib {
         if (!is_local()) {
             delete[] remote.data;
         }
-        local.data[0] = '\0';
+        memset(local.data, 0, SSO_CAPACITY + 1);
         local.info = 0;
     }
 

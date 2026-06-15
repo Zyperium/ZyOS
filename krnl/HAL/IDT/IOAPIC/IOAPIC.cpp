@@ -23,6 +23,7 @@ namespace HAL::IDT::IOAPIC {
     }
 
     void debug_dump_keyboard_gsi() {
+        return;
         uint32_t low_bits = ioapic_read(0x12);
         
         bool masked = (low_bits & (1 << 16)) != 0;

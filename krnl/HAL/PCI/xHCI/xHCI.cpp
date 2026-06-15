@@ -204,6 +204,7 @@ namespace HAL::PCI {
         return;
     }
 
+    uint32_t ports_resetting = 0;
     void xHCI::send_control_request(uint8_t slot_id, uint8_t requestType, uint8_t request, 
         uint16_t value, uint16_t index, uint16_t length, uint64_t buffer_phys) {
         USBSetupPacket setup;
@@ -388,6 +389,8 @@ namespace HAL::PCI {
         run_regs = reinterpret_cast<RuntimeRegisters *>(mmio_base_virt + cap_regs->rts_off);
         db_regs = reinterpret_cast<DoorbellRegister *>(mmio_base_virt + cap_regs->db_off);
 
+        op_regs->config = max_slots;
+
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Executing BIOS handoff...");
         bios_handoff();
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Resetting controller...");
@@ -399,6 +402,26 @@ namespace HAL::PCI {
         op_regs->config = max_slots;
         dcbaap_virt = zalloc_page<uint64_t *>();
         op_regs->dcbaap = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)dcbaap_virt);
+
+        uint32_t hcs2 = cap_regs->hcs_params2;
+        uint32_t max_scratchpad = (((hcs2) >> 16) & 0x3e0) | (((hcs2) >> 27) & 0x1f);
+
+        if (max_scratchpad > 0) {
+            Debug::krnl_print("xHCI", Debug::LOG_INFO,
+                "Allocating %u scratchpad buffer(s)...", max_scratchpad);
+            
+            uint64_t *sp_array = zalloc_page<uint64_t *>();
+            if (!sp_array) panic(PanicReasons::xHCI_CRITICAL_ERROR);
+            
+            for (uint32_t i = 0; i < max_scratchpad; i++) {
+                void *sp_page = zalloc_page<void *>();
+                if (!sp_page) panic(PanicReasons::xHCI_CRITICAL_ERROR);
+                sp_array[i] = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)sp_page);
+            }
+        
+            dcbaap_virt[0] = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)sp_array);
+        }
+
 
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Allocating Command Ring...");
 
@@ -460,6 +483,7 @@ namespace HAL::PCI {
     }
 
     void xHCI::send_command(uint32_t type, uint64_t param, uint32_t slot_id_or_status) {
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Sending command ID %i", type);
         TRB *command = &cmd_ring_base[cmd_ring_enqueue_ptr];
         command->param = param;
 
@@ -503,6 +527,8 @@ namespace HAL::PCI {
 
         asm volatile("sfence" ::: "memory"); 
         asm volatile("mfence" ::: "memory");
+
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Ringing doorbell (send_command)");
 
         db_regs[XHCI_HC_DOORBELL].value = XHCI_DB_TARGET_HC;
     }
@@ -585,7 +611,13 @@ namespace HAL::PCI {
                 }
             }
             else if (type == TRB_TYPE_PORT_STATUS) {
-                Debug::krnl_print("xHCI", Debug::LOG_INFO, "Port Status Change");
+                uint8_t port_id = (event->param >> 24) & 0xFF; // 1-indexed
+                int port_idx = (int)port_id - 1;
+
+                Debug::krnl_print("xHCI", Debug::LOG_INFO,
+                    "Port Status Change on port %u", port_id);
+                    
+                if (port_idx >= 0) ports_resetting &= ~(1U << port_idx);
                 check_ports();
             }
             else if (type == TRB_TRANSFER_EVENT) {
@@ -794,6 +826,7 @@ namespace HAL::PCI {
 
     void *cie_addr{nullptr};
     void xHCI::conf_interface_endpoints(uint8_t slot_id, ParsedEndpoint* endpoints, int ep_count) {
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Configuring interface endpoints");
         if (!cie_addr) {
             cie_addr = zalloc_page<void *>();
         }
@@ -836,6 +869,8 @@ namespace HAL::PCI {
             asm volatile("mfence" ::: "memory");
         }
 
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Endpoints configured");
+
         int root_port = 0;
         for (int i = 0; i < max_ports; i++) {
             if (port_slot_mapping[i] == slot_id) {
@@ -856,6 +891,7 @@ namespace HAL::PCI {
         input_ctx->slot.info2 = (static_cast<uint32_t>(root_port + 1) << XHCI_SLOT_ROOT_PORT_SHIFT);
         slot_states[slot_id] = SetupState::STATE_CONFIGURING_EP;
 
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Sending TRB_TYPE_CONFIGURE_EP command!");
         send_command(TRB_TYPE_CONFIGURE_EP, input_phys, slot_id);
 
         // while(slot_states[slot_id] == SetupState::STATE_CONFIGURING_EP) {
@@ -864,7 +900,7 @@ namespace HAL::PCI {
 
         // PMEM::free_page(input_ctx);
     }
-    
+
     void xHCI::check_ports() {
         uintptr_t op_base_addr = reinterpret_cast<uintptr_t>(op_regs);
         for (int i = 0; i < max_ports; i++) {
@@ -873,47 +909,55 @@ namespace HAL::PCI {
             uint32_t status = *portsc_reg;
 
             bool connected = status & XHCI_PORTSC_CCS;
-            bool enabled = status & XHCI_PORTSC_PED;
+            bool enabled   = status & XHCI_PORTSC_PED;
 
             if (connected) {
                 if (!enabled) {
-                    reset_ports(i);
-                }
-                else if (enabled) {
-                    if (port_slot_mapping[i]) {
-                       continue;
+                    if (!(ports_resetting & (1U << i))) {
+                        reset_ports(i);
+                        ports_resetting |= (1U << i);
                     }
-
+                } else {
+                    ports_resetting &= ~(1U << i);
+                    if (port_slot_mapping[i]) continue;
                     if (pending_port_setup == XHCI_NO_PENDING_PORT) {
-                        Debug::krnl_print("xHCI", Debug::LOG_INFO, "New device on port %i. Requesting Slot...", i + 1);
-
+                        Debug::krnl_print("xHCI", Debug::LOG_INFO,
+                            "New device on port %i. Requesting Slot...", i + 1);
                         pending_port_setup = i;
                         send_command(TRB_TYPE_ENABLE_SLOT, 0, 0);
-
-                        asm volatile("sfence" ::: "memory"); 
+                        asm volatile("sfence" ::: "memory");
                         asm volatile("mfence" ::: "memory");
                     }
                 }
-            }
-            else {
-                if (port_slot_mapping[i]) {
-                    port_slot_mapping[i] = 0;
-                }
+            } else {
+                ports_resetting &= ~(1U << i);
+                if (port_slot_mapping[i]) port_slot_mapping[i] = 0;
             }
         }
     }
 
+
     void xHCI::reset_ports(int port_idx) {
         uintptr_t op_base_addr = reinterpret_cast<uintptr_t>(op_regs);
-        uintptr_t port_base    = op_base_addr + XHCI_PORT_REG_SET_OFFSET + (port_idx * XHCI_PORT_REG_STRIDE);
+        uintptr_t port_base    = op_base_addr + XHCI_PORT_REG_SET_OFFSET
+                                 + (port_idx * XHCI_PORT_REG_STRIDE);
         auto* portsc_reg = reinterpret_cast<volatile uint32_t*>(port_base);
 
         uint32_t status = *portsc_reg;
+        
+        static constexpr uint32_t PORTSC_RO_MASK =
+            (0xFU << 10) |   // Port Speed [13:10]
+            (1U << 0)  |     // CCS - read-only
+            (1U << 3)  |     // OCA - read-only
+            (1U << 24);      // CAS - read-only
 
-        status &= ~XHCI_PORTSC_RW1C_MASK;
-        *portsc_reg = (status | XHCI_PORTSC_PR);
+        status &= ~PORTSC_RO_MASK;
+        status |= XHCI_PORTSC_RW1C_MASK;
+        status |= XHCI_PORTSC_PR;
 
-        asm volatile("sfence" ::: "memory"); 
+        *portsc_reg = status;
+
+        asm volatile("sfence" ::: "memory");
         asm volatile("mfence" ::: "memory");
     }
 

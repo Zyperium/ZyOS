@@ -15,22 +15,38 @@ namespace VFS::FAT32 {
     constexpr uint32_t CLUSTER_EOF_MIN      = 0x0FFFFFF8;
     constexpr uint32_t CLUSTER_EOF_MAX      = 0x0FFFFFFF;
     constexpr uint32_t CLUSTER_MASK         = 0x0FFFFFFF;
+    constexpr uint32_t CLUSTER_MAX          = 0x0FFFFFFF;
 
-    constexpr uint8_t ATTR_READ_ONLY        = 0x01;
-    constexpr uint8_t ATTR_HIDDEN           = 0x02;
-    constexpr uint8_t ATTR_SYSTEM           = 0x04;
-    constexpr uint8_t ATTR_VOLUME_ID        = 0x08;
-    constexpr uint8_t ATTR_DIRECTORY        = 0x10;
-    constexpr uint8_t ATTR_ARCHIVE          = 0x20;
-    constexpr uint8_t ATTR_LONG_NAME        = ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_VOLUME_ID;
+    constexpr uint8_t  ATTR_READ_ONLY       = 0x01;
+    constexpr uint8_t  ATTR_HIDDEN          = 0x02;
+    constexpr uint8_t  ATTR_SYSTEM          = 0x04;
+    constexpr uint8_t  ATTR_VOLUME_ID       = 0x08;
+    constexpr uint8_t  ATTR_DIRECTORY       = 0x10;
+    constexpr uint8_t  ATTR_ARCHIVE         = 0x20;
+    constexpr uint8_t  ATTR_LONG_NAME       = ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_VOLUME_ID;
 
-    constexpr size_t DIR_ENTRY_SIZE         = 32;
-    constexpr uint8_t DIR_ENTRY_FREE_ONWARD = 0x00;
-    constexpr uint8_t DIR_ENTRY_FREE        = 0xE5;
+    constexpr size_t   DIR_ENTRY_SIZE       = 32;
+    constexpr uint8_t  DIR_ENTRY_FREE_ONWARD= 0x00;
+    constexpr uint8_t  DIR_ENTRY_FREE       = 0xE5;
     
     constexpr uint32_t SCRATCH_BUF_SIZE     = 512;
     constexpr uint32_t VOL_BOOT_REC_SECT    = 0;
     constexpr uint32_t VOL_BOOT_REC_SIZE    = 1;
+
+    constexpr uint32_t INITIAL_SIZE = 0;
+    constexpr uint32_t INITIAL_FREE_CLUSTER = 0;
+    constexpr uint32_t INITIAL_CLUSTER_HI = 0;
+    constexpr uint32_t INITIAL_CLUSTER_LO = 0;
+    constexpr uint32_t INITIAL_CLUSTER = 0;
+    constexpr uint32_t ALLOC_FAILED = 0;
+    constexpr uint32_t START_INDEX = 0;
+    constexpr uint32_t FIRST_BYTE_INDEX = 0;
+    constexpr uint32_t SECTOR_COUNT_ONE = 1;
+    constexpr uint32_t FIRST_DATA_CLUSTER = 2;
+    constexpr uint32_t EXTENSION_START_IDX = 8;
+    constexpr int      MAX_SHORT_NAME = 8;
+    constexpr uint32_t FAT_83_NAME_SIZE = 11;
+    constexpr uint32_t CASE_CONVERSION_OFF = 32;
 
     #pragma pack(push, 1)
 
@@ -123,6 +139,7 @@ namespace VFS::FAT32 {
 
         virtual int read(uint64_t offset, void *buffer, uint32_t size) override;
         virtual int write(uint64_t offset, const void *buffer, uint32_t size) override;
+        virtual VFS::VNode* create(const char* name, VFS::FileType type) override;
         virtual VFS::VNode* lookup(const char *name) override;
 
         uint32_t GetFirstCluster() const { return m_first_cluster; }

@@ -50,7 +50,7 @@ namespace HAL::DISK::USB {
         uint8_t slot_id;
 
         int read_sectors(uint32_t lba, uint16_t count, void *buffer);
-        void write_sectors(uint32_t lba, uint16_t count, void *buffer);
+        int write_sectors(uint32_t lba, uint16_t count, void *buffer);
 
         enum MSCState {
             STATE_IDLE,
@@ -91,8 +91,10 @@ namespace HAL::DISK::USB {
         static constexpr uint8_t  CBW_MAX_CDB_LEN   = 16;
 
         static constexpr uint8_t  SCSI_CMD_READ10   = 0x28;
+        static constexpr uint8_t  SCSI_CMD_WRITE10  = 0x2A;
         static constexpr uint8_t  SCSI_CMD_LEN10    = 10;
         static constexpr uint32_t SECTOR_SIZE       = 512;
+        static constexpr uint8_t  DEFAULT_LUN       = 0;
 
         static constexpr uint8_t  CSW_STATUS_PASSED = 0x00;
         static constexpr uint8_t  CSW_STATUS_FAILED = 0x01;

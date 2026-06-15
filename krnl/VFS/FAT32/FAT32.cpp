@@ -118,10 +118,273 @@ namespace VFS::FAT32 {
     }
 
     int FAT32VNode::write(uint64_t offset, const void *buffer, uint32_t size) {
-        (void)offset;
-        (void)buffer;
-        (void)size;
-        return -1;
+        if (m_type != VFS::FileType::Regular) {
+            return -1;
+        }
+        if (size == 0) {
+            return 0;
+        }
+
+        uint32_t cluster_size = m_fs->get_cluster_size();
+        uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
+        const uint8_t* source_buffer = static_cast<const uint8_t*>(buffer);
+        uint32_t total_bytes_written = 0;
+
+        // 1. Handle allocation if the file is completely empty (size == 0, cluster == 0)
+        if (m_first_cluster == 0) {
+            uint32_t free_cluster = 0;
+            
+            // Note: You may need to add a public getter for m_total_clusters in FAT32FileSystem,
+            // or loop up to a safe maximum FAT32 cluster bound. 2 is the first valid data cluster.
+            for (uint32_t c = 2; c < 0x0FFFFFFF; ++c) { 
+                if (m_fs->read_FAT_entry(c) == 0) { // 0 represents a free cluster
+                    free_cluster = c;
+                    break;
+                }
+            }
+            if (free_cluster == 0) return -1; // Disk full
+
+            // 0x0FFFFFFF is the standard FAT32 End-of-File (EOF) marker
+            m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF); 
+            m_first_cluster = free_cluster;
+            m_is_dirty = true;
+        }
+
+        // 2. Traverse to the target cluster matching our write offset
+        uint32_t current_cluster = m_first_cluster;
+        uint32_t clusters_to_skip = offset / cluster_size;
+
+        for (uint32_t i = 0; i < clusters_to_skip; ++i) {
+            uint32_t next_cluster = m_fs->read_FAT_entry(current_cluster);
+            
+            // 0x0FFFFFF8 is the minimum boundary for an EOF cluster marker range
+            if (next_cluster >= 0x0FFFFFF8) { 
+                // The offset forces us to expand the file allocation before writing
+                uint32_t free_cluster = 0;
+                for (uint32_t c = 2; c < 0x0FFFFFFF; ++c) {
+                    if (m_fs->read_FAT_entry(c) == 0) {
+                        free_cluster = c;
+                        break;
+                    }
+                }
+                if (free_cluster == 0) return total_bytes_written;
+
+                m_fs->write_FAT_entry(current_cluster, free_cluster);
+                m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF); // Mark new cluster as EOF
+                current_cluster = free_cluster;
+            } else {
+                current_cluster = next_cluster;
+            }
+        }
+
+        // 3. Write data loop using a sector bounce buffer
+        uint8_t* sector_bounce_buffer = static_cast<uint8_t*>(
+            HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+        );
+
+        while (total_bytes_written < size) {
+            uint32_t absolute_file_position = offset + total_bytes_written;
+            uint32_t offset_within_cluster = absolute_file_position % cluster_size;
+
+            uint32_t sector_offset_in_cluster = offset_within_cluster / bytes_per_sector;
+            uint32_t byte_offset_in_sector = offset_within_cluster % bytes_per_sector;
+
+            uint32_t physical_sector_lba = m_fs->cluster_to_sector(current_cluster) + sector_offset_in_cluster;
+
+            uint32_t bytes_left_in_sector = bytes_per_sector - byte_offset_in_sector;
+            uint32_t bytes_left_to_write = size - total_bytes_written;
+            uint32_t chunk_size = (bytes_left_to_write < bytes_left_in_sector) ? bytes_left_to_write : bytes_left_in_sector;
+
+            // If we aren't overwriting the exact entire sector, we must read-modify-write
+            if (byte_offset_in_sector != 0 || chunk_size < bytes_per_sector) {
+                m_fs->read_sectors(physical_sector_lba, sector_bounce_buffer, 1);
+            }
+
+            memcpy(sector_bounce_buffer + byte_offset_in_sector, source_buffer + total_bytes_written, chunk_size);
+
+            if (m_fs->write_sectors(physical_sector_lba, sector_bounce_buffer, 1) < 1) {
+                break;
+            }
+
+            total_bytes_written += chunk_size;
+
+            if (total_bytes_written < size && (offset_within_cluster + chunk_size >= cluster_size)) {
+                uint32_t next_cluster = m_fs->read_FAT_entry(current_cluster);
+                if (next_cluster >= 0x0FFFFFF8) {
+                    uint32_t free_cluster = 0;
+                    for (uint32_t c = 2; c < 0x0FFFFFFF; ++c) {
+                        if (m_fs->read_FAT_entry(c) == 0) {
+                            free_cluster = c;
+                            break;
+                        }
+                    }
+                    if (free_cluster == 0) {
+                        break;
+                    }
+                    m_fs->write_FAT_entry(current_cluster, free_cluster);
+                    m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF);
+                    current_cluster = free_cluster;
+                } else {
+                    current_cluster = next_cluster;
+                }
+            }
+        }
+
+        HAL::MEM::PMEM::free_page(sector_bounce_buffer);
+
+        if (offset + total_bytes_written > m_size) {
+            m_size = offset + total_bytes_written;
+            m_is_dirty = true;
+        }
+
+        if (m_is_dirty && m_dir_cluster != 0) {
+            uint8_t* dir_sector_buffer = static_cast<uint8_t*>(
+                HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+            );
+
+            uint32_t dir_sector_lba = m_fs->cluster_to_sector(m_dir_cluster) + (m_dir_offset / bytes_per_sector);
+            uint32_t entry_offset_in_sector = m_dir_offset % bytes_per_sector;
+
+            if (m_fs->read_sectors(dir_sector_lba, dir_sector_buffer, 1) >= 1) {
+                DirectoryEntry* entry = reinterpret_cast<DirectoryEntry*>(&dir_sector_buffer[entry_offset_in_sector]);
+                
+                entry->file_size = static_cast<uint32_t>(m_size);
+                
+                entry->cluster_high = static_cast<uint16_t>((m_first_cluster >> 16) & 0xFFFF); 
+                entry->cluster_low = static_cast<uint16_t>(m_first_cluster & 0xFFFF);        
+
+                m_fs->write_sectors(dir_sector_lba, dir_sector_buffer, 1);
+                m_is_dirty = false;
+            }
+
+            HAL::MEM::PMEM::free_page(dir_sector_buffer);
+        }
+
+        return total_bytes_written;
+    }
+
+    VFS::VNode *FAT32VNode::create(const char *name, VFS::FileType type) {
+        if (m_type != VFS::FileType::Directory) {
+            return nullptr;
+        }
+
+        VFS::VNode *check_exists = lookup(name);
+        if (check_exists != nullptr) {
+            return nullptr;
+        }
+
+        uint8_t target_83_name[FAT_83_NAME_SIZE];
+        for (int i = START_INDEX; i < (int)FAT_83_NAME_SIZE; ++i) {
+            target_83_name[i] = ' ';
+        }
+
+        int source_index = START_INDEX;
+        int destination_index = START_INDEX;
+        while (name[source_index] != '\0' && name[source_index] != '.' && destination_index < MAX_SHORT_NAME) {
+            char character = name[source_index];
+            if (character >= 'a' && character <= 'z') {
+                character -= CASE_CONVERSION_OFF;
+            }
+            target_83_name[destination_index++] = character;
+            source_index++;
+        }
+
+        if (name[source_index] == '.') {
+            source_index++;
+            destination_index = EXTENSION_START_IDX;
+            while (name[source_index] != '\0' && destination_index < (int)FAT_83_NAME_SIZE) {
+                char character = name[source_index];
+                if (character >= 'a' && character <= 'z') {
+                    character -= CASE_CONVERSION_OFF;
+                }
+                target_83_name[destination_index++] = character;
+                source_index++;
+            }
+        }
+
+        uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
+        uint32_t sectors_per_cluster = m_fs->get_cluster_size() / bytes_per_sector;
+        uint32_t current_cluster = m_first_cluster;
+
+        uint8_t *sector_buffer = static_cast<uint8_t *>(
+            HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+        );
+
+        while (true) {
+            uint32_t cluster_base_sector = m_fs->cluster_to_sector(current_cluster);
+
+            for (uint32_t sector_offset = START_INDEX; sector_offset < sectors_per_cluster; ++sector_offset) {
+                uint32_t physical_sector_lba = cluster_base_sector + sector_offset;
+                m_fs->read_sectors(physical_sector_lba, sector_buffer, SECTOR_COUNT_ONE);
+
+                uint32_t directory_entries_per_sector = bytes_per_sector / sizeof(DirectoryEntry);
+                DirectoryEntry *entry_array = reinterpret_cast<DirectoryEntry *>(sector_buffer);
+
+                for (uint32_t entry_index = START_INDEX; entry_index < directory_entries_per_sector; ++entry_index) {
+                    DirectoryEntry &entry = entry_array[entry_index];
+                    uint8_t initial_byte = static_cast<uint8_t>(entry.name[FIRST_BYTE_INDEX]);
+
+                    if (initial_byte == DIR_ENTRY_FREE|| initial_byte == DIR_ENTRY_FREE_ONWARD) {
+                        memcpy(entry.name, target_83_name, FAT_83_NAME_SIZE);
+                        entry.attr = (type == VFS::FileType::Directory) ? ATTR_DIRECTORY : ATTR_ARCHIVE;
+                        entry.file_size = INITIAL_SIZE;
+                        entry.cluster_high = INITIAL_CLUSTER_HI;
+                        entry.cluster_low = INITIAL_CLUSTER_LO;
+
+                        m_fs->write_sectors(physical_sector_lba, sector_buffer, SECTOR_COUNT_ONE);
+                        HAL::MEM::PMEM::free_page(sector_buffer);
+
+                        uint32_t intra_sector_byte_offset = entry_index * sizeof(DirectoryEntry);
+                        uint32_t total_dir_offset = (sector_offset * bytes_per_sector) + intra_sector_byte_offset;
+
+                        return new FAT32VNode(
+                            m_fs,
+                            type,
+                            INITIAL_SIZE,
+                            INITIAL_CLUSTER,
+                            current_cluster,
+                            total_dir_offset
+                        );
+                    }
+                }
+            }
+
+            uint32_t next_cluster = m_fs->read_FAT_entry(current_cluster);
+            if (next_cluster >= VFS::FAT32::CLUSTER_EOF_MIN) {
+                uint32_t free_cluster = INITIAL_FREE_CLUSTER;
+                for (uint32_t c = FIRST_DATA_CLUSTER; c < CLUSTER_MAX; ++c) {
+                    if (m_fs->read_FAT_entry(c) == CLUSTER_FREE) {
+                        free_cluster = c;
+                        break;
+                    }
+                }
+
+                if (free_cluster == ALLOC_FAILED) {
+                    break;
+                }
+
+                m_fs->write_FAT_entry(current_cluster, free_cluster);
+                m_fs->write_FAT_entry(free_cluster, CLUSTER_EOF_MAX);
+
+                uint8_t *zero_buffer = static_cast<uint8_t *>(
+                    HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+                );
+                memset(zero_buffer, 0, bytes_per_sector);
+
+                uint32_t new_cluster_base_sector = m_fs->cluster_to_sector(free_cluster);
+                for (uint32_t sector_offset = START_INDEX; sector_offset < sectors_per_cluster; ++sector_offset) {
+                    m_fs->write_sectors(new_cluster_base_sector + sector_offset, zero_buffer, SECTOR_COUNT_ONE);
+                }
+                HAL::MEM::PMEM::free_page(zero_buffer);
+
+                current_cluster = free_cluster;
+            } else {
+                current_cluster = next_cluster;
+            }
+        }
+
+        HAL::MEM::PMEM::free_page(sector_buffer);
+        return nullptr;
     }
 
     VFS::VNode* FAT32FileSystem::get_root_node() {
@@ -139,9 +402,7 @@ namespace VFS::FAT32 {
         );
     }
     
-    FAT32FileSystem::FAT32FileSystem(HAL::DISK::Disk *disk_device) : m_disk_device(disk_device) {
-
-    }
+    FAT32FileSystem::FAT32FileSystem(HAL::DISK::Disk *disk_device) : m_disk_device(disk_device) {}
 
     int FAT32VNode::read(uint64_t offset, void *buffer, uint32_t size) {
         uint32_t safe_read_size = size;

@@ -5,6 +5,7 @@
 #include <Library/io.hpp>
 #include <Library/regs.h>
 #include <HAL/CORE/Core.hpp>
+#include <TTY/BootTTY.hpp>
 
 namespace Debug {
     constexpr uint8_t nice_col[] = {
@@ -235,15 +236,15 @@ namespace Debug {
     }
     
     void krnl_print(const char* class_name,
-               LogLevel level,
-               const char* fmt, ...)
+           LogLevel level,
+           const char* fmt, ...)
     {
         puts("\033[");
         print_int(str_to_col(class_name));
         puts("m[");
         puts(class_name);
         puts("]\033[0m ");
-
+    
         bool da = HAL::CORE::validate_gs_reg();
         if (da) {
             puts("[");
@@ -253,18 +254,33 @@ namespace Debug {
         else {
             puts("[0] ");
         }
-
+    
         puts("\033[");
         print_int(level_color(level));
         puts("m<");
         puts(level_name(level));
         puts(">\033[0m ");
-
+    
         va_list args;
         va_start(args, fmt);
+    
+        va_list args_copy;
+        va_copy(args_copy, args);
+    
         kvprintf(fmt, args);
         va_end(args);
-
+    
         putc('\n');
+    
+        if (!TTY::BOOT::is_active()) {
+            va_end(args_copy);
+            return;
+        }
+    
+        char tbuf[256]{};
+        vsnprintf(tbuf, 256, fmt, args_copy);
+        va_end(args_copy);
+        
+        TTY::BOOT::show_log(class_name, level_name(level), tbuf);
     }
 }

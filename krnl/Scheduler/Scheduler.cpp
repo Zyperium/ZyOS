@@ -188,6 +188,7 @@ namespace Scheduler {
         current_queue = 0;
         running = false;
         malignedfx = new uint8_t[FX_STATE_SIZE];
+        memset(malignedfx, 0, FX_STATE_SIZE);
 
         auto addr = reinterpret_cast<uint64_t>(malignedfx);
         if (addr % 0x10 != 0) {
@@ -195,6 +196,8 @@ namespace Scheduler {
         }
 
         fx_state = reinterpret_cast<uint8_t *>(addr);
+        uint32_t *mxcsr = reinterpret_cast<uint32_t*>(&fx_state[24]);
+        *mxcsr = 0x1F80;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished primitive task setup");

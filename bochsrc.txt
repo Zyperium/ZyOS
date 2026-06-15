@@ -1,0 +1,26 @@
+megs: 512
+cpu: count=1, ips=500000000
+
+romimage: file=/usr/local/share/bochs/BIOS-bochs-latest
+vgaromimage: file=/usr/local/share/bochs/VGABIOS-lgpl-latest.bin
+port_e9_hack: enabled=1
+
+vga: extension=vbe, update_freq=60
+clock: sync=realtime, time0=local
+
+# Enable the built-in PCI bus
+pci: enabled=1, chipset=i440fx
+
+ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
+ata0-master: type=disk, path="disk_bios.img", mode=flat
+
+usb_xhci: enabled=1, port5=disk, options5="speed:super, path:disk_bios.img"
+
+boot: disk
+
+log: bochsout.txt
+logprefix: %t%e%d
+debugger_log: -
+panic: action=ask
+error: action=report
+info: action=report

@@ -3,6 +3,7 @@
 #include <Library/string.h>
 #include <Library/io.hpp>
 #include <TTY/TTY.hpp>
+#include <TTY/BootTTY.hpp>
 #include <TTY/Commands.hpp>
 
 #include <HAL/SCREEN/Screen.hpp>
@@ -49,11 +50,6 @@ namespace TTY {
     }
 
 
-    /**
-        I know this is a horrible way of doing this.
-        I am simply trying to run some bug/early testing. It'll be replaced with a more streamlined
-        dictionary style command system
-    */
     void ProcessCommand(const char *str) {
         ConHost *r_host = conhosts[active_host];
         r_host->draw_string(Commands::evaluate_cmd(str).c_str());
@@ -65,8 +61,6 @@ namespace TTY {
     ConHost::ConHost() {
         conhosts[total_hosts] = this;
         cohost_id = total_hosts++;
-        cur_input = new char[MAX_TERMINAL_TEXT];
-        memset(cur_input, 0, MAX_TERMINAL_TEXT);
         return;
     }
 
@@ -102,8 +96,9 @@ namespace TTY {
             ++off_y;
             off_x = 0;
             raw_x = 0;
-            ProcessCommand(cur_input);
-            memset(cur_input, 0, MAX_TERMINAL_TEXT);
+            ProcessCommand(cur_input.c_str());
+            cur_input.clear();
+            cur_input.empty();
             return;
         }
 
@@ -113,11 +108,6 @@ namespace TTY {
             cur_input[off_x] = 0;
             draw_char(' ', (off_x + raw_x) * Font::WIDTH, (off_y + raw_y) * Font::HEIGHT, COL::BLACK);
             flip_buffer();
-            return;
-        }
-
-        if (off_x >= MAX_TERMINAL_TEXT) {
-            Debug::krnl_print("TTY", Debug::LOG_INFO, "Max text length reached!");
             return;
         }
 
@@ -139,6 +129,7 @@ namespace TTY {
     
     void ConHost::worker() {
         asm volatile("cli");
+        BOOT::disable();
         Debug::krnl_print("TTY", Debug::LOG_INFO, "ConHost %i worker begin", cohost_id);
         fill_screen(COL::BLACK);
         draw_string("Welcome", COL::GREEN);
@@ -164,7 +155,9 @@ namespace TTY {
         for (;;) {
             if (!contask) continue;
             // contask->block(Scheduler::BlockReasons::AWAIT_KEYBOARD_INPUT);
-            
+
+            // Why manually poll? Idk. QEMU refuses to call the IDT responsible for the handler, however...
+            // The interrupt works flawlessly on real hardware. So QEMU quirk ig.
             uint8_t ps2_status = inb(0x64); 
             if (ps2_status & 0x01) {
                 PS2::Keyboard::HandleInterrupt();

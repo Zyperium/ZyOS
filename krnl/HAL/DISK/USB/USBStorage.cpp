@@ -18,8 +18,7 @@ namespace HAL::DISK::USB {
     }
 
     int xHCIDD::write(uint64_t sector, uint32_t count, void* buffer) {
-        usbptr->write_sectors(sector, count, buffer);
-        return -1;
+        return usbptr->write_sectors(sector, count, buffer);
     }
 
     void USBStorage::initialize(PCI::xHCI* _ctrl, uint8_t _slot, void *endpoints_ptr, int ep_count) {
@@ -111,12 +110,60 @@ namespace HAL::DISK::USB {
         return;
     }
     
-    void USBStorage::write_sectors(uint32_t lba, uint16_t count, void *buffer) {
-        (void)lba;
-        (void)count;
-        (void)buffer;
+    int USBStorage::write_sectors(uint32_t lba, uint16_t count, void *buffer) {
+        uint8_t *src = static_cast<uint8_t *>(buffer);
+        uint32_t sectors_left = count;
+        uint32_t current_lba = lba;
+        uint32_t total_sectors_written = 0;
 
-        return;
+        const uint16_t MAX_SECTORS_PER_CHUNK = 8;
+
+        while (sectors_left > 0) {
+            uint16_t chunk_sectors = (sectors_left > MAX_SECTORS_PER_CHUNK) ? MAX_SECTORS_PER_CHUNK : sectors_left;
+            uint32_t chunk_bytes = chunk_sectors * SECTOR_SIZE;
+            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Writing sector %x, (%i remaining)", lba, count - total_sectors_written);
+
+            while (io_pending) { asm volatile("pause"); }
+            __atomic_test_and_set(&io_pending, __ATOMIC_ACQUIRE);
+
+            memcpy(bounce_virt, src, chunk_bytes);
+
+            current_data_phys = bounce_phys;
+            current_data_len  = chunk_bytes;
+
+            current_cbw->signature = CBW_SIGNATURE;
+            current_cbw->tag = current_lba;
+            current_cbw->data_transfer_len = chunk_bytes;
+            current_cbw->flags = CBW_FLAG_OUT;
+            current_cbw->lun = DEFAULT_LUN;
+            current_cbw->command_length = SCSI_CMD_LEN10;
+
+            memset(current_cbw->scsi_command, 0, CBW_MAX_CDB_LEN);
+            current_cbw->scsi_command[0] = SCSI_CMD_WRITE10;
+
+            current_cbw->scsi_command[2] = (current_lba >> 24) & 0xFF;
+            current_cbw->scsi_command[3] = (current_lba >> 16) & 0xFF;
+            current_cbw->scsi_command[4] = (current_lba >> 8) & 0xFF;
+            current_cbw->scsi_command[5] = current_lba & 0xFF;
+
+            current_cbw->scsi_command[7] = (chunk_sectors >> 8) & 0xFF;
+            current_cbw->scsi_command[8] = chunk_sectors & 0xFF;
+
+            state = STATE_WAIT_CBW;
+            PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, bulk_out_ep, cbw_phys, CBW_SIZE);
+
+            while (io_pending) {
+                Scheduler::Yield();
+                asm volatile("pause");
+            }
+
+            src += chunk_bytes;
+            current_lba += chunk_sectors;
+            sectors_left -= chunk_sectors;
+            total_sectors_written += chunk_sectors;
+        }
+
+        return total_sectors_written;
     }
 
     int USBStorage::read_sectors(uint32_t lba, uint16_t count, void *buffer) {

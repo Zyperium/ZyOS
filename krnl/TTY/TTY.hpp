@@ -6,7 +6,6 @@
 #include <Library/cystr.hpp>
 
 namespace TTY {
-    constexpr uint16_t MAX_TERMINAL_TEXT = 256;
     class ConHost {
     public:
         ConHost();
@@ -25,7 +24,7 @@ namespace TTY {
     protected:
         void evaluate_command();
         size_t cohost_id = -1;
-        char *cur_input;
+        lib::string cur_input;
     };
 
     extern ConHost *conhosts[];

@@ -3,6 +3,7 @@
 
 #include <Library/debug.hpp>
 #include <Library/string.h>
+#include <Library/krnlptr.hpp>
 
 #include <VFS/VFS.hpp>
 #include <VFS/FAT32/FAT32.hpp>
@@ -28,7 +29,10 @@ namespace TTY::Commands {
     constexpr uCMD vfs_commands[] {
         { _hash("echo"), PROC::echo_processor},
         { _hash("ls"), PROC::ls_processor},
-        {_hash("swapd"), PROC::swapd_processor}
+        {_hash("swapd"), PROC::swapd_processor},
+        {_hash("cd"), PROC::cd_processor},
+        {_hash("touch"), PROC::touch_processor},
+        {_hash("cat"), PROC::cat_processor}
     };
 
     constexpr size_t vfs_commands_length = sizeof(vfs_commands) / sizeof(vfs_commands[0]);
@@ -98,6 +102,8 @@ namespace TTY::Commands {
         delete[] argv;
         delete[] cmd_copy; 
 
+        Debug::krnl_print("CMD", Debug::LOG_INFO, "Unknown command (%s)", cmd);
+
         return ERR_MSG;
     }
 
@@ -119,15 +125,19 @@ namespace TTY::Commands {
 
         lib::string swapd_processor(int argc, char **argv) {
             if (argc < 2) {
-                return "Warning: No drive letter specified.";
+                return "Warning: No drive letter specified.\n";
             }
 
             if (argc > 3) {
-                return "Warning: Too many arguments!";
+                return "Warning: Too many arguments!\n";
             }
 
             if (strlen(argv[1]) != 1) {
-                return "Warning: you must pass a letter!";
+                return "Warning: you must pass a letter!\n";
+            }
+
+            if (!HAL::DISK::IsValidDisk(argv[1][0])) {
+                return "Warning: Invalid disk letter!\n";
             }
 
             conhosts[active_host]->current_wd = "/";
@@ -135,11 +145,8 @@ namespace TTY::Commands {
             return "\n";
         }
 
-        lib::string ls_processor(int argc, char **argv) {
+        lib::string ls_processor(int, char **) {
             ConHost *cur_host = conhosts[active_host];
-
-            (void)argc;
-            (void)argv;
 
             Scheduler::Yield();
 
@@ -174,24 +181,7 @@ namespace TTY::Commands {
                 Debug::krnl_print("CMD", Debug::LOG_INFO, "Read directory entry!");
                 byte_offset += sizeof(VFS::FAT32::DirectoryEntry);
                 uint8_t initial_byte = static_cast<uint8_t>(entry.name[0]);
-                if (initial_byte == VFS::FAT32::DIR_ENTRY_FREE_ONWARD) {
-                    Debug::krnl_print("CMD", Debug::LOG_WARN, 
-                        "Hit FREE_ONWARD. Raw Entry: %x %x %x %x | Attr: %x | Size: %i", 
-                        static_cast<uint8_t>(entry.name[0]), 
-                        static_cast<uint8_t>(entry.name[1]), 
-                        static_cast<uint8_t>(entry.name[2]), 
-                        static_cast<uint8_t>(entry.name[3]),
-                        entry.attr,
-                        entry.file_size);
-
-                    Debug::krnl_print("CMD", Debug::LOG_INFO, "Performing test read of LBA 0");
-                    uint8_t tmp_buf[512];
-
-                    HAL::DISK::Disk *d = HAL::DISK::GetDisk(cur_host->_ltrdrive);
-                    d->dev->read(0, 1, tmp_buf);
-                    
-                    Debug::krnl_print("CMD", Debug::LOG_INFO, "First 4 bytes are: %x %x %x %x %x", tmp_buf[0], tmp_buf[1], tmp_buf[2], tmp_buf[3], tmp_buf[4]);
-                    
+                if (initial_byte == VFS::FAT32::DIR_ENTRY_FREE_ONWARD) {                    
                     break; 
                 }
                 if (initial_byte == VFS::FAT32::DIR_ENTRY_FREE) {
@@ -238,6 +228,139 @@ namespace TTY::Commands {
             }
 
             return result;
+        }
+
+        lib::string cd_processor(int argc, char **argv) {
+            if (argc < 2) return "";
+            ConHost *cur_host = conhosts[active_host];
+
+            if (strcmp(argv[1], ".")) {
+                Debug::krnl_print("CMD", Debug::LOG_INFO, "Current directory (unchanging)");
+                return "";
+            }
+
+            if (strcmp(argv[1], "..")) {
+                Debug::krnl_print("CMD", Debug::LOG_INFO, "Matched change dir ..");
+                if (cur_host->current_wd.length() == 1) {
+                    Debug::krnl_print("CMD", Debug::LOG_INFO, "Currently at the root vnode");
+                    return "";
+                }
+
+                while (cur_host->current_wd[cur_host->current_wd.length() - 1] != '/') {
+                    --cur_host->current_wd;
+                }
+
+                if (cur_host->current_wd.length() != 1)
+                    --cur_host->current_wd;
+
+                return "";
+            }
+
+            lib::sptr<VFS::VNode> root_n = HAL::DISK::GetRootOfDrive(cur_host->_ltrdrive);
+
+            lib::string t_path = cur_host->current_wd;
+            if (t_path[cur_host->current_wd.length() - 1] != '/')
+                t_path += "/";
+            t_path += argv[1];
+            if (!root_n->resolve_path_to_vnode(t_path)) {
+                return "No such file or directory\n";
+            }
+
+            cur_host->current_wd = t_path;
+
+            return "";
+        }
+
+        lib::string touch_processor(int argc, char **argv) {
+            if (argc < 2) {
+                return "Warning: Not enough arguments! (-h for help)\n";
+            }
+
+            ConHost *cur_host = conhosts[active_host];
+            if (argv[1][0] == '/') {
+                return "Created file!\n";
+            }
+        
+            lib::string combined = cur_host->current_wd.c_str();
+            combined += "/";
+            combined += argv[1];
+
+            VFS::VNode *root = HAL::DISK::GetRootOfDrive(cur_host->_ltrdrive);
+            lib::sptr<VFS::VNode> node = root->resolve_path_to_vnode(combined);
+
+            if (node) {
+                return "File already exists! (-1)\n";
+            }
+
+            int last_slash_idx = -1;
+            for (int i = 0; i < (int)combined.length(); ++i) {
+                if (combined[i] == '/') {
+                    last_slash_idx = i;
+                }
+            }
+
+            lib::string directory_path = "";
+            lib::string filename = "";
+
+            if (last_slash_idx == 0) {
+                directory_path = "/";
+            } else {
+                for (int i = 0; i < last_slash_idx; ++i) {
+                    directory_path += combined[i];
+                }
+            }
+
+            for (int i = last_slash_idx + 1; i < (int)combined.length(); ++i) {
+                filename += combined[i];
+            }
+
+            lib::sptr<VFS::VNode> new_file_directory = root->resolve_path_to_vnode(directory_path);
+            if (!new_file_directory) {
+                return "Error: Parent directory not found!\n";
+            }
+
+            lib::sptr<VFS::VNode> new_file = new_file_directory->create(filename.c_str(), VFS::FileType::Regular);
+
+            return "Created file!\n";
+        }
+
+        lib::string cat_processor(int argc, char **argv) {
+            if (argc < 2) {
+                return "Warning: Not enough arguments!\n";
+            }
+
+            ConHost *cur_host = conhosts[active_host];
+
+            VFS::VNode *root_n = HAL::DISK::GetRootOfDrive(cur_host->_ltrdrive);
+
+            if (argv[1][0] == '/') {
+                return "";
+            }
+
+            lib::string t_path = cur_host->current_wd.c_str();
+            t_path += argv[1];
+
+            lib::sptr<VFS::VNode> node = root_n->resolve_path_to_vnode(t_path);
+
+            if (!node) {
+                return "Warning: No such file or directory!\n";
+            }
+
+            if (node->get_type() == VFS::FileType::Directory) {
+                return "Warning: is directory\n";
+            }
+            else if (node->get_size() == 0) {
+                return "";
+            }
+
+            char *buffer = new char[node->get_size() + 1];
+            uint64_t bytes_read = node->read(0, buffer, node->get_size());
+            buffer[bytes_read] = '\0';
+
+            lib::string file_contents(buffer);
+            file_contents += "\n";
+            delete[] buffer;
+            return file_contents;
         }
     }
 }

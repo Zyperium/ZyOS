@@ -79,6 +79,7 @@ namespace HAL::CORE {
     }
 
     void broadcast_nmi() {
+        return;
         Debug::krnl_print("CORE", Debug::LOG_INFO, "Broadcasting NMI from core %i", get_thread_data()->core_id);
         while (lapic_read(LAPIC_ICR_LOW) & LAPIC_ICR_SEND_PENDING) {
             asm volatile("pause");

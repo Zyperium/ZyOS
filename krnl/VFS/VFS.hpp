@@ -21,6 +21,7 @@ namespace VFS {
         
         virtual int read(uint64_t offset, void* buffer, uint32_t size) = 0;
         virtual int write(uint64_t offset, const void* buffer, uint32_t size) = 0;
+        virtual VNode* create(const char* name, FileType type) = 0;
         virtual VNode* lookup(const char* name) = 0;
 
         FileType get_type() const;

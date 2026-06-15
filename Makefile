@@ -31,6 +31,10 @@ define DEPLOY_CONTENT
 	mcopy -i $(1)@@1M $(ISO_DIR)/limine.conf ::/limine.conf
 	@find $(ASSETS_DIR) -type f \( -name "Thumbs.db" -o -name "desktop.ini" \) -delete
 
+	@if [ -d $(ASSETS_DIR) ] && [ "$$(ls -A $(ASSETS_DIR) 2>/dev/null)" ]; then \
+		mcopy -s -i $(1)@@1M $(ASSETS_DIR)/* ::/; \
+	fi
+
 	@if ! mdir -i $(1)@@1M ::/SYSTEM >/dev/null 2>&1; then mmd -i $(1)@@1M ::/SYSTEM; fi
 	@if ! mdir -i $(1)@@1M ::/SYSTEM/DRIVERS >/dev/null 2>&1; then mmd -i $(1)@@1M ::/SYSTEM/DRIVERS; fi
 	@if ! mdir -i $(1)@@1M ::/USER >/dev/null 2>&1; then mmd -i $(1)@@1M ::/USER; fi
@@ -43,7 +47,7 @@ define DEPLOY_CONTENT
 	fi
 
 	@nm -n krnl/build/$(KERNEL_NAME) > krnl/build/krnl.map 2>/dev/null || true
-	# @if [ -f krnl/build/krnl.map ]; then mcopy -i $(1)@@1M krnl/build/krnl.map ::/SYSTEM/KRNL.MAP; fi
+	@if [ -f krnl/build/krnl.map ]; then mcopy -i $(1)@@1M krnl/build/krnl.map ::/SYSTEM/KRNL.MAP; fi
 	mcopy -i $(1)@@1M krnl/build/$(KERNEL_NAME) ::/SYSTEM/$(KERNEL_NAME)
 endef
 

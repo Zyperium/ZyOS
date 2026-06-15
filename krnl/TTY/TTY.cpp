@@ -21,7 +21,6 @@ namespace TTY {
     size_t off_x = 0;
     size_t off_y = 0;
     size_t raw_x = 0;
-    size_t raw_y = 0;
     size_t scr_height = 0;
     size_t scr_width = 0;
 
@@ -49,8 +48,28 @@ namespace TTY {
         return static_cast<int>(result);
     }
 
+    void ConHost::early_drive_swap(char c) {
+        reset_view();
+        draw_string("Welcome", COL::GREEN);
+        draw_string(" to ZyOS!\n");
+        _ltrdrive = c;
+        print_cwd();
+    }
 
     void ProcessCommand(const char *str) {
+        if (strlen(str) == DRIVE_CMD_LEN) {
+            if (str[1] == ':' && str[2] == '/') {
+                char arg[SWAPD_LEN] = "swapd \0";
+                arg[SWAPD_LETTER_OFFSET] = *str;
+                ConHost *r_host = conhosts[active_host];
+                r_host->draw_string(Commands::evaluate_cmd(arg).c_str());
+                r_host->print_cwd();
+
+                Debug::krnl_print("TTY", Debug::LOG_INFO, "Created string %s from %s", arg, str);
+                return;
+            }
+        }
+
         ConHost *r_host = conhosts[active_host];
         r_host->draw_string(Commands::evaluate_cmd(str).c_str());
 
@@ -72,18 +91,28 @@ namespace TTY {
         draw_string("> ");
     }
 
+    void ConHost::check_scroll_scr() {
+        if (off_y * Font::HEIGHT < scr_height - SCREEN_PADDING) {
+            return;
+        }
+
+        scroll_screen(0, SCREEN_SCROLL_Y * Font::HEIGHT);
+        off_y -= SCREEN_SCROLL_Y; //idk
+    }
+
     void ConHost::draw_string(const char *str, COL colour) {
         while (*str != 0) {
             if (*str == '\n') {
-                raw_y++;
+                ++off_y;
                 raw_x = 0;
                 off_x = 0;
                 ++str;
+                check_scroll_scr();
                 continue;
             }
 
             if (*str != ' ') 
-                draw_char(*str, (off_x + raw_x) * Font::WIDTH, (off_y + raw_y) * Font::HEIGHT, colour);
+                draw_char(*str, (off_x + raw_x) * Font::WIDTH, off_y * Font::HEIGHT, colour);
             raw_x++;
             ++str;
         }
@@ -94,6 +123,7 @@ namespace TTY {
     void ConHost::send_input(char c) {
         if (c == '\n') {
             ++off_y;
+            check_scroll_scr();
             off_x = 0;
             raw_x = 0;
             ProcessCommand(cur_input.c_str());
@@ -106,14 +136,14 @@ namespace TTY {
             if (off_x == 0) return;
             --off_x;
             cur_input[off_x] = 0;
-            draw_char(' ', (off_x + raw_x) * Font::WIDTH, (off_y + raw_y) * Font::HEIGHT, COL::BLACK);
+            draw_char(' ', (off_x + raw_x) * Font::WIDTH, off_y * Font::HEIGHT, COL::BLACK);
             flip_buffer();
             return;
         }
 
         cur_input[off_x] = c;
         if (c != ' ')
-            draw_char(c, (off_x + raw_x) * Font::WIDTH, (off_y + raw_y) * Font::HEIGHT, COL::WHITE);
+            draw_char(c, (off_x + raw_x) * Font::WIDTH, off_y * Font::HEIGHT, COL::WHITE);
         ++off_x;
         flip_buffer();
     }
@@ -124,9 +154,8 @@ namespace TTY {
         off_x = 0;
         off_y = 0;
         raw_x = 0;
-        raw_y = 0;
     }
-    
+
     void ConHost::worker() {
         asm volatile("cli");
         BOOT::disable();
@@ -157,7 +186,7 @@ namespace TTY {
             // contask->block(Scheduler::BlockReasons::AWAIT_KEYBOARD_INPUT);
 
             // Why manually poll? Idk. QEMU refuses to call the IDT responsible for the handler, however...
-            // The interrupt works flawlessly on real hardware. So QEMU quirk ig.
+            // The interrupts work flawlessly on real hardware. So QEMU quirk ig.
             uint8_t ps2_status = inb(0x64); 
             if (ps2_status & 0x01) {
                 PS2::Keyboard::HandleInterrupt();

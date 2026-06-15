@@ -19,6 +19,7 @@ namespace TTY::Commands {
         lib::string cd_processor(int argc, char **argv);
         lib::string touch_processor(int argc, char **argv);
         lib::string cat_processor(int argc, char **argv);
+        lib::string clear_processor(int argc, char **argv);
     }
     
     lib::string evaluate_cmd(const char *cmd);

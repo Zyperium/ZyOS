@@ -6,6 +6,7 @@
 #include <Library/debug.hpp>
 #include <Library/regs.h>
 #include <VFS/FAT32/FAT32.hpp>
+#include <TTY/TTY.hpp>
 #include <limine.h>
 
 static constinit volatile limine_executable_file_request exec_file_request = {
@@ -73,6 +74,10 @@ namespace HAL::DISK {
         }
 
         Debug::krnl_print("DISK", Debug::LOG_INFO, "Succesfully initialized FS");
+        
+        if (TTY::conhosts[TTY::active_host]->_ltrdrive == '?') {
+            TTY::conhosts[TTY::active_host]->early_drive_swap(drv_ltr);
+        }
 
         rootnode = fs->get_root_node();
 

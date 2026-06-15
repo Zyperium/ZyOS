@@ -32,7 +32,8 @@ namespace TTY::Commands {
         {_hash("swapd"), PROC::swapd_processor},
         {_hash("cd"), PROC::cd_processor},
         {_hash("touch"), PROC::touch_processor},
-        {_hash("cat"), PROC::cat_processor}
+        {_hash("cat"), PROC::cat_processor},
+        {_hash("clear"), PROC::clear_processor}
     };
 
     constexpr size_t vfs_commands_length = sizeof(vfs_commands) / sizeof(vfs_commands[0]);
@@ -328,39 +329,60 @@ namespace TTY::Commands {
             if (argc < 2) {
                 return "Warning: Not enough arguments!\n";
             }
-
+        
             ConHost *cur_host = conhosts[active_host];
-
+        
             VFS::VNode *root_n = HAL::DISK::GetRootOfDrive(cur_host->_ltrdrive);
-
+        
             if (argv[1][0] == '/') {
                 return "";
             }
-
+        
             lib::string t_path = cur_host->current_wd.c_str();
+            if (t_path.length() > 1)
+                t_path += "/";
             t_path += argv[1];
-
+        
             lib::sptr<VFS::VNode> node = root_n->resolve_path_to_vnode(t_path);
-
+        
             if (!node) {
                 return "Warning: No such file or directory!\n";
             }
-
+        
             if (node->get_type() == VFS::FileType::Directory) {
                 return "Warning: is directory\n";
             }
             else if (node->get_size() == 0) {
                 return "";
             }
-
+        
             char *buffer = new char[node->get_size() + 1];
             uint64_t bytes_read = node->read(0, buffer, node->get_size());
             buffer[bytes_read] = '\0';
-
-            lib::string file_contents(buffer);
-            file_contents += "\n";
+        
+            lib::string current_line = "";
+            for (uint64_t i = 0; i < bytes_read; ++i) {
+                if (buffer[i] == '\n') {
+                    current_line += "\n"; 
+                    cur_host->draw_string(current_line.c_str(), HAL::SCREEN::COL::WHITE);
+                    current_line = "";
+                } else {
+                    current_line += buffer[i];
+                }
+            }
+        
+            if (current_line.length() > 0) {
+                current_line += "\n";
+                cur_host->draw_string(current_line.c_str(), HAL::SCREEN::COL::WHITE);
+            }
+        
             delete[] buffer;
-            return file_contents;
+            return "";
+        }
+
+        lib::string clear_processor(int, char **) {
+            conhosts[active_host]->reset_view();
+            return "";
         }
     }
 }

@@ -1,7 +1,4 @@
 #pragma once
-
-#include <stdarg.h>
-#include <stdint.h>
 #include <stddef.h>
 
 namespace Debug {
@@ -10,13 +7,11 @@ namespace Debug {
         LOG_WARN,
         LOG_ERROR
     };
-    
+
     void krnl_print(const char* class_name,
                 LogLevel level,
                 const char* fmt, ...);
 
     int snprintf(char* buffer, size_t n, 
                 const char* fmt, ...);
-
-    #define DISABLE_DEBUG_LOGS 0
 }

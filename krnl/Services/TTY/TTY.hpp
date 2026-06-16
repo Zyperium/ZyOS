@@ -26,7 +26,7 @@ namespace TTY {
     protected:
         void evaluate_command();
         size_t cohost_id = -1;
-        lib::string cur_input;
+        char *cur_input;
     };
 
     extern ConHost *conhosts[];
@@ -34,6 +34,7 @@ namespace TTY {
     extern size_t total_hosts;
     extern size_t active_host;
     constexpr uint8_t MAX_VIRTUAL_CONSHOSTS = 3;
+    constexpr uint16_t MAX_CONSOLE_INPUT = 128;
     constexpr uint32_t SCREEN_PADDING = 30;
     constexpr uint32_t SCREEN_SCROLL_Y = 8;
 

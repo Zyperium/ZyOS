@@ -17,6 +17,7 @@ static constinit volatile limine_executable_file_request exec_file_request = {
 
 namespace HAL::DISK {
     Disk *disks[MAX_DISKS]{nullptr};
+    volatile char root_disk_id{};
 
     bool a_kmem_lock = false;
     uint64_t cur_rflags = 0;
@@ -27,6 +28,7 @@ namespace HAL::DISK {
             ++reentrancy;
             return;
         }
+        
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         asm volatile("cli");

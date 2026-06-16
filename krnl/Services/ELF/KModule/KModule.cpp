@@ -1,3 +1,4 @@
+#include "Scheduler/Scheduler.hpp"
 #include <Library/string.h>
 #include <Library/debug.hpp>
 #include <Library/krnlptr.hpp>
@@ -22,11 +23,22 @@ namespace ELF::KModule {
 
     constexpr const char *FIXED_SYMBOL_PATH = "A:/SYSTEM/KHASH.MAP";
     void initialize() {
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Initialize");
         lib::fullpath parsed_path = lib::parse_path(FIXED_SYMBOL_PATH);
+
+        while (!DISK::root_disk_id) {
+            Scheduler::Yield();
+            asm volatile("pause");
+        }
 
         auto *root_disk = DISK::GetDisk(parsed_path.drv);
         lib::sptr<VFS::VNode> kmap_node = root_disk->rootnode->resolve_path_to_vnode(parsed_path.path);
-        // WIP
+        kernel_symbols = new HashTableHeader;
+        kmap_node->read(0, kernel_symbols, sizeof(uint64_t));
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Reading %i symbols", kernel_symbols->symbol_count);
+
+        kernel_symbols->elements = new HashedElement[kernel_symbols->symbol_count];
+        kmap_node->read(sizeof(uint64_t), kernel_symbols->elements, kernel_symbols->symbol_count * sizeof(HashedElement));
         for (;;);
     }
 

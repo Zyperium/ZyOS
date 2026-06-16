@@ -1,5 +1,7 @@
+#include "Scheduler/Scheduler.hpp"
 #include <Services/TTY/Commands.hpp>
 #include <Services/TTY/TTY.hpp>
+#include <Services/ELF/KModule/KModule.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/string.h>
@@ -22,7 +24,8 @@ namespace TTY::Commands {
         {_hash("cd"), PROC::cd_processor},
         {_hash("touch"), PROC::touch_processor},
         {_hash("cat"), PROC::cat_processor},
-        {_hash("clear"), PROC::clear_processor}
+        {_hash("clear"), PROC::clear_processor},
+        {_hash("sysload"), PROC::driver_processor}
     };
 
     constexpr size_t vfs_commands_length = sizeof(vfs_commands) / sizeof(vfs_commands[0]);
@@ -372,6 +375,17 @@ namespace TTY::Commands {
         lib::string clear_processor(int, char **) {
             conhosts[active_host]->reset_view();
             return "";
+        }
+
+        lib::string driver_processor(int argc, char **argv) {
+            if (argc < 2) {
+                return "Warning: You must pass a path to the driver!\n";
+            }
+        
+            void *entry_point = ELF::KModule::load_module(argv[1]);
+
+            new Scheduler::Task((Scheduler::Task::EntryPoint)entry_point, "Kernel Module", true);
+            return "Module Loaded!\n";
         }
     }
 }

@@ -37,6 +37,8 @@ namespace HAL::DISK {
     void InitDiskData();
     Disk *GetDisk(char ch);
 
+    extern volatile char root_disk_id;
+
     constexpr uint32_t SIZE_OF_UUID = 16;
 
     struct UUID {

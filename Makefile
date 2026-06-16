@@ -39,8 +39,8 @@ define DEPLOY_CONTENT
 	@if ! mdir -i $(1)@@1M ::/SYSTEM/DRIVERS >/dev/null 2>&1; then mmd -i $(1)@@1M ::/SYSTEM/DRIVERS; fi
 	@if ! mdir -i $(1)@@1M ::/USER >/dev/null 2>&1; then mmd -i $(1)@@1M ::/USER; fi
 
-	@if ls drivers/build/*.ko 1> /dev/null 2>&1; then \
-		mcopy -i $(1)@@1M drivers/build/*.ko ::/SYSTEM/DRIVERS/; \
+	@if ls drivers/build/*.KMO 1> /dev/null 2>&1; then \
+		mcopy -i $(1)@@1M drivers/build/*.KMO ::/SYSTEM/DRIVERS/; \
 	fi
 	@if ls userspace/bin/*.elf 1> /dev/null 2>&1; then \
 		mcopy -i $(1)@@1M userspace/bin/*.elf ::/USER/; \

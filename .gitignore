@@ -6,3 +6,5 @@ compile_commands.json
 limine/
 krnl/build/
 bochsout.txt
+*.KMO
+*.o

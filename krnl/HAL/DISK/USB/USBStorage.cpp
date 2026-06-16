@@ -107,6 +107,8 @@ namespace HAL::DISK::USB {
 
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "USB Storage finished initializing FS!");
 
+        HAL::DISK::root_disk_id = ndisk->drv_ltr;
+
         return;
     }
     

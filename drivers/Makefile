@@ -1,5 +1,12 @@
 # ZyOS driver makefile
 DRIVER_DIRS := $(sort $(dir $(wildcard */Makefile)))
+GLOBAL_INCLUDE_DIR := $(abspath ./ZyOS)
+
+CFLAGS   += -I$(GLOBAL_INCLUDE_DIR)
+CXXFLAGS += -I$(GLOBAL_INCLUDE_DIR)
+
+export CFLAGS
+export CXXFLAGS
 
 .PHONY: all clean $(DRIVER_DIRS)
 

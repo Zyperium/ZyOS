@@ -135,9 +135,8 @@ namespace TTY {
             check_scroll_scr();
             off_x = 0;
             raw_x = 0;
-            ProcessCommand(cur_input.c_str());
-            cur_input.clear();
-            cur_input.empty();
+            ProcessCommand(cur_input);
+            memset(cur_input, 0, MAX_CONSOLE_INPUT);
             return;
         }
 
@@ -175,6 +174,8 @@ namespace TTY {
         _ltrdrive = '?';
         print_cwd();
         flip_buffer();
+
+        cur_input = new char[MAX_CONSOLE_INPUT];
 
         screen_dim dim = get_dim();
         scr_height = dim.height;

@@ -10,6 +10,7 @@
 #include <HAL/IDT/IOAPIC/IOAPIC.hpp>
 
 #include <Services/TTY/TTY.hpp>
+#include <Services/ELF/KModule/KModule.hpp>
 #include <Scheduler/Scheduler.hpp>
 
 #include <Library/debug.hpp>
@@ -61,6 +62,8 @@ extern "C" void krnlmain() {
     TTY::ConHost *default_host = new TTY::ConHost;
     default_host->contask = new Scheduler::Task((Scheduler::Task::EntryPoint)TTY_Task, "TTY0", true, default_host);
     default_host->contask->core_pinned = true;
+
+    new Scheduler::Task((Scheduler::Task::EntryPoint)ELF::KModule::initialize, "KMODULE", true);
 
     uint64_t rflags;
 

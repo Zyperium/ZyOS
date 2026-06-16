@@ -1,5 +1,5 @@
-#include <TTY/Commands.hpp>
-#include <TTY/TTY.hpp>
+#include <Services/TTY/Commands.hpp>
+#include <Services/TTY/TTY.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/string.h>

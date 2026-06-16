@@ -9,7 +9,7 @@
 #include <HAL/PS2/PS2KB.hpp>
 #include <HAL/IDT/IOAPIC/IOAPIC.hpp>
 
-#include <TTY/TTY.hpp>
+#include <Services/TTY/TTY.hpp>
 #include <Scheduler/Scheduler.hpp>
 
 #include <Library/debug.hpp>

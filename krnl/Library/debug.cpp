@@ -5,7 +5,7 @@
 #include <Library/io.hpp>
 #include <Library/regs.h>
 #include <HAL/CORE/Core.hpp>
-#include <TTY/BootTTY.hpp>
+#include <Services/TTY/BootTTY.hpp>
 
 namespace Debug {
     constexpr uint8_t nice_col[] = {

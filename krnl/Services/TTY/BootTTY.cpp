@@ -1,4 +1,4 @@
-#include <TTY/BootTTY.hpp>
+#include <Services/TTY/BootTTY.hpp>
 // Fine, because it doesn't rely on anything needing initialization
 #include <HAL/SCREEN/Font.hpp>
 #include <Library/string.h>

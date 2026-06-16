@@ -2,9 +2,9 @@
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <Library/io.hpp>
-#include <TTY/TTY.hpp>
-#include <TTY/BootTTY.hpp>
-#include <TTY/Commands.hpp>
+#include <Services/TTY/TTY.hpp>
+#include <Services/TTY/BootTTY.hpp>
+#include <Services/TTY/Commands.hpp>
 
 #include <HAL/SCREEN/Screen.hpp>
 #include <HAL/SCREEN/Font.hpp>
@@ -23,6 +23,14 @@ namespace TTY {
     size_t raw_x = 0;
     size_t scr_height = 0;
     size_t scr_width = 0;
+
+    inline bool is_typeable_char(char ch) {
+        bool fact = ch >= 33 && ch <= 126;
+        fact = fact || ch == ' ';
+        fact = fact || ch == '\n';
+        fact = fact || ch == '\b';
+        return fact;
+    }
 
     int kernel_atoi(const char* str) {
         if (!str || *str == '\0') {
@@ -97,7 +105,7 @@ namespace TTY {
         }
 
         scroll_screen(0, SCREEN_SCROLL_Y * Font::HEIGHT);
-        off_y -= SCREEN_SCROLL_Y; //idk
+        off_y -= SCREEN_SCROLL_Y;
     }
 
     void ConHost::draw_string(const char *str, COL colour) {
@@ -121,6 +129,7 @@ namespace TTY {
     }
 
     void ConHost::send_input(char c) {
+        if (!is_typeable_char(c)) return;
         if (c == '\n') {
             ++off_y;
             check_scroll_scr();

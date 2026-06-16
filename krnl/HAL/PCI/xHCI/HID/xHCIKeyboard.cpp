@@ -8,7 +8,7 @@
 #include <Library/string.h>
 #include <Library/regs.h>
 
-#include <TTY/TTY.hpp>
+#include <Services/TTY/TTY.hpp>
 
 using namespace HAL::MEM;
 

@@ -11,7 +11,7 @@
 #include <Library/debug.hpp>
 #include <Library/string.h>
 
-#include <TTY/BootTTY.hpp>
+#include <Services/TTY/BootTTY.hpp>
 
 #include <limine.h>
 

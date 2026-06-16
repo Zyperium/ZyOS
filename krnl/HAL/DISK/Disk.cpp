@@ -6,7 +6,7 @@
 #include <Library/debug.hpp>
 #include <Library/regs.h>
 #include <VFS/FAT32/FAT32.hpp>
-#include <TTY/TTY.hpp>
+#include <Services/TTY/TTY.hpp>
 #include <limine.h>
 
 static constinit volatile limine_executable_file_request exec_file_request = {

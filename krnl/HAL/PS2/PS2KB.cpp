@@ -1,11 +1,11 @@
 #include <HAL/PS2/PS2KB.hpp>
 #include <Library/io.hpp>
 #include <Library/debug.hpp>
-#include <TTY/TTY.hpp>
+#include <Services/TTY/TTY.hpp>
 /**
 This is a really fast PS2 driver to test the xHCI driver in more depth.
 Please, please ignore the magic numbers. I'll either remove this driver later,
-or fix the magic. Realistically, who is using PS2 in 2026?
+or fix the magic. Realistically, who is using PS2 in 2026? (Laptop keyboards, funnily enough)
 */
 
 extern "C" void KBHI_Wrapper() {

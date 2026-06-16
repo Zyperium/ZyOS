@@ -205,7 +205,6 @@ namespace HAL::DISK::USB {
 
             state = STATE_WAIT_CBW;
             PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, bulk_out_ep, cbw_phys, CBW_SIZE);
-            // controller->queue_bulk_transfer(slot_id, bulk_out_ep, cbw_phys, CBW_SIZE);
 
             while (io_pending) {
                 Scheduler::Yield();

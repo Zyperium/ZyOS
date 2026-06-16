@@ -53,6 +53,35 @@ namespace lib {
         }
     }
 
+    string string::substr(size_t pos, size_t count) const {
+        size_t len = length();
+
+        if (pos >= len) {
+            return string();
+        }
+
+        if (count == static_cast<size_t>(-1) || pos + count > len) {
+            count = len - pos;
+        }
+
+        const char* source = c_str() + pos;
+
+        if (count <= SSO_CAPACITY) {
+            char tmp[SSO_CAPACITY + 1];
+            memcpy(tmp, source, count);
+            tmp[count] = '\0';
+            return string(tmp);
+        } else {
+            char* tmp = new char[count + 1];
+            memcpy(tmp, source, count);
+            tmp[count] = '\0';
+            
+            string result(tmp);
+            delete[] tmp;
+            return result;
+        }
+    }
+
     string::string(string&& other) noexcept {
         if (other.is_local()) {
             memcpy(local.data, other.local.data, SSO_CAPACITY + 1);

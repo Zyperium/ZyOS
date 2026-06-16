@@ -75,4 +75,10 @@ namespace ELF {
         uint64_t info;
         int64_t  addend;
     } __attribute__((packed));
+
+    constexpr uint64_t R_X86_64_64 = 1;
+    constexpr uint64_t R_X86_64_PC32 = 2;
+    constexpr uint64_t R_X86_64_PLT32 = 4;
+    constexpr uint64_t STB_GLOBAL = 1;
+    constexpr uint64_t ELF_RELOCATABLE = 1;
 }

@@ -15,17 +15,6 @@
 #include <stddef.h>
 
 namespace TTY::Commands {
-    constexpr uint32_t _hash(const char* str) {
-        uint32_t hash = FNV_OFFSET;
-        while (*str) {
-            hash ^= static_cast<uint32_t>(*str);
-            hash *= FNV_PRIME;
-            str++;
-        }
-        return hash;
-    }
-
-
     constexpr uCMD vfs_commands[] {
         { _hash("echo"), PROC::echo_processor},
         { _hash("ls"), PROC::ls_processor},

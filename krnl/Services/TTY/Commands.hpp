@@ -8,9 +8,6 @@ namespace TTY::Commands {
         lib::string (*invoke)(int, char **);
     };
 
-    constexpr uint32_t FNV_OFFSET = 0x811c9dc5;
-    constexpr uint32_t FNV_PRIME = 0x01000193;
-
 
     namespace PROC {
         lib::string echo_processor(int argc, char **argv);

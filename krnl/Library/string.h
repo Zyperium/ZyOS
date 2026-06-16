@@ -2,7 +2,24 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+
 constexpr uint64_t PAGE_SIZE = 4096;
+
+constexpr uint32_t FNV_OFFSET = 0x811c9dc5;
+constexpr uint32_t FNV_PRIME = 0x01000193;
+
+constexpr uint32_t _hash(const char* str) {
+    uint32_t hash = FNV_OFFSET;
+    while (*str) {
+        hash ^= static_cast<uint32_t>(*str);
+        hash *= FNV_PRIME;
+        str++;
+    }
+    return hash;
+}
+
+#endif
 
 inline void memset32(void* ptr, uint32_t value, size_t count) {
     asm volatile (

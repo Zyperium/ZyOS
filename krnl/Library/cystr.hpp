@@ -43,6 +43,7 @@ namespace lib {
 
         size_t length() const;
         bool empty() const;
+        string substr(size_t pos, size_t count = -1) const;
         void clear();
 
         bool operator==(const char* other) const;

@@ -49,6 +49,8 @@ define DEPLOY_CONTENT
 	@nm -n krnl/build/$(KERNEL_NAME) > krnl/build/krnl.map 2>/dev/null || true
 	@if [ -f krnl/build/krnl.map ]; then mcopy -i $(1)@@1M krnl/build/krnl.map ::/SYSTEM/KRNL.MAP; fi
 	mcopy -i $(1)@@1M krnl/build/$(KERNEL_NAME) ::/SYSTEM/$(KERNEL_NAME)
+	@python3 toolchain/gen_sym_map.py krnl/build/krnl.map || true
+	@if [ -f krnl/build/khash.map ]; then mcopy -i $(1)@@1M krnl/build/khash.map ::/SYSTEM/KHASH.MAP; fi
 endef
 
 $(DISK_BIOS):

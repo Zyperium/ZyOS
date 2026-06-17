@@ -56,6 +56,38 @@ namespace TTY {
         return static_cast<int>(result);
     }
 
+    void possess_host(int tty_id) {
+        if (!conhosts[tty_id])
+            return;
+
+        conhosts[tty_id]->possessed = true;
+    }
+
+    void hook_callback(int tty_id, Callback cb, void (*func_back)(uint64_t)) {
+        switch (cb) {
+        case Callback::KEYBOARD_INPUT:
+            conhosts[tty_id]->keyboard_callback = func_back;
+            break;
+        default:
+            Debug::krnl_print("TTY", Debug::LOG_WARN, "Unknown callback?!");
+        }
+    }
+
+    void proc_screen_ctl(size_t tty_id, ScreenCTL control, uint64_t buf) {
+        if (tty_id != active_host) return;
+        switch(control) {
+        case ScreenCTL::SET_COL:
+            HAL::SCREEN::fill_screen((COL)buf);
+            break;
+        case ScreenCTL::PUT_PIXEL:
+            Debug::krnl_print("TTY", Debug::LOG_WARN, "Unimplemented!");
+            break;
+        case ScreenCTL::SWAP_BUFFER:
+            HAL::SCREEN::flip_buffer();
+            break;
+        }
+    }
+
     void ConHost::early_drive_swap(char c) {
         reset_view();
         draw_string("Welcome", COL::GREEN);
@@ -129,6 +161,12 @@ namespace TTY {
     }
 
     void ConHost::send_input(char c) {
+        if (possessed) {
+            if (keyboard_callback)
+                keyboard_callback(c);
+            return;
+        }
+
         if (!is_typeable_char(c)) return;
         if (c == '\n') {
             ++off_y;

@@ -23,11 +23,36 @@ namespace TTY {
 
         volatile Scheduler::Task *contask{};
 
+        void (*keyboard_callback)(uint64_t) = nullptr;
+
+        bool possessed = false;
     protected:
         void evaluate_command();
         size_t cohost_id = -1;
         char *cur_input;
     };
+
+    enum class Callback {
+        KEYBOARD_INPUT,
+        MOUSE_INPUT
+    };
+
+    enum class ScreenCTL {
+        SET_COL,
+        PUT_PIXEL,
+        SWAP_BUFFER
+    };
+
+    namespace ScreenStructs {
+        struct PIXEL_DATA {
+            int x, y;
+            uint32_t col;
+        };
+    }
+
+    void possess_host(int tty_id);
+    void hook_callback(int tty_id, Callback cb, void (*func_back)(uint64_t));
+    void proc_screen_ctl(size_t tty_id, ScreenCTL control, uint64_t buf);
 
     extern ConHost *conhosts[];
 

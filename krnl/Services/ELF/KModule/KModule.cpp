@@ -184,7 +184,7 @@ namespace ELF::KModule {
         delete[] section_addrs;
 
         if (!entry_address) {
-            Debug::krnl_print("KMOD", Debug::LOG_WARN, "Module loaded but 'init_module' missing.");
+            Debug::krnl_print("KMOD", Debug::LOG_INFO, "Library module loaded!");
             return nullptr;
         }
 
@@ -193,7 +193,31 @@ namespace ELF::KModule {
     }
 
     uint64_t resolve_symbol(const char *symbol) {
-        (void)symbol;
+        if (!kernel_symbols) {
+            Debug::krnl_print("KMOD", Debug::LOG_WARN, "Kernel symbols aren't ready?");
+            return -1;
+        }
+
+        uint32_t target_hash = _hash(symbol);
+        int64_t low = 0;
+        int64_t high = static_cast<int64_t>(kernel_symbols->symbol_count) - 1;
+
+        while (low <= high) {
+            int64_t mid = low + (high - low) / 2;
+            uint32_t mid_hash = kernel_symbols->elements[mid].hash;
+
+            if (mid_hash == target_hash) {
+                Debug::krnl_print("KMOD", Debug::LOG_INFO, "Resolved symbol %s", symbol);
+                return kernel_symbols->elements[mid].address;
+            }
+            if (mid_hash < target_hash) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+
+        Debug::krnl_print("KMOD", Debug::LOG_WARN, "Unable to resolve symbol %s", symbol);
         return 0;
     }
 

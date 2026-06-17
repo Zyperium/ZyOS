@@ -8,8 +8,8 @@
 #include <Library/ZyOS.hpp>
 
 namespace HAL::MEM::KMEM {
-    HeapSegmentHeader* first_segment;
-    uint64_t* pml4_root;
+    HeapSegmentHeader *first_segment;
+    uint64_t *pml4_root;
     uint64_t current_heap_end;
 
     bool a_kmem_lock = false;
@@ -36,19 +36,19 @@ namespace HAL::MEM::KMEM {
         return;
     }
 
-    void initialize(uint64_t* kernel_pml4, uint64_t heap_start_addr, size_t initial_pages) {
+    void initialize(uint64_t *kernel_pml4, uint64_t heap_start_addr, size_t initial_pages) {
         Debug::krnl_print("KMEM", Debug::LOG_INFO, "Initialize");
         aquire_lock();
 
         pml4_root = kernel_pml4;
 
-        // uint64_t kernel_limit = heap_start_addr + (128ULL * 1024 * 1024 * 1024);
-        // for (uint64_t addr = heap_start_addr; addr < kernel_limit; addr += (2 * 1024 * 1024)) {
+        // uint64_t kernel_limit = heap_start_addr + (128ULL  *1024  *1024  *1024);
+        // for (uint64_t addr = heap_start_addr; addr < kernel_limit; addr += (2  *1024  *1024)) {
         //     VMM::map_page(pml4_root, addr, 0x0, 0);
         // }
 
         current_heap_end = heap_start_addr;
-        expand_heap(initial_pages * PAGE_SIZE);
+        expand_heap(initial_pages  *PAGE_SIZE);
 
         release_lock();
     }
@@ -58,17 +58,17 @@ namespace HAL::MEM::KMEM {
         length = align_up(length, PAGE_SIZE);
 
         size_t pages_needed = length / PAGE_SIZE;
-        HeapSegmentHeader* start_seg = (HeapSegmentHeader*)current_heap_end;
+        HeapSegmentHeader *start_seg = (HeapSegmentHeader*)current_heap_end;
 
         for (size_t i = 0; i < pages_needed; i++) {
-            void* phys = PMM::alloc_page();
+            void *phys = PMM::alloc_page();
             VMM::map_page(pml4_root, current_heap_end, (uint64_t)phys, VMM::PTE_PRESENT | VMM::PTE_WRITABLE);
             current_heap_end += PAGE_SIZE;
         }
 
         size_t actual_allocated_bytes = current_heap_end - old_heap_end;
 
-        HeapSegmentHeader* new_segment = start_seg;
+        HeapSegmentHeader *new_segment = start_seg;
         new_segment->length = actual_allocated_bytes - sizeof(HeapSegmentHeader);
         new_segment->next = nullptr;
         new_segment->last = nullptr;
@@ -78,7 +78,7 @@ namespace HAL::MEM::KMEM {
         if (first_segment == nullptr) {
             first_segment = new_segment;
         } else {
-            HeapSegmentHeader* current = first_segment;
+            HeapSegmentHeader *current = first_segment;
             while (current->next != nullptr) {
                 current = current->next;
             }
@@ -87,23 +87,29 @@ namespace HAL::MEM::KMEM {
         }
     }
 
-    void expand_heap(size_t length, HeapSegmentHeader* last_known_segment) {
+    size_t get_size(void *ptr) {
+        HeapSegmentHeader *header = (HeapSegmentHeader *)((uint64_t)ptr - sizeof(HeapSegmentHeader));
+
+        return header->length;
+    }
+
+    void expand_heap(size_t length, HeapSegmentHeader *last_known_segment) {
         aquire_lock();
         uint64_t old_heap_end = current_heap_end;
         length = align_up(length, PAGE_SIZE);
 
         size_t pages_needed = length / PAGE_SIZE;
-        HeapSegmentHeader* start_seg = (HeapSegmentHeader*)current_heap_end;
+        HeapSegmentHeader *start_seg = (HeapSegmentHeader *)current_heap_end;
 
         for (size_t i = 0; i < pages_needed; i++) {
-            void* phys = PMM::alloc_page();
+            void *phys = PMM::alloc_page();
             VMM::map_page(pml4_root, current_heap_end, (uint64_t)phys, 3);
             current_heap_end += PAGE_SIZE;
         }
 
         size_t actual_allocated_bytes = current_heap_end - old_heap_end;
 
-        HeapSegmentHeader* new_segment = start_seg;
+        HeapSegmentHeader *new_segment = start_seg;
         new_segment->length = actual_allocated_bytes - sizeof(HeapSegmentHeader);
         new_segment->next = nullptr;
         new_segment->last = nullptr;
@@ -113,7 +119,7 @@ namespace HAL::MEM::KMEM {
         if (first_segment == nullptr) {
             first_segment = new_segment;
         } else {
-            HeapSegmentHeader* current = last_known_segment;
+            HeapSegmentHeader *current = last_known_segment;
             while (current->next != nullptr) {
                 current = current->next;
             }
@@ -170,7 +176,7 @@ namespace HAL::MEM::KMEM {
         return nullptr;
     }
 
-    void combine_free_segments(HeapSegmentHeader* a, HeapSegmentHeader* b) {
+    void combine_free_segments(HeapSegmentHeader *a, HeapSegmentHeader *b) {
         if (a == nullptr || b == nullptr) return;
         if (!a->free || !b->free) return;
         if (a->next != b) return;
@@ -187,7 +193,7 @@ namespace HAL::MEM::KMEM {
         if (!addr) return;
         Debug::krnl_print("KMEM", Debug::LOG_INFO, "Freeing address %x", addr);
 
-        HeapSegmentHeader* header = (HeapSegmentHeader*)((uint64_t)addr - sizeof(HeapSegmentHeader));
+        HeapSegmentHeader *header = (HeapSegmentHeader*)((uint64_t)addr - sizeof(HeapSegmentHeader));
         memset(addr, MEM_POISON_VALUE, header->length);
 
         if (header->magic != SEGMENT_MAGIC) {
@@ -208,20 +214,20 @@ namespace HAL::MEM::KMEM {
         return;
     }
 
-    void* calloc(size_t num, size_t size) {
-        void* ptr = malloc(num * size);
-        if (ptr) memset(ptr, 0, num * size);
+    void *calloc(size_t num, size_t size) {
+        void *ptr = malloc(num  *size);
+        if (ptr) memset(ptr, 0, num  *size);
         return ptr;
     }
 
-    void* realloc(void* ptr, size_t new_size) {
+    void *realloc(void *ptr, size_t new_size) {
         if (!ptr) return malloc(new_size);
         if (new_size == 0) { free(ptr); return nullptr; }
 
-        HeapSegmentHeader* header = (HeapSegmentHeader*)((uint64_t)ptr - sizeof(HeapSegmentHeader));
+        HeapSegmentHeader *header = (HeapSegmentHeader*)((uint64_t)ptr - sizeof(HeapSegmentHeader));
         if (header->length >= new_size) return ptr;
 
-        void* new_ptr = malloc(new_size);
+        void *new_ptr = malloc(new_size);
         if (new_ptr) {
             memcpy(new_ptr, ptr, header->length);
             free(ptr);
@@ -234,8 +240,8 @@ namespace HAL::MEM::KMEM {
 void *operator new(size_t size) { return HAL::MEM::KMEM::malloc(size); }
 void *operator new(size_t size, std::align_val_t align) { (void)align; return HAL::MEM::KMEM::malloc(size); }
 void *operator new[](size_t size) { return HAL::MEM::KMEM::malloc(size); }
-void operator delete(void* p, uint64_t some_val, std::align_val_t align) { (void)align; (void)some_val; HAL::MEM::KMEM::free(p); }
-void operator delete(void* p) { HAL::MEM::KMEM::free(p); }
-void operator delete[](void* p) { HAL::MEM::KMEM::free(p); }
-void operator delete(void* p, size_t size) { (void)size; HAL::MEM::KMEM::free(p); }
-void operator delete[](void* p, size_t size) { (void)size; HAL::MEM::KMEM::free(p); }
+void operator delete(void *p, uint64_t some_val, std::align_val_t align) { (void)align; (void)some_val; HAL::MEM::KMEM::free(p); }
+void operator delete(void *p) { HAL::MEM::KMEM::free(p); }
+void operator delete[](void *p) { HAL::MEM::KMEM::free(p); }
+void operator delete(void *p, size_t size) { (void)size; HAL::MEM::KMEM::free(p); }
+void operator delete[](void *p, size_t size) { (void)size; HAL::MEM::KMEM::free(p); }

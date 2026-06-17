@@ -1,18 +1,24 @@
 #include <LOG.hpp>
 #include <HAL.hpp>
 #include <DRIVER.hpp>
+#include <TTY.hpp>
 #include <stdint.h>
 
-static int lumina_entry() {
-    uint64_t *ptr = (uint64_t *)HAL::MEM::KMEM::malloc(sizeof(uint64_t));
-    *ptr = 30;
+namespace Lumina {
+    constexpr uint64_t TTY_POACH = 0;
+    void input_callback(uint64_t pass) {
+        (void)pass;
+        // this should actually do something
+    }
 
-    Debug::krnl_print("LUM", Debug::LOG_INFO, "Module init! Malloc'd %x with value %i", ptr, *ptr);
+    int main() {
+        TTY::possess_host(TTY_POACH);
 
-    HAL::MEM::KMEM::free(ptr);
-
-    for (;;);
-    return 0;
+        TTY::hook_callback(TTY_POACH, TTY::Callback::KEYBOARD_INPUT, Lumina::input_callback);
+        
+        for (;;);
+        return 0;
+    }
 }
 
-module_init(lumina_entry)
+module_init(Lumina::main)

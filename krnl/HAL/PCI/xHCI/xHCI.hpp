@@ -33,7 +33,6 @@ namespace HAL::PCI {
         void queue_int_transfer(uint8_t slot_id, uint8_t endpoint_index, uint64_t buffer_phys, uint32_t buffer_size);
         void queue_bulk_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size);
         void conf_interface_endpoints(uint8_t slot_id, ParsedEndpoint* endpoints, int ep_count);
-        void process_deferred_start();
         static uint8_t GetPortSpeed(uint32_t portsc);
 
         xHCIDriver **attached_drivers;

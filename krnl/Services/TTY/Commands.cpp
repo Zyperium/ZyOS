@@ -384,7 +384,21 @@ namespace TTY::Commands {
         
             void *entry_point = ELF::KModule::load_module(argv[1]);
 
-            new Scheduler::Task((Scheduler::Task::EntryPoint)entry_point, "Kernel Module", true);
+            if (!entry_point) {
+                return "Bad module, or a library module!\n";
+            }
+
+            new Scheduler::Task([](void *entry) {
+                Debug::krnl_print("CMD", Debug::LOG_INFO, "Executing entry target at: %x", entry);
+                asm volatile(
+                    "call %0"
+                    :
+                    : "r"(entry)
+                    : "memory"
+                );
+                Debug::krnl_print("CMD", Debug::LOG_INFO, "Driver returned?");
+                for (;;);
+            }, "Kernel Module", true, entry_point);
             return "Module Loaded!\n";
         }
     }

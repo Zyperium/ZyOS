@@ -41,6 +41,7 @@ namespace HAL {
         namespace KMEM {
             void* malloc(size_t size);
             void free(void* address);
+            size_t get_size(void *ptr);
 
             void* calloc(size_t num, size_t size);
             void* realloc(void* ptr, size_t new_size);

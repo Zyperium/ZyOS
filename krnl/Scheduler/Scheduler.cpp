@@ -28,42 +28,28 @@ namespace Scheduler {
 
     bool a_schd_lock = false;
     uint64_t cur_rflags = 0;
-    uint64_t core_id_holder = -1;
-    int reentrancy = 0;
 
     void aquire_lock() {
-        if (HAL::CORE::get_thread_data()->current_task) {
-            if (core_id_holder == HAL::CORE::get_thread_data()->current_task->get_pid()) {
-                ++reentrancy;
-                return;
-            }
-        }
-
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         asm volatile("cli");
+
         while (__atomic_test_and_set(&a_schd_lock, __ATOMIC_ACQUIRE)) {
             asm volatile("pause");
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "STUCK!");
         }
 
-        cur_rflags = rflags;
-        if (HAL::CORE::get_thread_data()->current_task)
-            core_id_holder = HAL::CORE::get_thread_data()->current_task->get_pid();
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Aquired lock");
 
+        cur_rflags = rflags;
 
         return;
     }
 
     void release_lock() {
-        if (reentrancy > 0) {
-            --reentrancy;
-            return;
-        }
-        
         restore_rflags(cur_rflags);
         cur_rflags = 0;
-        core_id_holder = -1;
+
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Released lock");
 
         __atomic_clear(&a_schd_lock, __ATOMIC_RELEASE);
         return;
@@ -224,6 +210,14 @@ namespace Scheduler {
         krnl_stack_btm = reinterpret_cast<ZyOS::QWORD *>(btm_address);
         krnl_stack_top = reinterpret_cast<ZyOS::QWORD *>(top_address);
 
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "If everything goes quiet, the scheduler got lost in a lock!");
+        if (a_schd_lock) {
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Literally impossible! [for single core ig]");
+            a_schd_lock = false;
+        }
+        
+        aquire_lock();
+
         memset(krnl_stack_btm, 0, TASK_STACK_PAGES * PAGE_SIZE);
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Performed memset on kernel stack");
 
@@ -237,6 +231,8 @@ namespace Scheduler {
         for (auto i{0uz}; i < 15; ++i) *(--ktop) = 0; // zero out the 15 registers.
 
         rsp = reinterpret_cast<uint64_t>(ktop);
+
+        release_lock();
 
         constexpr uint8_t RDI_OFFSET_ASM = 5;
         uint64_t *RDI_REG = &ktop[RDI_OFFSET_ASM];
@@ -267,8 +263,6 @@ namespace Scheduler {
     }
 
     void Task::block(BlockReasons reason, uint64_t arg1) {
-        aquire_lock();
-        
         if (this == HAL::CORE::get_thread_data()->current_task) {
             asm volatile("sti");
         }
@@ -298,7 +292,6 @@ namespace Scheduler {
             n_block->next = n_block;
             n_block->prev = n_block;
             blocked_queue[(size_t)reason] = n_block;
-            release_lock();
             Yield();
             return;
         }
@@ -308,13 +301,11 @@ namespace Scheduler {
         r_block->prev = n_block;
         n_block->prev->next = n_block;
 
-        release_lock();
         Yield();
         return;
     }
 
     void Task::unblock(BlockReasons reason) {
-        aquire_lock();
         if (!blockmap[(size_t)reason]) {
 
             release_lock();
@@ -329,7 +320,6 @@ namespace Scheduler {
         while (found_self_block->t_ptr != this) {
             found_self_block = found_self_block->next;
             if (found_self_block == blocked_queue[(size_t)reason]) {
-                release_lock();
                 return;
             }
         }
@@ -358,7 +348,6 @@ namespace Scheduler {
             enqueue(DEFAULT_SCHD_QUEUE);
         }
 
-        release_lock();
         return;
     }
 
@@ -420,8 +409,8 @@ namespace Scheduler {
             task_queue[current_queue] = nullptr;
             next = nullptr;
             previous = nullptr;
-            release_lock();
             current_queue = -1;
+            release_lock();
             return;
         }
 

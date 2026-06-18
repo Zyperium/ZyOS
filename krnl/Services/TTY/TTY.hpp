@@ -1,5 +1,5 @@
 #pragma once
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 #include <HAL/SCREEN/Screen.hpp>
 #include <stdint.h>
 #include <stddef.h>

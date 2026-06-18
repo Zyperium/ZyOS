@@ -1,4 +1,4 @@
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <Library/io.hpp>
@@ -240,6 +240,7 @@ namespace TTY {
                 PS2::Keyboard::HandleInterrupt();
             }
             else {
+                Scheduler::Yield();
                 asm volatile("pause"); 
             }
         }

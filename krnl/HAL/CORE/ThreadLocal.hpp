@@ -1,5 +1,5 @@
 #pragma once
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 #include <stdint.h>
 #include <Library/ZyOS.hpp>
 

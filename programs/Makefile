@@ -1,9 +1,11 @@
 # ZyOS program makefile
 PROGRAM_DIRS := $(sort $(dir $(wildcard */Makefile)))
 GLOBAL_INCLUDE_DIR := $(abspath ./cstdlib)
+GLOBAL_LINK_DIR := $(abspath ./linker.ld)
 
 CFLAGS   += -I$(GLOBAL_INCLUDE_DIR)
 CXXFLAGS += -I$(GLOBAL_INCLUDE_DIR)
+LDFLAGS += -T $(GLOBAL_LINK_DIR)
 
 export CFLAGS
 export CXXFLAGS

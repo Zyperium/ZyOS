@@ -5,7 +5,7 @@
 #include <HAL/DISK/USB/USBStorage.hpp>
 #include <HAL/MEM/PMEM.hpp>
 #include <HAL/MEM/VMM.hpp>
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 #include <Library/regs.h>
 #include <Library/string.h>
 

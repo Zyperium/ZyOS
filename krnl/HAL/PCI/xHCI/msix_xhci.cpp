@@ -2,7 +2,7 @@
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/CORE/Core.hpp>
 #include <Library/regs.h>
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 namespace HAL::PCI {
     namespace MSIX::xHCI {
         using ::HAL::PCI::xHCI;

@@ -10,7 +10,7 @@
 #include <HAL/MEM/KMEM.hpp>
 #include <HAL/ACPI/ACPI.hpp>
 
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/regs.h>

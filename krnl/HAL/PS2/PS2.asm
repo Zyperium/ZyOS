@@ -1,4 +1,5 @@
 [BITS 64]
+default abs
 %define lapic_base_ptr _ZN3HAL4CORE14lapic_base_ptrE
 global PS2Keyboard
 extern KBHI_Wrapper
@@ -66,6 +67,6 @@ PS2Keyboard:
     test byte [rsp + 8], 3
     jz .done
     or qword [rsp + 32], 3
-.done
+.done:
 
     iretq

@@ -10,3 +10,4 @@ bochsout.txt
 *.KO
 *.o
 *.zyx
+*.elf

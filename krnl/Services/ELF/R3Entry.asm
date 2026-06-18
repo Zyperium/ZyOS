@@ -31,12 +31,13 @@ R3Entry:
     wrmsr
 
     ; Ring 3 IRETQ stack
-    push 0x23 ; R3 RPL
+    push 0x1B ; R3 RPL
     push r9  ; RSP
     push 0x202 ; Clean RFLAGS
-    push 0x1B ; R3 Code Segment
+    push 0x23 ; R3 Code Segment
     push rdi ; Entry point!
 
+    ; Clean general registers to prevent data leakage.
     xor eax, eax
     xor ebx, ebx
     xor ecx, ecx

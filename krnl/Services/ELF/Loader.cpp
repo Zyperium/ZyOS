@@ -55,7 +55,8 @@ namespace ELF {
             return nullptr;
         }
     
-        lib::sptr<VFS::VNode> target_node = root_node->resolve_path_to_vnode(path);
+        lib::sptr<VFS::VNode> target_node = root_node->resolve_path_to_vnode(fp.path);
+
         if (!target_node) {
             Debug::krnl_print("ELF", Debug::LOG_WARN, "Invalid path to file! (Non-existent!)");
             return nullptr;
@@ -150,7 +151,10 @@ namespace ELF {
     
         delete[] prog_hdr;
     
-        Debug::krnl_print("ELF", Debug::LOG_INFO, "Load complete, entry: %llx", elf_header.entry_point);
+        Debug::krnl_print("ELF", Debug::LOG_INFO, "Load complete, entry: %x", elf_header.entry_point);
+        if (elf_header.header_size == 0) {
+            Debug::krnl_print("ELF", Debug::LOG_WARN, "Something is up with then read file!?");
+        }
         return (void *)elf_header.entry_point;
     }
 }

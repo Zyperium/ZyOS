@@ -31,3 +31,11 @@ namespace Syscalls {
         return;
     }
 }
+
+
+extern "C" void TestingGSBase() {
+    uint64_t val = MSR::rdmsr(MSR::IA32_GS_BASE);
+    uint64_t val2 = MSR::rdmsr(MSR::IA32_KERNEL_GS_BASE);
+    Debug::krnl_print("GS", Debug::LOG_INFO, "GS %x, GS Shadow %x", val, val2);
+    return;
+}

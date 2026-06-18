@@ -5,7 +5,7 @@
 #include <HAL/DISK/Disk.hpp>
 #include <Library/debug.hpp>
 #include <Library/regs.h>
-#include <VFS/FAT32/FAT32.hpp>
+#include <Services/VFS/FAT32/FAT32.hpp>
 #include <Services/TTY/TTY.hpp>
 #include <limine.h>
 

@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
-#include <VFS/VFS.hpp>
+#include <Services/VFS/VFS.hpp>
 #include <HAL/DISK/Disk.hpp>
 
 namespace VFS::FAT32 {

@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <Library/cystr.hpp>
 
 namespace ELF {
     constexpr uint64_t ELF_MAGIC = 0x464C457F;
@@ -81,4 +82,12 @@ namespace ELF {
     constexpr uint64_t R_X86_64_PLT32 = 4;
     constexpr uint64_t STB_GLOBAL = 1;
     constexpr uint64_t ELF_RELOCATABLE = 1;
+    constexpr uint64_t ELF_VADDR_MASK = 0xFFF;
+
+    constexpr uint16_t ELF_PF_X = 0x1;
+    constexpr uint16_t ELF_PF_R = 0x2;
+    constexpr uint16_t ELF_PF_W = 0x4;
+
+    void *load_elf(lib::string path);
+    void Runway(lib::string cmd_line);
 }

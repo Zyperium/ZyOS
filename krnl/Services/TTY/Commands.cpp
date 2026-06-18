@@ -1,14 +1,15 @@
-#include "Scheduler/Scheduler.hpp"
+#include <Scheduler/Scheduler.hpp>
 #include <Services/TTY/Commands.hpp>
 #include <Services/TTY/TTY.hpp>
 #include <Services/ELF/KModule/KModule.hpp>
+#include <Services/ELF/ELF.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <Library/krnlptr.hpp>
 
-#include <VFS/VFS.hpp>
-#include <VFS/FAT32/FAT32.hpp>
+#include <Services/VFS/VFS.hpp>
+#include <Services/VFS/FAT32/FAT32.hpp>
 
 #include <HAL/DISK/Disk.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
@@ -25,7 +26,10 @@ namespace TTY::Commands {
         {_hash("touch"), PROC::touch_processor},
         {_hash("cat"), PROC::cat_processor},
         {_hash("clear"), PROC::clear_processor},
-        {_hash("sysload"), PROC::driver_processor}
+        {_hash("sysload"), PROC::driver_processor},
+        {_hash("zyx"), PROC::execute_processor},
+        {_hash("watchpid"), PROC::watch_processor},
+        {_hash("whatpid"), PROC::whatpid_processor}
     };
 
     constexpr size_t vfs_commands_length = sizeof(vfs_commands) / sizeof(vfs_commands[0]);
@@ -400,6 +404,49 @@ namespace TTY::Commands {
                 for (;;);
             }, "Kernel Module", true, entry_point);
             return "Module Loaded!\n";
+        }
+
+        lib::string execute_processor(int argc, char **argv) {
+            if (argc < 2) {
+                return "You must pass a path to load\n";
+            }
+
+            Scheduler::Task *t = new Scheduler::Task([](void *path) {
+                Debug::krnl_print("CMD", Debug::LOG_INFO, "Executing ring 3 task at: %s", path);
+                for (;;);
+            }, "Usr Task", true, (void *)argv[1]);
+
+            Debug::krnl_print("CMD", Debug::LOG_INFO, "Task has id %i", t->get_pid());
+
+            return "User process loaded!\n";
+        }
+
+        lib::string watch_processor(int argc, char **argv) {
+            if (argc < 2) {
+                return "You must pass a PID to watch\n";
+            }
+
+            Scheduler::watch_pid = TTY::kernel_atoi(argv[1]);
+
+            char response[32];
+            Debug::snprintf(response, 32, "Watching pid %i\n", TTY::kernel_atoi(argv[1]));
+            return response;
+        }
+
+        lib::string whatpid_processor(int argc, char **argv) {
+            if (argc < 2) {
+                return "You must pass a PID to read\n";
+            }
+
+            Scheduler::Task *t_pid = Scheduler::GetTaskByPID(TTY::kernel_atoi(argv[1]));
+
+            if (!t_pid) {
+                return "Non-existant PID\n";
+            }
+
+            char response[32];
+            Debug::snprintf(response, 32, "PID name %s\n", t_pid->task_name.c_str());
+            return response;
         }
     }
 }

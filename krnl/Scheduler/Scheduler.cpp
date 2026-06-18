@@ -27,6 +27,7 @@ namespace Scheduler {
     Task ***TaskDirectory;
 
     bool a_schd_lock = false;
+    ZyOS::QWORD watch_pid = -1;
     uint64_t cur_rflags = 0;
 
     void aquire_lock() {
@@ -38,8 +39,6 @@ namespace Scheduler {
             asm volatile("pause");
         }
 
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Aquired lock");
-
         cur_rflags = rflags;
 
         return;
@@ -48,8 +47,6 @@ namespace Scheduler {
     void release_lock() {
         restore_rflags(cur_rflags);
         cur_rflags = 0;
-
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Released lock");
 
         __atomic_clear(&a_schd_lock, __ATOMIC_RELEASE);
         return;
@@ -210,7 +207,6 @@ namespace Scheduler {
         krnl_stack_btm = reinterpret_cast<ZyOS::QWORD *>(btm_address);
         krnl_stack_top = reinterpret_cast<ZyOS::QWORD *>(top_address);
 
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "If everything goes quiet, the scheduler got lost in a lock!");
         if (a_schd_lock) {
             Debug::krnl_print("SCHD", Debug::LOG_INFO, "Literally impossible! [for single core ig]");
             a_schd_lock = false;
@@ -499,7 +495,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         return current_rsp;
     }
 
-    // Scheduler::aquire_lock();
+    Scheduler::aquire_lock();
 
     Scheduler::ClearGarbage();
 
@@ -512,6 +508,10 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     Scheduler::Task *next_task = Scheduler::GetNextTask();
     
     next_rsp = next_task->rsp;
+
+    if (next_task->get_pid() == Scheduler::watch_pid) {
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swapped to target PID %i", next_task->get_pid());
+    }
 
     auto prev_task = thread_data->current_task;
     thread_data->current_task = next_task;
@@ -532,7 +532,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         }
     }
 
-    // Scheduler::release_lock();
+    Scheduler::release_lock();
 
     return next_rsp;
 }

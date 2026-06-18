@@ -66,7 +66,6 @@ namespace ELF {
         memset((void *)tls_virt, 0, PAGE_SIZE);
 
         auto fs_base = USER::TLS_BASE_ADDR + USER::FS_BASE_OFFSET;
-
         auto tcb_ptr = (uint64_t *)(tls_virt + USER::FS_BASE_OFFSET);
         *tcb_ptr = fs_base;
 

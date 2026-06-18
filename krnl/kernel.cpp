@@ -11,7 +11,7 @@
 
 #include <Services/TTY/TTY.hpp>
 #include <Services/ELF/KModule/KModule.hpp>
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 #include <Services/Syscalls/Syscalls.hpp>
 
 #include <Library/debug.hpp>

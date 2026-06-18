@@ -1,4 +1,4 @@
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 #include <Services/TTY/Commands.hpp>
 #include <Services/TTY/TTY.hpp>
 #include <Services/ELF/KModule/KModule.hpp>
@@ -403,6 +403,8 @@ namespace TTY::Commands {
                 Debug::krnl_print("CMD", Debug::LOG_INFO, "Driver returned?");
                 for (;;);
             }, "Kernel Module", true, entry_point);
+
+            Scheduler::Yield();
             return "Module Loaded!\n";
         }
 
@@ -411,13 +413,22 @@ namespace TTY::Commands {
                 return "You must pass a path to load\n";
             }
 
+            size_t alloc_size = strlen(argv[1]) + 1;
+            char *k_buf = new char[alloc_size];
+            strcpy(k_buf, argv[1]);
+            k_buf[alloc_size - 1] = 0;
             Scheduler::Task *t = new Scheduler::Task([](void *path) {
-                Debug::krnl_print("CMD", Debug::LOG_INFO, "Executing ring 3 task at: %s", path);
+                char *p = (char *)path;
+                lib::string cp_path = p;
+                delete p;
+                Debug::krnl_print("CMD", Debug::LOG_INFO, "Executing ring 3 task at: %s", cp_path.c_str());
+                ELF::Runway(cp_path);
                 for (;;);
-            }, "Usr Task", true, (void *)argv[1]);
+            }, "Usr Task", true, k_buf);
 
-            Debug::krnl_print("CMD", Debug::LOG_INFO, "Task has id %i", t->get_pid());
+            Debug::krnl_print("CMD", Debug::LOG_INFO, "Task has id %i, path %s", t->get_pid(), k_buf);
 
+            Scheduler::Yield();
             return "User process loaded!\n";
         }
 

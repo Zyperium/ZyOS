@@ -1,6 +1,6 @@
 #include <Services/ELF/ELF.hpp>
 #include <Services/ELF/User.hpp>
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/MEM/KMEM.hpp>
@@ -35,14 +35,14 @@ namespace ELF {
 
         void *entry = load_elf(cmd_line);
 
-        auto fail_load = [&](){
-            Debug::krnl_print("RNWY", Debug::LOG_WARN, "Failed to load app: %s", cmd_line.c_str());
+        auto fail_load = [&](int stage){
+            Debug::krnl_print("RNWY", Debug::LOG_WARN, "Failed to load app: %s, stage: %i", cmd_line.c_str(), stage);
             Scheduler::Suicide();
             for (;;);
         };
 
         if (!entry) {
-            fail_load();
+            fail_load(0);
         }
 
         auto active_pml4{(uint64_t *)(task->cr3 + PMM::hhdm_offset)};
@@ -50,7 +50,7 @@ namespace ELF {
         for (auto offset{0uz}; offset < USER::STACK_SIZE; offset += PAGE_SIZE) {
             auto ppage = PMM::alloc_page();
             if (!ppage) {
-                fail_load();
+                fail_load(1);
             }
 
             auto virt_view{(uint64_t)ppage + PMM::hhdm_offset};
@@ -66,7 +66,7 @@ namespace ELF {
         memset((void *)tls_virt, 0, PAGE_SIZE);
 
         auto fs_base = USER::TLS_BASE_ADDR + USER::FS_BASE_OFFSET;
-        
+
         auto tcb_ptr = (uint64_t *)(tls_virt + USER::FS_BASE_OFFSET);
         *tcb_ptr = fs_base;
 

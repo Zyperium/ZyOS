@@ -7,3 +7,11 @@ int main() {
 
     return 0;
 }
+
+
+extern "C" int _start() {
+    main();
+
+    for (;;);
+    return 0;
+}

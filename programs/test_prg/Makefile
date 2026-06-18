@@ -25,7 +25,7 @@ CFLAGS   += $(COMMON_FLAGS) -std=c11
 CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics
 
 ASMFLAGS := -f elf64
-LDFLAGS  := -r -m elf_x86_64
+LDFLAGS  += -m elf_x86_64 -z max-page-size=0x1000
 
 .PHONY: all clean
 
@@ -34,7 +34,7 @@ all: $(OUTPUT_DIR)/$(PROGRAM_NAME)
 $(OUTPUT_DIR)/$(PROGRAM_NAME): $(OBJS)
 	@mkdir -p $(@D)
 	@echo "[LD] $@"
-	@$(LD) $(LDFLAGS) -o $@ $(OBJS)
+	$(LD) $(LDFLAGS) -o $@ $(OBJS)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)

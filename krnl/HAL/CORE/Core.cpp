@@ -2,7 +2,7 @@
 #include <Library/io.hpp>
 #include <Library/debug.hpp>
 #include <Library/regs.h>
-#include <Scheduler/Scheduler.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 #include <HAL/CORE/Core.hpp>
 #include <HAL/GDT/GDT.hpp>
 #include <HAL/MEM/VMM.hpp>

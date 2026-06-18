@@ -1,4 +1,3 @@
-#include "Scheduler/Scheduler.hpp"
 #include <Library/string.h>
 #include <Library/debug.hpp>
 #include <Library/krnlptr.hpp>
@@ -6,6 +5,7 @@
 
 #include <Services/ELF/KModule/KModule.hpp>
 #include <Services/ELF/ELF.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 
 #include <HAL/DISK/Disk.hpp>
 #include <HAL/MEM/PMEM.hpp>

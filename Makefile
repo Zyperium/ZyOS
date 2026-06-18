@@ -8,7 +8,7 @@ ISO_DIR     := iso_root
 LIMINE_DIR  := limine
 ASSETS_DIR  := assets
 
-SUBDIRS     := drivers krnl
+SUBDIRS     := drivers krnl programs
 
 export KERNEL_NAME BUILD_DIR
 
@@ -42,8 +42,8 @@ define DEPLOY_CONTENT
 	@if ls drivers/build/*.KMO 1> /dev/null 2>&1; then \
 		mcopy -i $(1)@@1M drivers/build/*.KMO ::/SYSTEM/DRIVERS/; \
 	fi
-	@if ls userspace/bin/*.elf 1> /dev/null 2>&1; then \
-		mcopy -i $(1)@@1M userspace/bin/*.elf ::/USER/; \
+	@if ls programs/build/*.zyx 1> /dev/null 2>&1; then \
+		mcopy -i $(1)@@1M programs/build/*.zyx ::/USER/; \
 	fi
 
 	@nm -n krnl/build/$(KERNEL_NAME) > krnl/build/krnl.map 2>/dev/null || true

@@ -7,4 +7,6 @@ limine/
 krnl/build/
 bochsout.txt
 *.KMO
+*.KO
 *.o
+*.zxy

@@ -12,6 +12,7 @@
 #include <Services/TTY/TTY.hpp>
 #include <Services/ELF/KModule/KModule.hpp>
 #include <Scheduler/Scheduler.hpp>
+#include <Services/Syscalls/Syscalls.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/regs.h>
@@ -50,6 +51,8 @@ extern "C" void krnlmain() {
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Created task with PID %i", krnl_task->get_pid());
     HAL::CORE::get_thread_data()->system_idle_task = krnl_task;
     HAL::CORE::idleptr = SysIdleTask;
+
+    Syscalls::initialize();
 
     HAL::CORE::discover_all_cores();
 

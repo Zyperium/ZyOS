@@ -12,8 +12,8 @@
 #include <HAL/MEM/KMEM.hpp>
 #include <HAL/MEM/VMM.hpp>
 
-#include <VFS/VFS.hpp>
-#include <VFS/FAT32/FAT32.hpp>
+#include <Services/VFS/VFS.hpp>
+#include <Services/VFS/FAT32/FAT32.hpp>
 
 using namespace HAL;
 using namespace MEM;

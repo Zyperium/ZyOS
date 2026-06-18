@@ -40,8 +40,10 @@ namespace Scheduler {
         ZyOS::QWORD fs_base;
 
         ZyOS::QWORD *usr_stack_top;
-        ZyOS::QWORD *krnl_stack_top;
+        ZyOS::QWORD *krnl_stack_top; // Used by SysEntry.asm
         ZyOS::QWORD *krnl_stack_btm;
+        ZyOS::QWORD usr_stack_save; // This is used by SysEntry.asm. If you mess with the offsets
+        // make sure to adjust sysentry too.
         
         ZyOS::QWORD quantum;
 
@@ -84,6 +86,7 @@ namespace Scheduler {
     constexpr ZyOS::DWORD TASK_DIR_SIZE = 32;
     constexpr ZyOS::DWORD FX_STATE_SIZE = 0x200 + 0x10;
     extern Task ***TaskDirectory;
+    extern ZyOS::QWORD watch_pid;
 
     Task *GetTaskByPID(ZyOS::QWORD PID);
     void RegisterSystemIdleTask(Task *task);

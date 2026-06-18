@@ -9,7 +9,7 @@ namespace HAL::GDT {
     static uint8_t timer_stack[8192] __attribute__((aligned(16)));
     static uint8_t nmi_stack[8192] __attribute__((aligned(16)));
 
-    void SetEntry(GDTEntry* entry, uint64_t base, uint32_t limit, uint8_t access, uint8_t gran) {
+    void SetEntry(GDTEntry *entry, uint64_t base, uint32_t limit, uint8_t access, uint8_t gran) {
         entry->base_low = static_cast<uint16_t>(base & 0xFFFF);
         entry->base_middle = static_cast<uint8_t>((base >> 16) & 0xFF);
         entry->base_high = static_cast<uint8_t>((base >> 24) & 0xFF);
@@ -20,8 +20,8 @@ namespace HAL::GDT {
         entry->granularity = static_cast<uint8_t>(((limit >> 16) & 0x0F) | (gran & 0xF0));
     }
 
-    void SetTSSEntry(GDTEntryTSS* entry, uint64_t base, uint32_t limit, uint8_t access, uint8_t gran) {
-        SetEntry((GDTEntry*)entry, base, limit, access, gran);
+    void SetTSSEntry(GDTEntryTSS *entry, uint64_t base, uint32_t limit, uint8_t access, uint8_t gran) {
+        SetEntry((GDTEntry *)entry, base, limit, access, gran);
         entry->base_upper = (base >> 32) & 0xFFFFFFFF;
         entry->reserved   = 0;
     }

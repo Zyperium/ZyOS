@@ -8,7 +8,7 @@ namespace ELF {
     // Note: drvRunway handles loading apps perfectly.
     // This is basically just for custom behaviour or something like
     // custom app load protocols you want. Realistically? Not necessary at all.
-    void *drv_load_elf(const char *p);
+    void *load_elf(lib::string path);
 }
 
 namespace Scheduler {

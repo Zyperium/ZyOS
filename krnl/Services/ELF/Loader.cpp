@@ -38,10 +38,6 @@ namespace ELF {
         }
     }
 
-    void *drv_load_elf(const char *p) {
-        return load_elf(p);
-    }
-    
     /*
     Loads an app from the passed path (expects a full, lettered path!)
     Note: This loads the app to the current address space. So unless you

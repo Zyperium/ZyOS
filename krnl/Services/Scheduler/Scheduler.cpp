@@ -20,14 +20,14 @@ namespace Scheduler {
     bool active{false};
     bool event_occured{};
 
-    Task *task_queue[TOTAL_SCHD_QUEUES]{};
+    lib::RB_Tree *task_tree;
     TaskBlock *blocked_queue[(size_t)BlockReasons::TOTAL_REASONS]{};
-    Task *last_to_yield;
 
     Task ***TaskDirectory;
 
     bool a_schd_lock = false;
     ZyOS::QWORD watch_pid = -1;
+    ZyOS::QWORD Task::global_min_vruntime{0};
     uint64_t cur_rflags = 0;
 
     void aquire_lock() {
@@ -76,6 +76,8 @@ namespace Scheduler {
             TaskDirectory[i] = nullptr;
         }
 
+        task_tree = new lib::RB_Tree{};
+
         active = false;
 
         TaskDirectory[0] = new Task*[TASK_TABLE_SIZE];
@@ -86,58 +88,24 @@ namespace Scheduler {
     }
 
     Task *StealCoCoreTask() {
-        for (auto i{0uz}; i < TOTAL_SCHD_QUEUES; i++) {
-            if (!task_queue[i])
-                continue;
-            if (!task_queue[i]->running && !task_queue[i]->core_pinned) {
-                task_queue[i]->current_core = HAL::CORE::get_thread_data()->core_id;
-                Task *selected_task = task_queue[i];
-                task_queue[i] = task_queue[i]->next;
-                return selected_task;
-            }
-        }
-
+        
         return nullptr;
     }
 
     Task *GetNextTask() {
-        for (auto i{0uz}; i < TOTAL_SCHD_QUEUES; i++) {
-            if (!task_queue[i])
-                continue;
-
-            bool only_task_iqueue = task_queue[i] == task_queue[i]->next;
-        
-            if (task_queue[i] == last_to_yield) {
-                if (only_task_iqueue)
-                    continue;
-                task_queue[i] = task_queue[i]->next;
-            }
-
-            Task *starting_task = task_queue[i];
-            find_workable_core:
-            if (task_queue[i]->current_core != HAL::CORE::get_thread_data()->core_id) {
-                if (only_task_iqueue)
-                    continue;
-                task_queue[i] = task_queue[i]->next;
-                if (task_queue[i] == starting_task)
-                    continue;
-                goto find_workable_core;
-            }
-
-            Task *selected_task = task_queue[i];
-            task_queue[i] = task_queue[i]->next;
-
-            return selected_task;
+        lib::RB_Base* leftmost_node = task_tree->get_leftmost();
+        if (!leftmost_node) {
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Picking sysidle task!");
+            return HAL::CORE::get_thread_data()->system_idle_task;
         }
 
-        return HAL::CORE::get_thread_data()->system_idle_task;
+        Task *pick = static_cast<Task *>(leftmost_node);
+        return pick;
     }
 
     Task::Task() {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Beginning primitive task setup");
         static size_t next_pid = 0;
-        next = nullptr;
-        previous = nullptr;
 
         rsp = 0;
         pid = next_pid++;
@@ -235,10 +203,17 @@ namespace Scheduler {
         *RDI_REG = (uint64_t)p_arg;
 
         if (add_queue)
-            enqueue(DEFAULT_SCHD_QUEUE);
+            enqueue();
 
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler has initialized task %s", task_name.c_str());
         return;
+    }
+
+    int64_t Task::compare(const lib::RB_Base* other) const {
+        const Task* o = static_cast<const Task*>(other);
+        if (vruntime < o->vruntime) return -1;
+        if (vruntime > o->vruntime) return 1;
+        return 0;
     }
 
     void Yield() {
@@ -341,7 +316,7 @@ namespace Scheduler {
         }
 
         if (requeue_task) {
-            enqueue(DEFAULT_SCHD_QUEUE);
+            enqueue();
         }
 
         return;
@@ -351,75 +326,16 @@ namespace Scheduler {
         (void)reason;
     }
 
-    void Task::enqueue(ZyOS::WORD queue_id) {
-        if (queue_id > TOTAL_SCHD_QUEUES) {
-            Debug::krnl_print(
-                "SCHD", Debug::LOG_WARN, 
-                "Attempted to queue in non-existent queue: %i", queue_id
-            );
+    void Task::enqueue() {
+        if (vruntime < global_min_vruntime) {
+            vruntime = global_min_vruntime;
         }
 
-        aquire_lock();
-
-        if (!task_queue[queue_id]) {
-            next = this;
-            previous = this;
-            task_queue[queue_id] = this;
-            current_queue = queue_id;
-            release_lock();
-            return;
-        }
-
-        Task *head = task_queue[queue_id];
-        Task *tail = head->previous;
-
-        next = head;
-        previous = tail;
-        tail->next = this;
-        head->previous = this;
-
-        current_queue = queue_id;
-        release_lock();
-        return;
+        task_tree->insert_node(this);
     }
 
     void Task::dequeue() {
-        // if (block_while) {
-        //     Debug::krnl_print("SCHD", Debug::LOG_WARN, "Attempted to dequeue during block?");
-        //     return;
-        // }
-
-        aquire_lock();
-
-        if (!previous || !next) {
-            release_lock();
-            return;
-        }
-
-        if (current_queue == (ZyOS::WORD)-1) {
-            release_lock();
-            return;
-        }
-
-        if (next == this) {
-            task_queue[current_queue] = nullptr;
-            next = nullptr;
-            previous = nullptr;
-            current_queue = -1;
-            release_lock();
-            return;
-        }
-
-        previous->next = next;
-        next->previous = previous;
-
-        next = nullptr;
-        previous = nullptr;
-
-        current_queue = -1;
-
-        release_lock();
-        return;
+        task_tree->remove_node(this);
     }
 
     void Task::TerminateTask(Task *term) {
@@ -504,16 +420,31 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         thread_data->current_task->rsp = current_rsp;
     }
 
+    auto prev_task = thread_data->current_task;
+
+    if (prev_task && prev_task->running && prev_task != thread_data->system_idle_task) {
+        prev_task->rsp = current_rsp;
+
+        uint64_t delta_time = 1;
+        
+        prev_task->vruntime += delta_time;
+
+        prev_task->dequeue();
+        prev_task->enqueue();
+        
+        prev_task->running = false;
+    }
+
     auto next_rsp{0uz};
     Scheduler::Task *next_task = Scheduler::GetNextTask();
     
     next_rsp = next_task->rsp;
+    next_task->running = true;
 
     if (next_task->get_pid() == Scheduler::watch_pid) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swapped to target PID %i", next_task->get_pid());
     }
 
-    auto prev_task = thread_data->current_task;
     thread_data->current_task = next_task;
 
     if (next_task != prev_task) {
@@ -533,7 +464,6 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     }
 
     Scheduler::release_lock();
-
     return next_rsp;
 }
 

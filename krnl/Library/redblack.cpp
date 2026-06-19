@@ -214,6 +214,7 @@ namespace lib {
 
     void RB_Tree::fix_delete(RB_Base* node, RB_Base* parent) {
         while (node != root && (node == nullptr || node->col == RB_Colour::BLACK)) {
+            if (parent == nullptr) break;
             if (node == parent->left) {
                 RB_Base* sibling = parent->right;
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <Library/ZyOS.hpp>
 #include <Library/cystr.hpp>
+#include <Library/redblack.hpp>
 
 namespace Scheduler {
     enum class BlockReasons {
@@ -22,14 +23,11 @@ namespace Scheduler {
         TaskBlock *prev;
     };
 
-    class alignas(ZyOS::sbQWORD) Task {
+    class alignas(ZyOS::sbQWORD) Task : public lib::RB_Base {
     public:
         using EntryPoint = void(*)(void*);
         Task();
         Task(EntryPoint entry, lib::string name, bool enqueue = true, void *p_arg = nullptr);
-        
-        Task *next;
-        Task *previous;
 
         lib::string task_name;
 
@@ -38,6 +36,7 @@ namespace Scheduler {
         ZyOS::QWORD mapped_limit;
         ZyOS::QWORD cr3;
         ZyOS::QWORD fs_base;
+        ZyOS::QWORD vruntime;
 
         ZyOS::QWORD *usr_stack_top;
         ZyOS::QWORD *krnl_stack_top; // Used by SysEntry.asm
@@ -60,8 +59,9 @@ namespace Scheduler {
         void suicide();
         ZyOS::QWORD get_pid();
         void fork();
-        // try not to call this externally. (but you can)
-        void change_queue(ZyOS::DWORD to);
+        void enqueue();
+        void dequeue();
+        int64_t compare(const lib::RB_Base* other) const override;
 
         static void TerminateTask(Task *term);
         static void UnblockAll(BlockReasons whoisblocking);
@@ -70,12 +70,9 @@ namespace Scheduler {
         ZyOS::QWORD pid;
         bool blockmap[(size_t)BlockReasons::TOTAL_REASONS]{false};
         void *_arg;
-
-        void enqueue(ZyOS::WORD queue_id);
-        void dequeue();
+        static ZyOS::QWORD global_min_vruntime;
     };
 
-    extern Task *last_to_yield;
     void EnableScheduler();
     void DisabledScheduler();
     void Initialize();

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Library/krnlptr.hpp>
+#include <Library/redblack.hpp>
 
 namespace lib {
     enum class RB_Colour : bool {
@@ -10,7 +11,8 @@ namespace lib {
     };
 
     // inherit this!
-    struct RB_Base {
+    class RB_Base {
+    public:
         RB_Base *left{nullptr};
         RB_Base *right{nullptr};
         RB_Base *parent{nullptr};

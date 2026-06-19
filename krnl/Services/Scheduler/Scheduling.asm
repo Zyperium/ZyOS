@@ -57,12 +57,12 @@ SchedulerHandler:
     pop r14
     pop r15
 
-    test qword [rsp + 8], 3
+    test qword [rsp + 8], 3 ; Pretty sure this is the SS
     jz .krnl_exit
 
     swapgs
 
-    or qword [rsp + 32], 3
+    or qword [rsp + 32], 3 ; OR code segment
 
 .krnl_exit:
     iretq
@@ -120,6 +120,17 @@ QuietSwitch:
     swapgs
 
     or qword [rsp + 32], 3
+    
+    ; For some reason this needs to happen on a manual Yield(); 
+    ; Otherwise the CS & SS can be swapped for ring 3 tasks. Why? IDK.
+    ; If you can isolate a root cause, please let me know.
+
+    cmp qword [rsp + 32], 0x23 ; Code segment should be 0x23
+    je .krnl_exit
+
+    ; Code Segment and Stack Segment are likely swapped!
+    mov qword [rsp + 8], 0x1B
+    mov qword [rsp + 32], 0x23 ; Hopefully this fixes it immediately [so future calls can skip straight to .krnl_exit]
 
 .krnl_exit:
     iretq

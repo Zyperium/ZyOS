@@ -1,5 +1,5 @@
-#include "HAL/DISK/Disk.hpp"
-#include "Library/debug.hpp"
+#include <HAL/DISK/Disk.hpp>
+#include <Library/debug.hpp>
 #include <Services/VFS/FAT32/FAT32.hpp>
 #include <stdint.h>
 #include <stddef.h>

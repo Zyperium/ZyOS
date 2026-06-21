@@ -344,6 +344,7 @@ namespace HAL::PCI {
         static constexpr uint32_t XHCI_TRB_ISP_ENABLE = (1U << 2);
 
         static constexpr uint64_t XHCI_CAP_HCSPARAMS1 = 0x04;
+        static constexpr uint32_t XHCI_HCSPARAMS1_MAX_SLOTS_MASK = 0xFF;
         static constexpr uint32_t XHCI_HCSPARAMS1_MAX_PORTS_SHIFT = 24;
         static constexpr uint32_t XHCI_HCSPARAMS1_MAX_PORTS_MASK = 0xFF;
         static constexpr uint64_t XHCI_CRCR_RCS = (1ULL << 0);

@@ -1,3 +1,4 @@
+#include "Library/debug.hpp"
 #include <HAL/PCI/xHCI/xHCI.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/CORE/Core.hpp>
@@ -89,7 +90,6 @@ namespace HAL::PCI {
                 for (auto i{0uz}; i < MAX_XHCI_INSTANCES; ++i) {
                     if (!xHCI_instances[i]) continue;
                     aquire_lock();
-                    asm volatile("sti"); // important! (Otherwise the OS will deadlock) [also rflags will be reset to whatever they were after release_lock]
                     did_work = did_work || xHCI_instances[i]->poll_event_ring();
                     release_lock();
                 }
@@ -155,6 +155,7 @@ namespace HAL::PCI {
 using namespace HAL::PCI;
 
 extern "C" void xHCIIntHandler() {
+    Debug::krnl_print("MSIX", Debug::LOG_INFO, "MSI-X interrupt?");
     MSIX::xHCI::current_loops = 0;
     MSIX::xHCI::xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
     

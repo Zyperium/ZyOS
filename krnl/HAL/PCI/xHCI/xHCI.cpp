@@ -382,6 +382,7 @@ namespace HAL::PCI {
         auto* hcs_params_ptr = reinterpret_cast<volatile uint32_t*>(mmio_base_virt + XHCI_CAP_HCSPARAMS1);
         uint32_t hcs_params1 = *hcs_params_ptr;
 
+        max_slots = hcs_params1 & XHCI_HCSPARAMS1_MAX_SLOTS_MASK;
         max_ports = (hcs_params1 >> XHCI_HCSPARAMS1_MAX_PORTS_SHIFT) & XHCI_HCSPARAMS1_MAX_PORTS_MASK;
 
         cap_regs = reinterpret_cast<CapabilityRegisters *>(mmio_base_virt);
@@ -724,6 +725,7 @@ namespace HAL::PCI {
                                     ptr->proc_id = 0;
                                     ptr->attached_drivers[ptr_id]->start();
 
+                                    Scheduler::Yield();
                                     Scheduler::Suicide();
 
                                     while (true);

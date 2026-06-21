@@ -43,15 +43,13 @@ namespace Scheduler {
         ZyOS::QWORD *krnl_stack_btm;
         ZyOS::QWORD usr_stack_save; // This is used by SysEntry.asm. If you mess with the offsets
         // make sure to adjust sysentry too.
-        
-        ZyOS::QWORD quantum;
 
         ZyOS::WORD current_core;
         ZyOS::WORD lowest_queue;
         ZyOS::WORD highest_queue;
         alignas(16) uint8_t *fx_state;
         uint8_t *malignedfx;
-        bool running;
+        volatile bool running;
         bool core_pinned{};
 
         void block(BlockReasons reason, ZyOS::QWORD arg = 0);
@@ -65,6 +63,7 @@ namespace Scheduler {
 
         static void TerminateTask(Task *term);
         static void UnblockAll(BlockReasons whoisblocking);
+        static Task *GetNextTask();
     private:
         ZyOS::WORD current_queue;
         ZyOS::QWORD pid;
@@ -91,5 +90,6 @@ namespace Scheduler {
 
     constexpr uint8_t TASK_STACK_PAGES = 8; // 8 * 4096 = 32KB of ram. Plenty.
     constexpr uint8_t TOTAL_SCHD_QUEUES = 32;
+    constexpr uint16_t MIN_VRUNTIME_OFFSET = 128;
     constexpr uint8_t DEFAULT_SCHD_QUEUE = 0;
 }

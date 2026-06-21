@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <Library/krnlptr.hpp>
 #include <Library/redblack.hpp>
+#include <Library/locks.hpp>
 
 namespace lib {
     enum class RB_Colour : bool {
@@ -35,6 +36,7 @@ namespace lib {
     protected:
         RB_Base* root{nullptr};
         RB_Base* leftmost{nullptr};
+        Spinlock rb_lock;
 
     private:
         void rotate_left(RB_Base* x);

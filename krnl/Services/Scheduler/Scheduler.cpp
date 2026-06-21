@@ -92,7 +92,7 @@ namespace Scheduler {
         return nullptr;
     }
 
-    Task *GetNextTask() {
+    Task *Task::GetNextTask() {
         lib::RB_Base* leftmost_node = task_tree->get_leftmost();
         if (!leftmost_node) {
             Debug::krnl_print("SCHD", Debug::LOG_INFO, "Picking sysidle task!");
@@ -100,6 +100,7 @@ namespace Scheduler {
         }
 
         Task *pick = static_cast<Task *>(leftmost_node);
+        global_min_vruntime = pick->vruntime - MIN_VRUNTIME_OFFSET;
         return pick;
     }
 
@@ -132,7 +133,6 @@ namespace Scheduler {
         fs_base = 0;
         usr_stack_top = 0;
         krnl_stack_top = 0;
-        quantum = 0;
         HAL::CORE::ThreadLocal *tdata = HAL::CORE::get_thread_data();
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Fetching core info {Core data @ %x}", tdata);
         current_core = tdata->core_id;
@@ -140,6 +140,7 @@ namespace Scheduler {
         running = false;
         malignedfx = new uint8_t[FX_STATE_SIZE];
         memset(malignedfx, 0, FX_STATE_SIZE);
+        vruntime = global_min_vruntime;
 
         auto addr = reinterpret_cast<uint64_t>(malignedfx);
         if (addr % 0x10 != 0) {
@@ -202,8 +203,10 @@ namespace Scheduler {
         uint64_t *RDI_REG = &ktop[RDI_OFFSET_ASM];
         *RDI_REG = (uint64_t)p_arg;
 
-        if (add_queue)
+        if (add_queue) {
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Enqueued task!");
             enqueue();
+        }
 
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler has initialized task %s", task_name.c_str());
         return;
@@ -426,7 +429,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         prev_task->rsp = current_rsp;
 
         uint64_t delta_time = 1;
-        
+
         prev_task->vruntime += delta_time;
 
         prev_task->dequeue();
@@ -436,10 +439,12 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     }
 
     auto next_rsp{0uz};
-    Scheduler::Task *next_task = Scheduler::GetNextTask();
-    
+    Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
+
     next_rsp = next_task->rsp;
     next_task->running = true;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    asm volatile("mfence" ::: "memory");
 
     if (next_task->get_pid() == Scheduler::watch_pid) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swapped to target PID %i", next_task->get_pid());

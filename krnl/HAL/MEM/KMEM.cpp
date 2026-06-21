@@ -1,4 +1,4 @@
-#include "Library/debug.hpp"
+#include <Library/debug.hpp>
 #include <Library/string.h>
 #include <HAL/MEM/KMEM.hpp>
 #include <HAL/MEM/VMM.hpp>

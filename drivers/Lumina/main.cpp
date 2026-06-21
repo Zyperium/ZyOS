@@ -22,8 +22,6 @@ namespace Lumina {
 
         Debug::krnl_print("LUM", Debug::LOG_INFO, "Loading ring 3 compositor");
 
-        
-
         for (;;);
         return 0;
     }

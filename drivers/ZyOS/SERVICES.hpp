@@ -53,8 +53,6 @@ namespace Scheduler {
         uint64_t *krnl_stack_top;
         uint64_t *krnl_stack_btm;
         uint64_t usr_stack_save;
-        
-        uint16_t quantum;
 
         uint16_t current_core;
         uint16_t lowest_queue;

@@ -2,7 +2,9 @@
 REDBLACK trees so i can implement my own CFS
 */
 
+#include <Library/locks.hpp>
 #include <Library/redblack.hpp>
+#include <Library/debug.hpp>
 
 namespace lib {
     void RB_Tree::rotate_left(RB_Base *x) {
@@ -41,10 +43,11 @@ namespace lib {
             y->parent->right = x;
 
         x->right = y;
-        y->parent = y;
+        y->parent = x;
     }
 
     void RB_Tree::insert_node(RB_Base *node) {
+        ScopedLock lock(rb_lock);
         RB_Base *current = root;
         RB_Base *parent = nullptr;
 
@@ -156,6 +159,7 @@ namespace lib {
 
     void RB_Tree::remove_node(RB_Base *z) {
         if (z == nullptr) return;
+        ScopedLock lock(rb_lock);
 
         if (z == leftmost) {
             if (z->right != nullptr) {

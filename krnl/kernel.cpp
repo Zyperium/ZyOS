@@ -68,13 +68,6 @@ extern "C" void krnlmain() {
 
     new Scheduler::Task((Scheduler::Task::EntryPoint)ELF::KModule::initialize, "KMODULE", true);
 
-    uint64_t rflags;
-
-    asm volatile("pushfq; pop %0" : "=r"(rflags));
-    if (rflags & (1 << 9)) {
-        Debug::krnl_print("KRNL", Debug::LOG_INFO, "Interrupts enabled too soon?");
-    }
-
     PS2::Keyboard::Initialize();
 
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Enabling scheduler");

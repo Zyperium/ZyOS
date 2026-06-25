@@ -439,7 +439,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
         prev_task->dequeue();
         prev_task->enqueue();
-        
+ 
         prev_task->running = false;
     }
 

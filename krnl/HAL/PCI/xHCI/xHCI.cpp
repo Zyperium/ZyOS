@@ -1,4 +1,4 @@
-#include "HAL/CORE/Core.hpp"
+#include <HAL/CORE/Core.hpp>
 #include <HAL/MEM/PMM.hpp>
 #include <HAL/PCI/xHCI/xHCI.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>

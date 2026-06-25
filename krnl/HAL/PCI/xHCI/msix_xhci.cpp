@@ -30,7 +30,7 @@ namespace HAL::PCI {
         
         void aquire_lock() {
             return;
-            if (core_id_holder == HAL::CORE::get_thread_data()->current_task->get_pid()) {
+            if (core_id_holder == HAL::CORE::get_core_data()->current_task->get_pid()) {
                 ++nested;
                 return;
             }
@@ -44,7 +44,7 @@ namespace HAL::PCI {
             // asm volatile("cli");
 
             cur_rflags = rflags;
-            core_id_holder = HAL::CORE::get_thread_data()->current_task->get_pid();
+            core_id_holder = HAL::CORE::get_core_data()->current_task->get_pid();
 
             return;
         }

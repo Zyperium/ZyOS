@@ -4,8 +4,8 @@
 #include <Library/ZyOS.hpp>
 
 namespace HAL::CORE {
-    struct alignas(ZyOS::sbQWORD) ThreadLocal {
-        ThreadLocal *self;
+    struct alignas(ZyOS::sbQWORD) CoreLocal {
+        CoreLocal *self;
         Scheduler::Task *current_task;
         Scheduler::Task *last_task; // probably remove
         uint64_t r10_save;

@@ -25,8 +25,8 @@ extern "C" void __stack_chk_fail() {
 using namespace HAL;
 
 void SysIdleTask() {
-    Debug::krnl_print("KRNL", Debug::LOG_INFO, "Sysidle running on core %i", HAL::CORE::get_thread_data()->core_id);
-    Debug::krnl_print("KRNL", Debug::LOG_INFO, "Task was created on core %i", HAL::CORE::get_thread_data()->system_idle_task->current_core);
+    Debug::krnl_print("KRNL", Debug::LOG_INFO, "Sysidle running on core %i", HAL::CORE::get_core_data()->core_id);
+    Debug::krnl_print("KRNL", Debug::LOG_INFO, "Task was created on core %i", HAL::CORE::get_core_data()->system_idle_task->current_core);
     for (;;) {
         Scheduler::Task *stolen = Scheduler::StealCoCoreTask();
 
@@ -49,7 +49,7 @@ extern "C" void krnlmain() {
 
     Scheduler::Task *krnl_task = new Scheduler::Task((Scheduler::Task::EntryPoint)SysIdleTask, "System Idle Task", false);
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Created task with PID %i", krnl_task->get_pid());
-    HAL::CORE::get_thread_data()->system_idle_task = krnl_task;
+    HAL::CORE::get_core_data()->system_idle_task = krnl_task;
     HAL::CORE::idleptr = SysIdleTask;
 
     Syscalls::initialize();

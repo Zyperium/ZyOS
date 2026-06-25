@@ -15,7 +15,7 @@ using namespace HAL::IDT;
 volatile bool exception_in_progress{};
 extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
     if (exception_in_progress) {
-        Debug::krnl_print("IDT", Debug::LOG_INFO, "Core %i entering nmi spinloop (fault active)", HAL::CORE::get_thread_data()->core_id);
+        Debug::krnl_print("IDT", Debug::LOG_INFO, "Core %i entering nmi spinloop (fault active)", HAL::CORE::get_core_data()->core_id);
         asm volatile("cli");
         for (;;) asm volatile("hlt");
     }

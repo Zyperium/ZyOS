@@ -248,7 +248,7 @@ namespace Debug {
         bool da = HAL::CORE::validate_gs_reg();
         if (da) {
             puts("[");
-            print_int(HAL::CORE::get_thread_data()->core_id);
+            print_int(HAL::CORE::get_core_data()->core_id);
             puts("] ");
         }
         else {

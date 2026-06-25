@@ -19,7 +19,7 @@ static constinit volatile limine_mp_request mp_request = {
 };
 
 namespace HAL::CORE {
-    void init_core(ThreadLocal *data) {
+    void init_core(CoreLocal *data) {
         uint64_t addr = reinterpret_cast<uint64_t>(data);
 
         MSR::wrmsr(MSR::IA32_GS_BASE, addr);
@@ -58,7 +58,7 @@ namespace HAL::CORE {
         HAL::GDT::initialize();
         HAL::IDT::reload_idt();
 
-        ThreadLocal *data = new ThreadLocal;
+        CoreLocal *data = new CoreLocal;
         data->core_id = core_count;
         core_count += 1;
         data->self = data;
@@ -80,7 +80,7 @@ namespace HAL::CORE {
 
     void broadcast_nmi() {
         return;
-        Debug::krnl_print("CORE", Debug::LOG_INFO, "Broadcasting NMI from core %i", get_thread_data()->core_id);
+        Debug::krnl_print("CORE", Debug::LOG_INFO, "Broadcasting NMI from core %i", get_core_data()->core_id);
         while (lapic_read(LAPIC_ICR_LOW) & LAPIC_ICR_SEND_PENDING) {
             asm volatile("pause");
         }
@@ -115,8 +115,8 @@ namespace HAL::CORE {
     uintptr_t lapic_base_ptr = 0;
     void(*idleptr)() = nullptr;
 
-    ThreadLocal *get_thread_data() {
-        ThreadLocal *core_id{nullptr};
+    CoreLocal *get_core_data() {
+        CoreLocal *core_id{nullptr};
         
         __asm__ (
             "movq %%gs:0, %0"
@@ -154,17 +154,21 @@ namespace HAL::CORE {
             pit_count = (hi << 8) | lo;
         } while (pit_count > 0 && pit_count <= PIT::RELOAD_VALUE);
 
-        uint32_t scheduler_timer_mode = LAPIC_PERODIC_MODE | IDT::LAPIC_VECTOR;
+        uint32_t scheduler_timer_mode = LAPIC_ONE_SHOT_MODE | IDT::LAPIC_VECTOR;
 
         lapic_write(LAPIC_LVT_TIMER, scheduler_timer_mode);
 
         uint32_t ticks_in_10ms = LAPIC_INIT_COUNT - lapic_read(LAPIC_TIMER_CURCNT);
         uint32_t ticks_in_1ms  = ticks_in_10ms / PIT::TARGET_PERIOD_MS;
 
-        get_thread_data()->lapic_ticks_per_ms = ticks_in_1ms;
+        get_core_data()->lapic_ticks_per_ms = ticks_in_1ms;
         lapic_write(LAPIC_TIMER_INITCNT, ticks_in_1ms);
         lapic_write(LAPIC_PRIORITY_REG, 0);
         Debug::krnl_print("CORE", Debug::LOG_INFO, "Calibrated lapic @ %i ticks_per_ms", ticks_in_1ms);
+    }
+
+    void set_lapic_shot(uint64_t milliseconds) {
+        lapic_write(LAPIC_TIMER_INITCNT, get_core_data()->lapic_ticks_per_ms * milliseconds);
     }
 
     bool lapic_mapped{false};
@@ -177,7 +181,7 @@ namespace HAL::CORE {
             lapic_mapped = true;
         }
 
-        Debug::krnl_print("CORE", Debug::LOG_INFO, "Initializing LAPIC on core %i", get_thread_data()->core_id);
+        Debug::krnl_print("CORE", Debug::LOG_INFO, "Initializing LAPIC on core %i", get_core_data()->core_id);
         uint32_t spurious_reg = lapic_read(LAPIC_SPURIOUS);
 
         spurious_reg &= ~LAPIC_SPURIOUS_VECTOR_MASK;

@@ -1,4 +1,4 @@
-#include "HAL/ACPI/ACPI.hpp"
+#include <HAL/ACPI/ACPI.hpp>
 #include <HAL/HAL.hpp>
 #include <HAL/IDT/IDT.hpp>
 #include <HAL/IDT/Panic.hpp>
@@ -61,7 +61,7 @@ namespace HAL {
 
         Debug::krnl_print("HAL", Debug::LOG_INFO, "Initialize core 0");
         // This should be core 0. Otherwise something weird is going on.
-        CORE::ThreadLocal *data = new CORE::ThreadLocal;
+        CORE::CoreLocal *data = new CORE::CoreLocal;
         data->core_id = 0;
         data->current_task = nullptr;
         data->last_task = nullptr;
@@ -72,6 +72,7 @@ namespace HAL {
         CORE::init_core(data);
 
         ACPI::init();
+        Debug::krnl_print("HAL", Debug::LOG_INFO, "ACPI initialized!");
 
         SCREEN::initialize(framebuffer_request.response);
 

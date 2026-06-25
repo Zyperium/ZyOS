@@ -24,7 +24,7 @@ namespace HAL::DISK {
     uint64_t core_id_holder = -1;
     int reentrancy = 0;
     void aquire_lock() {
-        if (core_id_holder == HAL::CORE::get_thread_data()->current_task->get_pid()) {
+        if (core_id_holder == HAL::CORE::get_core_data()->current_task->get_pid()) {
             ++reentrancy;
             return;
         }
@@ -37,7 +37,7 @@ namespace HAL::DISK {
         }
 
         cur_rflags = rflags;
-        core_id_holder = HAL::CORE::get_thread_data()->current_task->get_pid();
+        core_id_holder = HAL::CORE::get_core_data()->current_task->get_pid();
 
         return;
     }

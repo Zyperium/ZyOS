@@ -1,13 +1,14 @@
 #pragma once
-#include <HAL/CORE/ThreadLocal.hpp>
+#include <HAL/CORE/CoreLocal.hpp>
 #include <stddef.h>
 
 namespace HAL::CORE {
-    void init_core(ThreadLocal *data);
+    void init_core(CoreLocal *data);
     void discover_all_cores();
-    ThreadLocal *get_thread_data();
+    CoreLocal *get_core_data();
     void init_lapic();
     void ack_lapic();
+    void set_lapic_shot(uint64_t milliseconds);
     void broadcast_nmi();
     bool validate_gs_reg();
     extern void(*idleptr)();
@@ -42,6 +43,7 @@ namespace HAL::CORE {
     constexpr uint64_t LAPIC_ADDR_MASK = 0x0000FFFFFFFFF000ULL;
     constexpr uint32_t LAPIC_LVT_MASKED = 0x10000;
     constexpr uint32_t LAPIC_PERODIC_MODE = (1 << 17);
+    constexpr uint32_t LAPIC_ONE_SHOT_MODE = 0;
 
     constexpr uint32_t LAPIC_ICR_LOW  = 0x300;
     constexpr uint32_t LAPIC_ICR_HIGH = 0x310;

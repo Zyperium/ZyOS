@@ -32,7 +32,7 @@ namespace ACPI {
 
     struct RSDT {
         ACPISDT header;
-        uint32_t *tables;
+        // Tables are here, but really weird behaviour attempting to index them.
     } __attribute__((packed));
 
     struct XSDT {
@@ -41,11 +41,11 @@ namespace ACPI {
     } __attribute__((packed));
 
     void init();
-    uint64_t get_system_time();
+    uint64_t get_sys_time();
     uint8_t get_apic_id();
     
     static constexpr uint32_t CPUID_EAX_FIRST_INFO      = 1;
     static constexpr uint32_t CPUID_EBX_APIC_ID_SHIFT   = 24;
     static constexpr uint32_t CPUID_EBX_APIC_ID_MASK    = 0xFF;
-    static constexpr uint32_t ACPI_SIGN_LEN             = 5;
+    static constexpr uint32_t ACPI_SIGN_LEN             = 4;
 }

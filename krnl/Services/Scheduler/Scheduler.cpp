@@ -1,4 +1,4 @@
-#include <HAL/CORE/ThreadLocal.hpp>
+#include <HAL/CORE/CoreLocal.hpp>
 #include <Library/ZyOS.hpp>
 #include <stddef.h>
 #include <stdint.h>
@@ -13,6 +13,7 @@
 #include <HAL/MEM/PMEM.hpp>
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/IDT/Panic.hpp>
+#include <HAL/ACPI/ACPI.hpp>
 
 using namespace HAL::MEM;
 
@@ -96,7 +97,7 @@ namespace Scheduler {
         lib::RB_Base* leftmost_node = task_tree->get_leftmost();
         if (!leftmost_node) {
             Debug::krnl_print("SCHD", Debug::LOG_INFO, "Picking sysidle task!");
-            return HAL::CORE::get_thread_data()->system_idle_task;
+            return HAL::CORE::get_core_data()->system_idle_task;
         }
 
         Task *pick = static_cast<Task *>(leftmost_node);
@@ -104,7 +105,7 @@ namespace Scheduler {
         return pick;
     }
 
-    Task::Task() {
+    Task::Task() : niceness(1) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Beginning primitive task setup");
         static size_t next_pid = 0;
 
@@ -133,7 +134,7 @@ namespace Scheduler {
         fs_base = 0;
         usr_stack_top = 0;
         krnl_stack_top = 0;
-        HAL::CORE::ThreadLocal *tdata = HAL::CORE::get_thread_data();
+        HAL::CORE::CoreLocal *tdata = HAL::CORE::get_core_data();
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Fetching core info {Core data @ %x}", tdata);
         current_core = tdata->core_id;
         current_queue = 0;
@@ -237,7 +238,7 @@ namespace Scheduler {
     }
 
     void Task::block(BlockReasons reason, uint64_t arg1) {
-        if (this == HAL::CORE::get_thread_data()->current_task) {
+        if (this == HAL::CORE::get_core_data()->current_task) {
             asm volatile("sti");
         }
 
@@ -364,14 +365,14 @@ namespace Scheduler {
     }
 
     void Suicide() {
-        HAL::CORE::get_thread_data()->current_task->suicide();
+        HAL::CORE::get_core_data()->current_task->suicide();
     }
     
     void ClearGarbage() {
         return;
         if (!blocked_queue[(size_t)BlockReasons::GARBAGE]) return;
 
-        Task *exclude = HAL::CORE::get_thread_data()->current_task;
+        Task *exclude = HAL::CORE::get_core_data()->current_task;
         TaskBlock *root_task = blocked_queue[(size_t)BlockReasons::GARBAGE];
         TaskBlock *reset_to{};
 
@@ -414,16 +415,25 @@ namespace Scheduler {
     }
 }
 
+uint64_t ll_task_time{};
+bool initialize_time{true};
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (!Scheduler::active) {
         return current_rsp;
+    }
+
+    uint64_t curr_sys_time = ACPI::get_sys_time();
+
+    if (initialize_time) {
+        ll_task_time = curr_sys_time;
+        initialize_time = false;
     }
 
     Scheduler::aquire_lock();
 
     Scheduler::ClearGarbage();
 
-    HAL::CORE::ThreadLocal *thread_data = HAL::CORE::get_thread_data();
+    HAL::CORE::CoreLocal *thread_data = HAL::CORE::get_core_data();
     if (thread_data->current_task) {
         thread_data->current_task->rsp = current_rsp;
     }
@@ -433,9 +443,11 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (prev_task && prev_task->running && prev_task != thread_data->system_idle_task) {
         prev_task->rsp = current_rsp;
 
-        uint64_t delta_time = 1;
+        uint64_t delta_time = (curr_sys_time - ll_task_time) + 1;
+        ll_task_time = curr_sys_time;
 
         prev_task->vruntime += delta_time;
+        prev_task->last_ran_time = curr_sys_time;
 
         prev_task->dequeue();
         prev_task->enqueue();
@@ -445,6 +457,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     auto next_rsp{0uz};
     Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
+    HAL::CORE::set_lapic_shot(next_task->niceness);
 
     next_rsp = next_task->rsp;
     next_task->running = true;

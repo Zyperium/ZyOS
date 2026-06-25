@@ -3,6 +3,8 @@
 #include <Library/cystr.hpp>
 #include <Library/redblack.hpp>
 
+#include <HAL/ACPI/ACPI.hpp>
+
 namespace Scheduler {
     enum class BlockReasons {
         SLEEP,
@@ -49,6 +51,8 @@ namespace Scheduler {
         ZyOS::WORD highest_queue;
         alignas(16) uint8_t *fx_state;
         uint8_t *malignedfx;
+        uint32_t niceness;
+        uint64_t last_ran_time;
         volatile bool running;
         bool core_pinned{};
 
@@ -77,6 +81,9 @@ namespace Scheduler {
     void Initialize();
     void Yield();
     void Suicide();
+    inline uint64_t LastRunTime(Task *task) {
+        return ACPI::get_sys_time() - task->last_ran_time;
+    }
 
     constexpr ZyOS::QWORD TASK_TABLE_SIZE = 1024;
     constexpr ZyOS::DWORD TASK_DIR_SIZE = 32;

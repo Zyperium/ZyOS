@@ -226,6 +226,8 @@ namespace TTY {
             while (!contask) asm volatile("pause");
         }
 
+        contask->niceness = 4;
+
         Debug::krnl_print("TTY", Debug::LOG_INFO, "Initialized");
         contask->core_pinned = false;
         asm volatile("sti");

@@ -31,7 +31,7 @@ namespace ELF {
     void Runway(lib::string cmd_line) {
         Debug::krnl_print("RNWY", Debug::LOG_INFO, "Building ring 3 process");
 
-        Scheduler::Task *task = CORE::get_thread_data()->current_task;
+        Scheduler::Task *task = CORE::get_core_data()->current_task;
 
         uint64_t _cr3 = read_cr3();
         task->cr3 = VMM::CreateProcessPageTable(_cr3);

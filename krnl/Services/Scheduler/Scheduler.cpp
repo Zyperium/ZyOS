@@ -261,11 +261,15 @@ namespace Scheduler {
 
         TaskBlock *r_block = blocked_queue[(size_t)reason];
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Blocked task %s", task_name.c_str());
+        running = false;
+
+        aquire_lock();
 
         if (!r_block) {
             n_block->next = n_block;
             n_block->prev = n_block;
             blocked_queue[(size_t)reason] = n_block;
+            release_lock();
             Yield();
             return;
         }
@@ -274,6 +278,7 @@ namespace Scheduler {
         n_block->prev = r_block->prev;
         r_block->prev = n_block;
         n_block->prev->next = n_block;
+        release_lock();
 
         Yield();
         return;

@@ -107,6 +107,22 @@ inline void strcpy(char* dest, const char* src) {
     *dest = '\0';
 }
 
+inline void strncpy(char* dest, const char* src, size_t __max_length) {
+    if (!dest || !src) return;
+
+    if (!__max_length) return;
+    ++__max_length;
+    
+    while (*src != '\0' && __max_length > 0) {
+        *dest = *src;
+        --__max_length;
+        ++dest;
+        ++src;
+    }
+    *dest = '\0';
+}
+
+
 inline bool strncmp(const char *strA, const char *strB, size_t max) {
     size_t m_max = max;
     

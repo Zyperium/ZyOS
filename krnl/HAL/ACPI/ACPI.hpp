@@ -44,7 +44,8 @@ namespace ACPI {
     uint64_t get_system_time();
     uint8_t get_apic_id();
     
-    static constexpr uint32_t CPUID_EAX_FIRST_INFO     = 1;
-    static constexpr uint32_t CPUID_EBX_APIC_ID_SHIFT  = 24;
-    static constexpr uint32_t CPUID_EBX_APIC_ID_MASK   = 0xFF;
+    static constexpr uint32_t CPUID_EAX_FIRST_INFO      = 1;
+    static constexpr uint32_t CPUID_EBX_APIC_ID_SHIFT   = 24;
+    static constexpr uint32_t CPUID_EBX_APIC_ID_MASK    = 0xFF;
+    static constexpr uint32_t ACPI_SIGN_LEN             = 5;
 }

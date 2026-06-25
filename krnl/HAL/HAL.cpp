@@ -1,3 +1,4 @@
+#include "HAL/ACPI/ACPI.hpp"
 #include <HAL/HAL.hpp>
 #include <HAL/IDT/IDT.hpp>
 #include <HAL/IDT/Panic.hpp>
@@ -69,6 +70,8 @@ namespace HAL {
         data->lapic_ticks_per_ms = 0;
         
         CORE::init_core(data);
+
+        ACPI::init();
 
         SCREEN::initialize(framebuffer_request.response);
 

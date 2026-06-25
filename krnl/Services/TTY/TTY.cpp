@@ -241,7 +241,6 @@ namespace TTY {
             }
             else {
                 Scheduler::Yield();
-                asm volatile("pause"); 
             }
         }
     }

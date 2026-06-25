@@ -455,8 +455,8 @@ namespace TTY::Commands {
                 return "Non-existant PID\n";
             }
 
-            char response[32];
-            Debug::snprintf(response, 32, "PID name %s\n", t_pid->task_name.c_str());
+            char response[64];
+            Debug::snprintf(response, 64, "PID name %s. vruntime: %i\n", t_pid->task_name.c_str(), t_pid->vruntime);
             return response;
         }
     }

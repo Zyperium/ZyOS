@@ -66,10 +66,6 @@ namespace HAL::PCI {
         int current_loops{};
         void worker() {
             for (;;) {
-                if (do_a_log) {
-                    // Debug::krnl_print("MSIX", Debug::LOG_INFO, "Worker CR3: %x, Wrapper Addr: %x", read_cr3(), &wrapper);
-                }
-
                 while (wrapper) {
                     Debug::krnl_print("MSIX", Debug::LOG_INFO, "Invoking bulk transfer!");
                     aquire_lock();
@@ -98,9 +94,9 @@ namespace HAL::PCI {
                     current_loops++;
                 else
                     MSIX::xHCI::current_loops = 0;
-                // if (current_loops >= LOOPS_BEFORE_YIELD)
-                //     xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
-                // Debug::krnl_print("MSIX", Debug::LOG_INFO, "current_loops %i", current_loops);
+                
+                if (current_loops >= LOOPS_BEFORE_YIELD)
+                    xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
 
                 Scheduler::Yield();
             }
@@ -130,6 +126,8 @@ namespace HAL::PCI {
             };
 
             Debug::krnl_print("MSIX", Debug::LOG_INFO, "Queuing new bulk transfer for later handling");
+            xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
+            current_loops = 0;
 
             if (!wrapper) {
                 wrapper = blk;

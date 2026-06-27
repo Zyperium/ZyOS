@@ -39,6 +39,8 @@ namespace ELF::KModule {
 
         kernel_symbols->elements = new HashedElement[kernel_symbols->symbol_count];
         kmap_node->read(sizeof(uint64_t), kernel_symbols->elements, kernel_symbols->symbol_count * sizeof(HashedElement));
+
+        Scheduler::Suicide();
         for (;;);
     }
 

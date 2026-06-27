@@ -96,7 +96,6 @@ namespace HAL::CORE {
     }
 
     void discover_all_cores() {
-        return;
         limine_mp_response *mp_resp = mp_request.response;
         total_cores = mp_resp->cpu_count;
         uint32_t bsp_lapic_id = mp_resp->bsp_lapic_id;

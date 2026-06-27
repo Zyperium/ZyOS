@@ -23,11 +23,6 @@ extern "C" void R3Entry(
 );
 
 namespace ELF {
-    // This is so drivers can call Runway without the string library [too hard to share]
-    void drvRunway(const char *cmd_line) {
-        Runway(cmd_line);
-    }
-
     void Runway(lib::string cmd_line) {
         Debug::krnl_print("RNWY", Debug::LOG_INFO, "Building ring 3 process");
 

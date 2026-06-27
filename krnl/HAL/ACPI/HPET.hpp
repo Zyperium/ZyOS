@@ -22,6 +22,8 @@ namespace ACPI {
     constexpr uint64_t HPET_GCONF = 0x10;
     constexpr uint64_t HPET_MAIN = 0xF0;
     constexpr uint64_t HPET_TICKS_OFF = 0x8;
+    constexpr uint64_t HPET_EN_BIT = 0x8;
+    constexpr uint64_t HPET_ON = 0x1;
     constexpr uint64_t TO_MS = 1000000000000ULL;
     constexpr uint64_t HPET_SPEED_OFF = 32;
 

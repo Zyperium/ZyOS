@@ -13,29 +13,6 @@ namespace Debug {
         91, 92, 93, 94, 95, 96, 97
     };
 
-    bool a_debug_lock = false;
-    uint64_t cur_rflags = 0;
-    void aquire_lock() {
-        uint64_t rflags = 0;
-        asm volatile("pushfq; pop %0" : "=r"(rflags));
-        asm volatile("cli");
-        while (__atomic_test_and_set(&a_debug_lock, __ATOMIC_ACQUIRE)) {
-            asm volatile("pause");
-        }
-
-        cur_rflags = rflags;
-
-        return;
-    }
-
-    void release_lock() {
-        restore_rflags(cur_rflags);
-        cur_rflags = 0;
-
-        __atomic_clear(&a_debug_lock, __ATOMIC_RELEASE);
-        return;
-    }
-
     uint8_t str_to_col(const char* str) { 
         uint32_t hash = 1237389;
         while (*str) 
@@ -66,10 +43,7 @@ namespace Debug {
         (void)c;
         return;
         #endif
-        // I actually don't know if C++ has unreachable code warnings.
-        #if !DISABLE_DEBUG_LOGS
         outb(0xE9, c);
-        #endif
     }
 
     void puts(const char* s) {

@@ -10,8 +10,8 @@ SysEntry:
 
     mov [gs:24], r10
     mov r10, [gs:8]    ; r10
-    mov [r10 + 112], rsp ; usr_stack_save
-    mov rsp, [r10 + 96]  ; krnl_stack_top
+    mov [r10 + 144], rsp ; usr_stack_save
+    mov rsp, [r10 + 128]  ; krnl_stack_top
 
     push r11
     push rcx
@@ -50,7 +50,7 @@ SysEntry:
     pop r11
 
     mov r10, [gs:8]
-    mov rsp, [r10 + 112] ; Load usr_stack_save back to RSP
+    mov rsp, [r10 + 144] ; Load usr_stack_save back to RSP
 
     swapgs
     o64 sysret

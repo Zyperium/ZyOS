@@ -96,16 +96,16 @@ namespace Scheduler {
     Task *Task::GetNextTask() {
         lib::RB_Base* leftmost_node = task_tree->get_leftmost();
         if (!leftmost_node) {
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Picking sysidle task!");
             return HAL::CORE::get_core_data()->system_idle_task;
         }
 
         Task *pick = static_cast<Task *>(leftmost_node);
-        global_min_vruntime = pick->vruntime - MIN_VRUNTIME_OFFSET;
+        if (pick->vruntime > MIN_VRUNTIME_OFFSET)
+            global_min_vruntime = pick->vruntime - MIN_VRUNTIME_OFFSET;
         return pick;
     }
 
-    Task::Task() : niceness(1) {
+    Task::Task() : vruntime(0), niceness(1) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Beginning primitive task setup");
         static size_t next_pid = 0;
 
@@ -261,7 +261,6 @@ namespace Scheduler {
 
 
         TaskBlock *r_block = blocked_queue[(size_t)reason];
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Blocked task %s", task_name.c_str());
         running = false;
 
         aquire_lock();
@@ -369,49 +368,67 @@ namespace Scheduler {
     }
     
     void ClearGarbage() {
-        return;
-        if (!blocked_queue[(size_t)BlockReasons::GARBAGE]) return;
-
-        Task *exclude = HAL::CORE::get_core_data()->current_task;
-        TaskBlock *root_task = blocked_queue[(size_t)BlockReasons::GARBAGE];
-        TaskBlock *reset_to{};
-
-        do {
-            if (root_task->t_ptr == exclude) {
-                reset_to = root_task;
-                root_task = root_task->next;
-                Debug::krnl_print("SCHD", Debug::LOG_INFO, "Can't remove %s because its the active task!", reset_to->t_ptr->task_name.c_str());
-                continue;
-            }
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Cleaing up task %s", reset_to->t_ptr->task_name.c_str());
-
-            uint32_t pid = root_task->t_ptr->get_pid();
-
-            ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;
-            ZyOS::QWORD idx = pid % TASK_TABLE_SIZE;
-
-            TaskDirectory[dir][idx] = nullptr;
-
-            ZyOS::QWORD krnl_cr3 = read_cr3();
-            if (root_task->t_ptr->cr3 != krnl_cr3) {
-                VMM::FreeProcessPages(root_task->t_ptr->cr3);
-            }
-
-            if (root_task->t_ptr->krnl_stack_btm)
-                PMEM::free_pages(root_task->t_ptr->krnl_stack_btm, TASK_STACK_PAGES);
-
-            delete root_task->t_ptr;
-            root_task->t_ptr = nullptr;
-
-            root_task = root_task->next;
-        } while (root_task != blocked_queue[(size_t)BlockReasons::GARBAGE]);
-
-        if (reset_to) {
-            reset_to->next = reset_to;
-            reset_to->prev = reset_to;
+        TaskBlock *head = blocked_queue[(size_t)BlockReasons::GARBAGE];
+        if (!head) {
+            return;
         }
 
-        blocked_queue[(size_t)BlockReasons::GARBAGE] = reset_to;
+        Task *exclude = HAL::CORE::get_core_data()->current_task;
+        TaskBlock *current = head;
+        TaskBlock *next_node = nullptr;
+        TaskBlock *keep_head = nullptr;
+        blocked_queue[(size_t)BlockReasons::GARBAGE] = nullptr;
+
+        do {
+            next_node = current->next; 
+
+            if (current->t_ptr == exclude) {
+                Debug::krnl_print("SCHD", Debug::LOG_INFO, "Skipping active task: %s", current->t_ptr->task_name.c_str());
+
+                if (!keep_head) {
+                    keep_head = current;
+                    keep_head->next = keep_head;
+                    keep_head->prev = keep_head;
+                } else {
+                    current->next = keep_head;
+                    current->prev = keep_head->prev;
+                    keep_head->prev->next = current;
+                    keep_head->prev = current;
+                }
+            } 
+            else {
+                if (current->t_ptr) {
+                    Task *t = current->t_ptr;
+                    Debug::krnl_print("SCHD", Debug::LOG_INFO, "Cleaning up task: %s", t->task_name.c_str());
+
+                    uint32_t pid = t->get_pid();
+                    ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;
+                    ZyOS::QWORD idx = pid % TASK_TABLE_SIZE;
+
+                    if (TaskDirectory[dir]) {
+                        TaskDirectory[dir][idx] = nullptr;
+                    }
+
+                    ZyOS::QWORD krnl_cr3 = read_cr3();
+                    if (t->cr3 != krnl_cr3) {
+                        VMM::FreeProcessPages(t->cr3);
+                    }
+
+                    if (t->krnl_stack_btm) {
+                        uintptr_t original_alloc_ptr = reinterpret_cast<uintptr_t>(t->krnl_stack_btm) - PAGE_SIZE;
+                        PMEM::free_pages(reinterpret_cast<void*>(original_alloc_ptr), TASK_STACK_PAGES + 1);
+                    }
+
+                    delete t;
+                }
+
+                delete current;
+            }
+
+            current = next_node;
+        } while (current != head);
+
+        blocked_queue[(size_t)BlockReasons::GARBAGE] = keep_head;
     }
 }
 

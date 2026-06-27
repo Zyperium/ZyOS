@@ -13,6 +13,7 @@
 
 #include <HAL/DISK/Disk.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
+#include <HAL/CORE/Core.hpp>
 
 #include <stdint.h>
 #include <stddef.h>
@@ -29,7 +30,8 @@ namespace TTY::Commands {
         {_hash("sysload"), PROC::driver_processor},
         {_hash("zyx"), PROC::execute_processor},
         {_hash("watchpid"), PROC::watch_processor},
-        {_hash("whatpid"), PROC::whatpid_processor}
+        {_hash("whatpid"), PROC::whatpid_processor},
+        {_hash("fault"), PROC::fault_processor}
     };
 
     constexpr size_t vfs_commands_length = sizeof(vfs_commands) / sizeof(vfs_commands[0]);
@@ -459,6 +461,45 @@ namespace TTY::Commands {
             Debug::krnl_print("CMD", Debug::LOG_INFO, "PID name %s. vruntime: %i. Last ran %ims ago.", t_pid->task_name.c_str(), t_pid->vruntime, Scheduler::LastRunTime(t_pid));
             Debug::snprintf(response, 96, "PID name %s. vruntime: %i. Last ran %ims ago.\n", t_pid->task_name.c_str(), t_pid->vruntime, Scheduler::LastRunTime(t_pid));
             return response;
+        }
+
+        lib::string fault_processor(int argc, char **argv) {
+            if (argc < 2) {
+                return "You must pass a fault type (page, gp, div0, triple)\n";
+            }
+
+            if (strcmp(argv[1], "page")) {
+                auto *ptr = (int *)0x0;
+                *ptr = 0xDEAD;
+            }
+            else if (strcmp(argv[1], "general")) {
+                auto *ptr = (int *)0x32132143324324;
+                *ptr = 0xDEAD;
+            }
+            else if (strcmp(argv[1], "div0")) {
+                asm volatile(
+                    "mov $0x0, %%rax;"
+                    "mov $0x0, %%rbx;"
+                    "xor %%rdx, %%rdx;"
+                    "div %%rbx;"
+                    :
+                    :
+                    : "rax", "rbx", "rdx"
+                );
+            }
+            else if (strcmp(argv[1], "triple")) {
+                asm volatile(
+                    "push %q0\n\t"
+                    "push %q1\n\t"
+                    "lidt 0(%%rsp)\n\t"
+                    "add $16, %%rsp"
+                    :
+                    : "r" (0), "r" (0)
+                    : "memory"
+                );
+            }
+
+            return "Done!\n";
         }
     }
 }

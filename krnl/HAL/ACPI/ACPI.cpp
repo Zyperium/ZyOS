@@ -75,13 +75,14 @@ namespace ACPI {
 
                 hpet_table = reinterpret_cast<HPET *>(table);
                 Debug::krnl_print(
-                    "ACPI", Debug::LOG_INFO, "HPET info: OEM %i, Addr %x, Signature %s",
+                    "ACPI", Debug::LOG_INFO, "HPET info: OEM ID %i, Addr %x, Signature %s",
                     hpet_table->header.oem_id, hpet_table->address, hpet_table->header.signature
                 );
 
                 hpet = reinterpret_cast<uint64_t *>((uintptr_t)hpet_table->address + PMM::hhdm_offset);
+                hpet[HPET_GCONF / HPET_EN_BIT] |= HPET_ON;
                 hpet_speed = hpet[HPET_GCAP] >> HPET_SPEED_OFF;
-
+                Debug::krnl_print("ACPI", Debug::LOG_INFO, "Speed: %i", hpet_speed);
             }
         }
 

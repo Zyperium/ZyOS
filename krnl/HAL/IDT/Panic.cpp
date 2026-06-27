@@ -24,7 +24,6 @@ void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
         }
         default:
             Debug::krnl_print("IDT", Debug::LOG_INFO, "Unknown kmode error!");
-            return;
             break;
     }
 

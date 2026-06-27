@@ -3,11 +3,18 @@
 #include <lib/str.hpp>
 
 namespace ELF {
-    void drvRunway(const char *cmd_line);
+    /*
+        @brief How do I use this?
+        Well, unless you want your driver task to be a ring 3 app, which I assume you don't,
+        you need to spawn a *new* task with the runway as its entry point, pass then cmd_line
+        through the void *argument, and then chill! Not too hard at all.,
+    */
+    void Runway(lib::string cmd_line);
 
-    // Note: drvRunway handles loading apps perfectly.
-    // This is basically just for custom behaviour or something like
-    // custom app load protocols you want. Realistically? Not necessary at all.
+    /*
+        @note Probably don't use this, unless you need some hyper specific function.
+        (Basically you want the elf in memory & patched, but not executing)
+    */
     void *load_elf(lib::string path);
 }
 
@@ -32,6 +39,9 @@ namespace Scheduler {
     };
 
     // IF you don't know what it does, do not touch it!
+    // Which I hope you *do* know what it does.
+    // You will need this to fork processes, because it isn't easy!
+    // The fork function does nothing btw. (:
     class alignas(64) Task {
     public:
         using EntryPoint = void(*)(void*);

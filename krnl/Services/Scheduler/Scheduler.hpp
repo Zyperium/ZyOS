@@ -41,7 +41,7 @@ namespace Scheduler {
         ZyOS::QWORD vruntime;
 
         ZyOS::QWORD *usr_stack_top;
-        ZyOS::QWORD *krnl_stack_top; // Used by SysEntry.asm
+        ZyOS::QWORD *krnl_stack_top; // Saved by SysEntry.asm
         ZyOS::QWORD *krnl_stack_btm;
         ZyOS::QWORD usr_stack_save; // This is used by SysEntry.asm. If you mess with the offsets
         // make sure to adjust sysentry too.

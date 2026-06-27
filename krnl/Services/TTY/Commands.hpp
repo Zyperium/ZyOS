@@ -21,6 +21,7 @@ namespace TTY::Commands {
         lib::string execute_processor(int argc, char **argv);
         lib::string watch_processor(int argc, char **argv);
         lib::string whatpid_processor(int argc, char **argv);
+        lib::string fault_processor(int argc, char **argv);
     }
 
     lib::string evaluate_cmd(const char *cmd);

@@ -30,6 +30,7 @@ namespace ELF {
 
         uint64_t _cr3 = read_cr3();
         task->cr3 = VMM::CreateProcessPageTable(_cr3);
+        task->utask = new Scheduler::UserTask;
         
         asm volatile("mov %0, %%cr3" :: "r"(task->cr3) : "memory");
 

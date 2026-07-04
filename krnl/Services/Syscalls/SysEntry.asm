@@ -1,10 +1,15 @@
 [BITS 64]
 global SysEntry
 extern SysDisp ; System Dispatcher
-extern TestingGSBase
 
 section .text
 
+; RAX = ID
+; RDI = A1
+; RSI = A2
+; RDX = A3
+; R10 = A4
+; R8  = A5
 SysEntry:
     swapgs             ; Swap to kernel GS
 
@@ -32,7 +37,7 @@ SysEntry:
 
     call SysDisp
 
-    pop rax
+    add rsp, 8
     pop rdi
     pop rsi
     pop rdx

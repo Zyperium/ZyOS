@@ -25,8 +25,6 @@ extern "C" void __stack_chk_fail() {
 using namespace HAL;
 
 void SysIdleTask() {
-    Debug::krnl_print("KRNL", Debug::LOG_INFO, "Sysidle running on core %i", HAL::CORE::get_core_data()->core_id);
-    Debug::krnl_print("KRNL", Debug::LOG_INFO, "Task was created on core %i", HAL::CORE::get_core_data()->system_idle_task->current_core);
     for (;;) {
         Scheduler::Task *stolen = Scheduler::StealCoCoreTask();
 

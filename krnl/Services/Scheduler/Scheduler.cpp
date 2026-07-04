@@ -88,6 +88,7 @@ namespace Scheduler {
         return;
     }
 
+    // This is a bit of a weird thing idk. Fix this later ig.
     Task *StealCoCoreTask() {
         
         return nullptr;
@@ -105,7 +106,17 @@ namespace Scheduler {
         return pick;
     }
 
-    Task::Task() : vruntime(0), niceness(1) {
+    UserTask::~UserTask() {
+        for (auto i{0uz}; i < Scheduler::MAX_USR_FD; ++i) {
+            if (!descriptors[i])
+                continue;
+            delete descriptors[i];
+        }
+
+        return;
+    }
+
+    Task::Task() : vruntime(0), utask(nullptr), niceness(1), core_pinned(false), syscalls_allowed(false) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Beginning primitive task setup");
         static size_t next_pid = 0;
 
@@ -404,6 +415,10 @@ namespace Scheduler {
                     uint32_t pid = t->get_pid();
                     ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;
                     ZyOS::QWORD idx = pid % TASK_TABLE_SIZE;
+
+                    if (t->utask) {
+                        delete[] t->utask;
+                    }
 
                     if (TaskDirectory[dir]) {
                         TaskDirectory[dir][idx] = nullptr;

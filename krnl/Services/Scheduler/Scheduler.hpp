@@ -5,6 +5,8 @@
 
 #include <HAL/ACPI/ACPI.hpp>
 
+#include <Services/VFS/VFS.hpp>
+
 namespace Scheduler {
     enum class BlockReasons {
         SLEEP,
@@ -25,6 +27,16 @@ namespace Scheduler {
         TaskBlock *prev;
     };
 
+    constexpr uint8_t MAX_USR_FD = 16;
+    struct UserTask {
+        VFS::VNode *descriptors[MAX_USR_FD]{nullptr};
+        size_t permissions{0};
+        size_t next_free_ds{0};
+
+        ~UserTask();
+        UserTask() = default;
+    };
+
     class alignas(ZyOS::sbQWORD) Task : public lib::RB_Base {
     public:
         using EntryPoint = void(*)(void*);
@@ -43,18 +55,18 @@ namespace Scheduler {
         ZyOS::QWORD *usr_stack_top;
         ZyOS::QWORD *krnl_stack_top; // Saved by SysEntry.asm
         ZyOS::QWORD *krnl_stack_btm;
-        ZyOS::QWORD usr_stack_save; // This is used by SysEntry.asm. If you mess with the offsets
-        // make sure to adjust sysentry too.
+        ZyOS::QWORD usr_stack_save; /* This is used by SysEntry.asm. If you mess with the offsets
+        make sure to adjust sysentry too. */
+        UserTask *utask;
 
-        ZyOS::WORD current_core;
-        ZyOS::WORD lowest_queue;
-        ZyOS::WORD highest_queue;
         alignas(16) uint8_t *fx_state;
         uint8_t *malignedfx;
-        uint32_t niceness;
-        uint64_t last_ran_time;
+        ZyOS::QWORD last_ran_time;
+        ZyOS::DWORD niceness;
+        ZyOS::WORD current_core;
         volatile bool running;
-        bool core_pinned{};
+        bool core_pinned;
+        bool syscalls_allowed;
 
         void block(BlockReasons reason, ZyOS::QWORD arg = 0);
         void unblock(BlockReasons unreason);

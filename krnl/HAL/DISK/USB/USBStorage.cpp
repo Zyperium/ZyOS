@@ -13,7 +13,6 @@ using namespace HAL::MEM;
 
 namespace HAL::DISK::USB {
     int xHCIDD::read(uint64_t sector, uint32_t count, void *buffer) {
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "USB mass storage read begin (Sector %x)", sector);
         return usbptr->read_sectors(sector, count, buffer);
     }
 
@@ -55,8 +54,6 @@ namespace HAL::DISK::USB {
     void USBStorage::on_int(uint32_t bytes_transferred, uint32_t endpoint_id, uint64_t param_event) {
         (void)bytes_transferred;
         (void)param_event;
-
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "On interrupt called in xHCI usb storage");
 
         switch (state) {
             case STATE_WAIT_CBW:
@@ -179,7 +176,6 @@ namespace HAL::DISK::USB {
         while (sectors_left > 0) {
             uint16_t chunk_sectors = (sectors_left > MAX_SECTORS_PER_CHUNK) ? MAX_SECTORS_PER_CHUNK : sectors_left;
             uint32_t chunk_bytes = chunk_sectors * 512;
-            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Reading sector %x, (%i remaining)", lba, count - total_sectors_read);
 
             while (io_pending) { asm volatile("pause"); }
             __atomic_test_and_set(&io_pending, __ATOMIC_ACQUIRE);

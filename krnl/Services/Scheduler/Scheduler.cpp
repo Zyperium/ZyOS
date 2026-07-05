@@ -394,7 +394,6 @@ namespace Scheduler {
             next_node = current->next; 
 
             if (current->t_ptr == exclude) {
-                Debug::krnl_print("SCHD", Debug::LOG_INFO, "Skipping active task: %s", current->t_ptr->task_name.c_str());
 
                 if (!keep_head) {
                     keep_head = current;
@@ -410,7 +409,6 @@ namespace Scheduler {
             else {
                 if (current->t_ptr) {
                     Task *t = current->t_ptr;
-                    Debug::krnl_print("SCHD", Debug::LOG_INFO, "Cleaning up task: %s", t->task_name.c_str());
 
                     uint32_t pid = t->get_pid();
                     ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;

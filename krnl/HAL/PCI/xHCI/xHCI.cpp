@@ -964,7 +964,6 @@ namespace HAL::PCI {
     }
 
     void xHCI::queue_bulk_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size) {
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Queuing a bulk transfer!");
         aquire_lock();
         uint8_t ep_num = endpoint_address & USB::USB_EP_NUM_MASK;
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
@@ -1023,8 +1022,6 @@ namespace HAL::PCI {
 
         asm volatile("sfence" ::: "memory"); 
         asm volatile("mfence" ::: "memory");
-
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Ringing doorbell for slot %i, dci %i", slot_id, dci);
 
         *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
         release_lock();

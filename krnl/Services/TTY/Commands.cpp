@@ -7,6 +7,7 @@
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <Library/krnlptr.hpp>
+#include <Library/path.hpp>
 
 #include <Services/VFS/VFS.hpp>
 #include <Services/VFS/FAT32/FAT32.hpp>
@@ -107,6 +108,48 @@ namespace TTY::Commands {
     }
 
     namespace PROC {
+        char *get_abs_path(lib::string current_path) {
+            char *err = new char[2];
+            err[0] = 'X';
+            err[1] = '\0';
+
+            if (current_path.length() < 3)
+                return err;
+            
+            ConHost *cur_host = conhosts[active_host];
+
+            if (current_path[0] == '/') {
+                if (current_path[2] != '/')
+                    return err;
+
+                lib::fullpath p = lib::parse_path(current_path);
+                
+                char *ptr = new char[current_path.length()];
+                memcpy(ptr, current_path.c_str(), current_path.length());
+                ptr[0] = ptr[1];
+                ptr[1] = ':';
+                delete[] err;
+                return ptr;
+            }
+
+            if (current_path[1] == ':') {
+                char *ptr = new char[current_path.length()];
+                memcpy(ptr, current_path.c_str(), current_path.length());
+                delete[] err;
+                return ptr;
+            }
+
+            char *ptr = new char[cur_host->current_wd.length() + current_path.length() + 2]{0};
+            ptr[0] = cur_host->_ltrdrive;
+            ptr[1] = ':';
+            memcpy(&ptr[2], cur_host->current_wd.c_str(), cur_host->current_wd.length());
+            if (cur_host->current_wd[cur_host->current_wd.length() - 1] != '/')
+                ptr[cur_host->current_wd.length() + 2] = '/';
+            memcpy(&ptr[cur_host->current_wd.length() + 3], current_path.c_str(), current_path.length());
+            delete[] err;
+            return ptr;
+        }
+
         lib::string echo_processor(int argc, char **argv) {
             if (argc < 2) {
                 return "";
@@ -144,7 +187,7 @@ namespace TTY::Commands {
             return "\n";
         }
 
-        lib::string ls_processor(int, char **) {
+        lib::string ls_processor(int argc, char **argv) {
             ConHost *cur_host = conhosts[active_host];
 
             Scheduler::Yield();
@@ -153,9 +196,26 @@ namespace TTY::Commands {
                 return "Warning: You are currently not on a valid drive.\n";
             }
 
-            VFS::VNode *root_n = HAL::DISK::GetRootOfDrive(cur_host->_ltrdrive);
+            char *abs_path{nullptr};
+            if (argc > 1) {
+                abs_path = get_abs_path(argv[1]);
+                Debug::krnl_print("CMD", Debug::LOG_INFO, "Val %s", abs_path);
+                if (abs_path[0] == 'X') {
+                    delete[] abs_path;
+                    return "Warning: invalid path";
+                }
+            }
+            else {
+                abs_path = new char[cur_host->current_wd.length() + 2]{0};
+                abs_path[0] = cur_host->_ltrdrive;
+                abs_path[1] = ':';
+                memcpy(&abs_path[2], cur_host->current_wd.c_str(), cur_host->current_wd.length());
+            }
+
+            VFS::VNode *root_n = HAL::DISK::GetRootOfDrive(abs_path[0]);
 
             if (!root_n) {
+                delete[] abs_path;
                 return "Error: Unable to reach root node of drive! (-1)\n";
             }
 
@@ -163,10 +223,12 @@ namespace TTY::Commands {
             Debug::krnl_print("VFS", Debug::LOG_INFO, "Target Directory pointer is: %x", target_directory);
 
             if (target_directory == (VFS::VNode *)0xCCCCCCCCCCCCCCCC) {
+                delete[] abs_path;
                 return "Critical Error: Poisioned value as target_directory!\n";
             }
 
             if (!target_directory) {
+                delete[] abs_path;
                 return "Warning: Non-existant directory!\n";
             }
 
@@ -226,6 +288,7 @@ namespace TTY::Commands {
                 delete target_directory;
             }
 
+            delete[] abs_path;
             return result;
         }
 

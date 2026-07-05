@@ -67,7 +67,6 @@ namespace HAL::PCI {
         void worker() {
             for (;;) {
                 while (wrapper) {
-                    Debug::krnl_print("MSIX", Debug::LOG_INFO, "Invoking bulk transfer!");
                     aquire_lock();
                     wrapper->instance->queue_bulk_transfer(wrapper->slot_id, 
                         wrapper->endpoint_addr,
@@ -125,7 +124,6 @@ namespace HAL::PCI {
                 nullptr
             };
 
-            Debug::krnl_print("MSIX", Debug::LOG_INFO, "Queuing new bulk transfer for later handling");
             xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
             current_loops = 0;
 

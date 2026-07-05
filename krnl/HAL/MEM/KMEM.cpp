@@ -191,7 +191,6 @@ namespace HAL::MEM::KMEM {
 
     void free(void *addr) {
         if (!addr) return;
-        Debug::krnl_print("KMEM", Debug::LOG_INFO, "Freeing address %x", addr);
 
         HeapSegmentHeader *header = (HeapSegmentHeader*)((uint64_t)addr - sizeof(HeapSegmentHeader));
         memset(addr, MEM_POISON_VALUE, header->length);

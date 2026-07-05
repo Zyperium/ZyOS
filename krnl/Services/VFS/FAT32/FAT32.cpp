@@ -56,9 +56,6 @@ namespace VFS::FAT32 {
 
     uint32_t FAT32FileSystem::cluster_to_sector(uint32_t cluster) const {
         if (cluster < 2) return 0;
-        Debug::krnl_print("FAT32", Debug::LOG_INFO, "m_data_start_sector = %i", m_data_start_sector);
-        Debug::krnl_print("FAT32", Debug::LOG_INFO, "cluster - 2 = %i", cluster - 2);
-        Debug::krnl_print("FAT32", Debug::LOG_INFO, "m_bs.sectors_per_cluster = %i", m_bs.sectors_per_cluster);
         return m_data_start_sector + ((cluster - 2) * m_bs.sectors_per_cluster);
     }
 
@@ -130,36 +127,29 @@ namespace VFS::FAT32 {
         const uint8_t* source_buffer = static_cast<const uint8_t*>(buffer);
         uint32_t total_bytes_written = 0;
 
-        // 1. Handle allocation if the file is completely empty (size == 0, cluster == 0)
         if (m_first_cluster == 0) {
             uint32_t free_cluster = 0;
             
-            // Note: You may need to add a public getter for m_total_clusters in FAT32FileSystem,
-            // or loop up to a safe maximum FAT32 cluster bound. 2 is the first valid data cluster.
             for (uint32_t c = 2; c < 0x0FFFFFFF; ++c) { 
-                if (m_fs->read_FAT_entry(c) == 0) { // 0 represents a free cluster
+                if (m_fs->read_FAT_entry(c) == 0) {
                     free_cluster = c;
                     break;
                 }
             }
-            if (free_cluster == 0) return -1; // Disk full
+            if (free_cluster == 0) return -1;
 
-            // 0x0FFFFFFF is the standard FAT32 End-of-File (EOF) marker
             m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF); 
             m_first_cluster = free_cluster;
             m_is_dirty = true;
         }
 
-        // 2. Traverse to the target cluster matching our write offset
         uint32_t current_cluster = m_first_cluster;
         uint32_t clusters_to_skip = offset / cluster_size;
 
         for (uint32_t i = 0; i < clusters_to_skip; ++i) {
             uint32_t next_cluster = m_fs->read_FAT_entry(current_cluster);
             
-            // 0x0FFFFFF8 is the minimum boundary for an EOF cluster marker range
             if (next_cluster >= 0x0FFFFFF8) { 
-                // The offset forces us to expand the file allocation before writing
                 uint32_t free_cluster = 0;
                 for (uint32_t c = 2; c < 0x0FFFFFFF; ++c) {
                     if (m_fs->read_FAT_entry(c) == 0) {
@@ -170,14 +160,13 @@ namespace VFS::FAT32 {
                 if (free_cluster == 0) return total_bytes_written;
 
                 m_fs->write_FAT_entry(current_cluster, free_cluster);
-                m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF); // Mark new cluster as EOF
+                m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF);
                 current_cluster = free_cluster;
             } else {
                 current_cluster = next_cluster;
             }
         }
 
-        // 3. Write data loop using a sector bounce buffer
         uint8_t* sector_bounce_buffer = static_cast<uint8_t*>(
             HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
         );
@@ -195,7 +184,6 @@ namespace VFS::FAT32 {
             uint32_t bytes_left_to_write = size - total_bytes_written;
             uint32_t chunk_size = (bytes_left_to_write < bytes_left_in_sector) ? bytes_left_to_write : bytes_left_in_sector;
 
-            // If we aren't overwriting the exact entire sector, we must read-modify-write
             if (byte_offset_in_sector != 0 || chunk_size < bytes_per_sector) {
                 m_fs->read_sectors(physical_sector_lba, sector_bounce_buffer, 1);
             }

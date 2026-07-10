@@ -209,17 +209,31 @@ namespace Debug {
         }
     }
     
+    // why do this weird "lock" thing? Because regular locks deadlock here,
+    // and this doesn't, plus this also works? idk.
+    volatile size_t current_access{0};
     void krnl_print(const char* class_name,
            LogLevel level,
            const char* fmt, ...)
     {
+        bool da = HAL::CORE::validate_gs_reg();
+
+        // if (da && !current_access) {
+        //     current_access = HAL::CORE::get_core_data()->core_id + 1;
+        // }
+        // else if (da) {
+        //     while (current_access)
+        //         asm volatile("pause");
+        //     current_access = HAL::CORE::get_core_data()->core_id + 1;
+        // }
+
         puts("\033[");
         print_int(str_to_col(class_name));
         puts("m[");
         puts(class_name);
         puts("]\033[0m ");
     
-        bool da = HAL::CORE::validate_gs_reg();
+        
         if (da) {
             puts("[");
             print_int(HAL::CORE::get_core_data()->core_id);
@@ -248,6 +262,7 @@ namespace Debug {
     
         if (!TTY::BOOT::is_active()) {
             va_end(args_copy);
+            current_access = 0;
             return;
         }
     
@@ -256,5 +271,6 @@ namespace Debug {
         va_end(args_copy);
         
         TTY::BOOT::show_log(class_name, level_name(level), tbuf);
+        current_access = 0;
     }
 }

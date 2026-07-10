@@ -37,6 +37,9 @@ namespace Scheduler {
         UserTask() = default;
     };
 
+    /*
+        WARNING: This class is used in assembly. You must match any changes with the assembly
+    */
     class alignas(ZyOS::sbQWORD) Task : public lib::RB_Base {
     public:
         using EntryPoint = void(*)(void*);

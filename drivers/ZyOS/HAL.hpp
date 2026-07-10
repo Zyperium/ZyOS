@@ -47,4 +47,21 @@ namespace HAL {
             void* realloc(void* ptr, size_t new_size);
         }
     }
+
+    namespace CORE {
+        struct alignas(uint64_t) CoreLocal {
+            CoreLocal *self;
+            uint64_t current_task; // SCHEDULER::TASK *
+            uint64_t last_task; // SCHEDULER::TASK *
+            uint64_t r10_save;
+            uint64_t kernel_stack;
+            int core_id;
+            uint32_t lapic_ticks_per_ms;
+            uint64_t system_idle_task; // SCHEDULER::TASK *
+        };
+
+        CoreLocal *get_core_data();
+        void set_lapic_shot(uint64_t milliseconds);
+        size_t get_core_count();
+    }
 }

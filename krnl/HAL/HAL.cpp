@@ -64,7 +64,6 @@ namespace HAL {
         CORE::CoreLocal *data = new CORE::CoreLocal;
         data->core_id = 0;
         data->current_task = nullptr;
-        data->last_task = nullptr;
         data->kernel_stack = 0;
         data->self = data;
         data->lapic_ticks_per_ms = 0;

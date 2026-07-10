@@ -15,7 +15,8 @@ namespace TTY {
     enum class ScreenCTL {
         SET_COL,
         PUT_PIXEL,
-        SWAP_BUFFER
+        SWAP_BUFFER,
+        DIRTY_RECT
     };
 
     namespace ScreenStructs {
@@ -23,7 +24,14 @@ namespace TTY {
             int x, y;
             uint32_t col;
         };
+
+        struct DIRTY_DATA {
+            int x, y;
+            int width, height;
+            bool redraw;
+        };
     }
 
     void proc_screen_ctl(size_t tty_id, ScreenCTL control, uint64_t buf);
+    uint32_t *get_tty_bbuffer();
 }

@@ -7,11 +7,14 @@ namespace HAL::CORE {
     void discover_all_cores();
     CoreLocal *get_core_data();
     void init_lapic();
+    size_t get_core_count();
+    void calibrate_lapic();
     void ack_lapic();
     void set_lapic_shot(uint64_t milliseconds);
     void broadcast_nmi();
     bool validate_gs_reg();
     extern void(*idleptr)();
+    extern volatile bool activate_cores;
 
     constexpr uint32_t LAPIC_SPURIOUS_VECTOR_MASK = 0xFF;
     constexpr uint32_t LAPIC_APIC_SOFTWARE_ENABLE = 0x100;

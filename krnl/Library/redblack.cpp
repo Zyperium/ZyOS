@@ -166,10 +166,13 @@ namespace lib {
                 leftmost = tree_minimum(z->right);
             } 
             else {
-                leftmost = z->parent;
-                if (leftmost == nullptr && root != z) {
-                    leftmost = tree_minimum(root);
+                RB_Base* current = z;
+                RB_Base* succ = z->parent;
+                while (succ != nullptr && current == succ->right) {
+                    current = succ;
+                    succ = succ->parent;
                 }
+                leftmost = succ; 
             }
         }
 
@@ -229,9 +232,11 @@ namespace lib {
                     sibling = parent->right;
                 }
 
-                if ((sibling->left == nullptr || sibling->left->col == RB_Colour::BLACK) &&
-                    (sibling->right == nullptr || sibling->right->col == RB_Colour::BLACK)) {
-                    sibling->col = RB_Colour::RED;
+                if (sibling == nullptr || 
+                    ((sibling->left == nullptr || sibling->left->col == RB_Colour::BLACK) &&
+                     (sibling->right == nullptr || sibling->right->col == RB_Colour::BLACK))) {
+                    
+                    if (sibling != nullptr) sibling->col = RB_Colour::RED;
                     node = parent;
                     parent = node->parent;
                 }

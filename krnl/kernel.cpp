@@ -25,13 +25,8 @@ extern "C" void __stack_chk_fail() {
 using namespace HAL;
 
 void SysIdleTask() {
+    Debug::krnl_print("KRNL", Debug::LOG_INFO, "Entering idle task...");
     for (;;) {
-        Scheduler::Task *stolen = Scheduler::StealCoCoreTask();
-
-        if (stolen) {
-            Scheduler::Yield();
-        }
-
         asm volatile("hlt");
     }
 }

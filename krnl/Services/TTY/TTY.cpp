@@ -11,6 +11,7 @@
 #include <HAL/DISK/Disk.hpp>
 #include <HAL/IDT/IOAPIC/IOAPIC.hpp>
 #include <HAL/PS2/PS2KB.hpp>
+#include <HAL/CORE/Core.hpp>
 
 using namespace HAL::SCREEN;
 
@@ -115,6 +116,10 @@ namespace TTY {
 
         r_host->print_cwd();
         return;
+    }
+
+    uint32_t *get_tty_bbuffer() {
+        return HAL::SCREEN::get_buffer();
     }
 
     ConHost::ConHost() {
@@ -230,13 +235,14 @@ namespace TTY {
 
         Debug::krnl_print("TTY", Debug::LOG_INFO, "Initialized");
         contask->core_pinned = false;
+        __atomic_test_and_set(&HAL::CORE::activate_cores, __ATOMIC_ACQUIRE);
         asm volatile("sti");
         for (;;) {
             if (!contask) continue;
             // contask->block(Scheduler::BlockReasons::AWAIT_KEYBOARD_INPUT);
 
             // Why manually poll? Idk. QEMU refuses to call the IDT responsible for the handler, however...
-            // The interrupts work flawlessly on real hardware. So QEMU quirk ig.
+            // The interrupts work flawlessly on real hardware. So QEMU quirk ig. (Or real hardware quirk idk)
             uint8_t ps2_status = inb(0x64); 
             if (ps2_status & 0x01) {
                 PS2::Keyboard::HandleInterrupt();

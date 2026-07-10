@@ -26,4 +26,5 @@ namespace HAL::SCREEN {
     void draw_char(char c, int x, int y, uint32_t col);
     void draw_char(char c, int x, int y, COL col);
     screen_dim get_dim();
+    uint32_t *get_buffer();
 }

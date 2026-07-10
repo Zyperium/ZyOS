@@ -63,7 +63,7 @@ namespace Syscalls {
         @returns a file descriptor.
     */
     uint64_t SYS_OPEN_FILE(uint64_t usr_ptr, uint64_t max) {
-        char *val = usr_to_string(usr_ptr, max);
+        auto *val = usr_to_string(usr_ptr, max);
 
         Debug::krnl_print("SYS", Debug::LOG_INFO, "Received value %s", val);
 
@@ -74,7 +74,7 @@ namespace Syscalls {
 
         auto filed{0};
 
-        Scheduler::Task *usr_task = HAL::CORE::get_core_data()->current_task;
+        auto *usr_task = HAL::CORE::get_core_data()->current_task;
 
         if (!usr_task->utask) {
             delete[] val;
@@ -98,7 +98,7 @@ namespace Syscalls {
             }
         }
 
-        lib::fullpath p = lib::parse_path(val);
+        auto p = lib::parse_path(val);
         delete[] val;
 
         if (!DISK::IsValidDisk(p.drv)) {
@@ -106,7 +106,7 @@ namespace Syscalls {
             return 0;
         }
 
-        VFS::VNode *node = DISK::GetRootOfDrive(p.drv)->resolve_path_to_vnode(p.path);
+        auto *node = DISK::GetRootOfDrive(p.drv)->resolve_path_to_vnode(p.path);
 
         if (!node) {
             Debug::krnl_print("SYS", Debug::LOG_WARN, "Received bad path!");
@@ -122,11 +122,33 @@ namespace Syscalls {
     /*
     
     */
-    uint64_t SYS_READ_FILE(uint64_t file_descriptor, uint64_t read_offset, uint64_t read_amount) {
-        (void)file_descriptor;
-        (void)read_offset;
-        (void)read_amount;
-        return 0;
+    uint64_t SYS_READ_FILE(uint64_t file_descriptor, uint64_t read_offset, uint64_t read_amount, uint64_t buffer) {
+        auto *usr_task = HAL::CORE::get_core_data()->current_task;
+
+        if (!usr_task->utask->descriptors[file_descriptor])
+            return 0;
+
+        auto *target = usr_task->utask->descriptors[file_descriptor];
+        
+        if (read_offset >= target->get_size())
+            return 0;
+
+        if (read_offset + read_amount > target->get_size()) {
+            read_amount = target->get_size() - read_offset;
+        }
+
+        auto buf_phys = VMM::GetPhysicalAddress(usr_task->cr3, buffer);
+
+        if (!buf_phys) {
+            Debug::krnl_print("SYS", Debug::LOG_INFO, "Bad virtual address!");
+            return 0;
+        }
+
+        auto *virt_buf = (uint8_t *)(buf_phys + PMM::hhdm_offset);
+
+        target->read(read_offset, virt_buf, read_amount);
+
+        return read_amount;
     }
 
     uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
@@ -143,13 +165,11 @@ namespace Syscalls {
                     return -1;
                 }
 
-                Debug::krnl_print("SYS", Debug::LOG_INFO, "Open file syscall (usr address: %x, usr size: %i)", regs.A1, regs.A2);
-                
                 return SYS_OPEN_FILE(regs.A1, regs.A2);
             }
             case SYSCALL_ID::SYS_READ: {
                 Debug::krnl_print("SYS", Debug::LOG_INFO, "Reading file %i", regs.A1);
-                return SYS_READ_FILE(regs.A1, regs.A2, regs.A3);
+                return SYS_READ_FILE(regs.A1, regs.A2, regs.A3, regs.A4);
             }
             case SYSCALL_ID::SYS_WRITE: {
                 break;

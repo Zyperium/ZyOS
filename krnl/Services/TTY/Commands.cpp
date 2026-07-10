@@ -32,7 +32,8 @@ namespace TTY::Commands {
         {_hash("zyx"), PROC::execute_processor},
         {_hash("watchpid"), PROC::watch_processor},
         {_hash("whatpid"), PROC::whatpid_processor},
-        {_hash("fault"), PROC::fault_processor}
+        {_hash("fault"), PROC::fault_processor},
+        {_hash("nproc"), PROC::nproc_processor}
     };
 
     constexpr size_t vfs_commands_length = sizeof(vfs_commands) / sizeof(vfs_commands[0]);
@@ -109,44 +110,50 @@ namespace TTY::Commands {
 
     namespace PROC {
         char *get_abs_path(lib::string current_path) {
-            char *err = new char[2];
-            err[0] = 'X';
-            err[1] = '\0';
+            auto make_err = []() { return new char[2]{'X', '\0'}; };
 
             if (current_path.length() < 3)
-                return err;
-            
-            ConHost *cur_host = conhosts[active_host];
+                return make_err();
+
+            auto *cur_host = conhosts[active_host];
 
             if (current_path[0] == '/') {
                 if (current_path[2] != '/')
-                    return err;
-
-                lib::fullpath p = lib::parse_path(current_path);
-                
-                char *ptr = new char[current_path.length()];
+                    return make_err();
+            
+                char *ptr = new char[current_path.length() + 1]{0}; 
                 memcpy(ptr, current_path.c_str(), current_path.length());
-                ptr[0] = ptr[1];
+                ptr[0] = current_path[1];
                 ptr[1] = ':';
-                delete[] err;
                 return ptr;
             }
-
+        
             if (current_path[1] == ':') {
-                char *ptr = new char[current_path.length()];
+                char *ptr = new char[current_path.length() + 1]{0};
                 memcpy(ptr, current_path.c_str(), current_path.length());
-                delete[] err;
                 return ptr;
             }
+        
+            bool needs_slash = (cur_host->current_wd.empty() || cur_host->current_wd[cur_host->current_wd.length() - 1] != '/');
 
-            char *ptr = new char[cur_host->current_wd.length() + current_path.length() + 2]{0};
+            size_t total_len = 2 + cur_host->current_wd.length() + (needs_slash ? 1 : 0) + current_path.length();
+
+            char *ptr = new char[total_len + 1]{0};
+
             ptr[0] = cur_host->_ltrdrive;
             ptr[1] = ':';
-            memcpy(&ptr[2], cur_host->current_wd.c_str(), cur_host->current_wd.length());
-            if (cur_host->current_wd[cur_host->current_wd.length() - 1] != '/')
-                ptr[cur_host->current_wd.length() + 2] = '/';
-            memcpy(&ptr[cur_host->current_wd.length() + 3], current_path.c_str(), current_path.length());
-            delete[] err;
+
+            size_t offset = 2;
+            memcpy(ptr + offset, cur_host->current_wd.c_str(), cur_host->current_wd.length());
+            offset += cur_host->current_wd.length();
+
+            if (needs_slash) {
+                ptr[offset] = '/';
+                offset += 1;
+            }
+
+            memcpy(ptr + offset, current_path.c_str(), current_path.length());
+
             return ptr;
         }
 
@@ -450,8 +457,11 @@ namespace TTY::Commands {
             if (argc < 2) {
                 return "Warning: You must pass a path to the driver!\n";
             }
-        
-            void *entry_point = ELF::KModule::load_module(argv[1]);
+
+            char *pathptr = get_abs_path(argv[1]);
+            Debug::krnl_print("CMD", Debug::LOG_INFO, "Abs path is %s", pathptr);
+            void *entry_point = ELF::KModule::load_module(pathptr);
+            delete[] pathptr;
 
             if (!entry_point) {
                 return "Bad module, or a library module!\n";
@@ -465,7 +475,8 @@ namespace TTY::Commands {
                     : "r"(entry)
                     : "memory"
                 );
-                Debug::krnl_print("CMD", Debug::LOG_INFO, "Driver returned?");
+                Debug::krnl_print("CMD", Debug::LOG_INFO, "Driver finished execution");
+                Scheduler::Suicide();
                 for (;;);
             }, "Kernel Module", true, entry_point);
 
@@ -563,6 +574,13 @@ namespace TTY::Commands {
             }
 
             return "Done!\n";
+        }
+
+        lib::string nproc_processor(int, char **) {
+            char ret_da[16];
+
+            Debug::snprintf(ret_da, 64, "%i\n", HAL::CORE::get_core_count());
+            return ret_da;
         }
     }
 }

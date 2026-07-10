@@ -90,8 +90,7 @@ namespace Scheduler {
 
     // This is a bit of a weird thing idk. Fix this later ig.
     Task *StealCoCoreTask() {
-        
-        return nullptr;
+        return Task::GetNextTask();
     }
 
     Task *Task::GetNextTask() {
@@ -429,7 +428,7 @@ namespace Scheduler {
 
                     if (t->krnl_stack_btm) {
                         uintptr_t original_alloc_ptr = reinterpret_cast<uintptr_t>(t->krnl_stack_btm) - PAGE_SIZE;
-                        PMEM::free_pages(reinterpret_cast<void*>(original_alloc_ptr), TASK_STACK_PAGES + 1);
+                        PMEM::free_pages(reinterpret_cast<void *>(original_alloc_ptr), TASK_STACK_PAGES + 1);
                     }
 
                     delete t;
@@ -445,21 +444,14 @@ namespace Scheduler {
     }
 }
 
-uint64_t ll_task_time{};
-bool initialize_time{true};
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (!Scheduler::active) {
         return current_rsp;
     }
 
-    uint64_t curr_sys_time = ACPI::get_sys_time();
-
-    if (initialize_time) {
-        ll_task_time = curr_sys_time;
-        initialize_time = false;
-    }
-
     Scheduler::aquire_lock();
+
+    uint64_t curr_sys_time = ACPI::get_sys_time();
 
     Scheduler::ClearGarbage();
 
@@ -473,13 +465,12 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (prev_task && prev_task->running && prev_task != thread_data->system_idle_task) {
         prev_task->rsp = current_rsp;
 
-        uint64_t delta_time = (curr_sys_time - ll_task_time) + 1;
-        ll_task_time = curr_sys_time;
+        uint64_t delta_time = (curr_sys_time - thread_data->last_task_runtime) + 1;
+        thread_data->last_task_runtime = curr_sys_time;
 
         prev_task->vruntime += delta_time;
         prev_task->last_ran_time = curr_sys_time;
 
-        prev_task->dequeue();
         prev_task->enqueue();
  
         prev_task->running = false;
@@ -487,18 +478,25 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     auto next_rsp{0uz};
     Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
+
+    if (next_task != thread_data->system_idle_task) {
+        next_task->dequeue();
+    }
+
     HAL::CORE::set_lapic_shot(next_task->niceness);
 
     next_rsp = next_task->rsp;
     next_task->running = true;
+
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
-    asm volatile("mfence" ::: "memory");
 
     if (next_task->get_pid() == Scheduler::watch_pid) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swapped to target PID %i", next_task->get_pid());
     }
 
     thread_data->current_task = next_task;
+
+    Scheduler::release_lock();
 
     if (next_task != prev_task) {
         if (prev_task) {
@@ -516,7 +514,6 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         }
     }
 
-    Scheduler::release_lock();
     return next_rsp;
 }
 

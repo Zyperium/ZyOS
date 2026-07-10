@@ -50,6 +50,7 @@ namespace HAL::CORE {
         return;
     }
 
+    volatile bool activate_cores;
     volatile uint16_t core_count{1};
     volatile uint16_t total_cores{1};
     void addi_core_EP() {
@@ -65,17 +66,26 @@ namespace HAL::CORE {
         data->kernel_stack = 0;
         data->lapic_ticks_per_ms = 0;
         data->current_task = nullptr;
+        data->last_task_runtime = ACPI::get_sys_time();
         init_core(data);
 
-        Scheduler::Task *idle_task = new Scheduler::Task((Scheduler::Task::EntryPoint)idleptr, "System Idle Task", false);
+        char task_name[24];
+        Debug::snprintf(task_name, 24, "ZyOS %i", data->core_id);
+
+        Scheduler::Task *idle_task = new Scheduler::Task((Scheduler::Task::EntryPoint)idleptr, task_name, false);
         idle_task->current_core = data->core_id;
         data->system_idle_task = idle_task;
 
         release_lock();
 
+        calibrate_lapic();
+        set_lapic_shot(1);
+
+        while (!activate_cores) asm volatile("pause");
+
         asm volatile("sti");
 
-        while (true) ;
+        while (true) asm volatile("hlt");
     }
 
     void broadcast_nmi() {
@@ -109,6 +119,10 @@ namespace HAL::CORE {
 
             __atomic_store_n(&core->goto_address, (limine_goto_address)addi_core_EP, __ATOMIC_SEQ_CST);
         }
+    }
+
+    size_t get_core_count() {
+        return total_cores;
     }
 
     uintptr_t lapic_base_ptr = 0;

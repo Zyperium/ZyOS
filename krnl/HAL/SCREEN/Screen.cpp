@@ -74,6 +74,10 @@ namespace HAL::SCREEN {
         }
     }
 
+    uint32_t *get_buffer() {
+        return backbuffer;
+    }
+
     void draw_char(char c, int x, int y, COL col) {
         if (!backbuffer) return;
 

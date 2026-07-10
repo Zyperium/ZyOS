@@ -7,7 +7,7 @@ namespace HAL::CORE {
     struct alignas(ZyOS::sbQWORD) CoreLocal {
         CoreLocal *self;
         Scheduler::Task *current_task;
-        Scheduler::Task *last_task; // probably remove
+        uint64_t last_task_runtime;
         uint64_t r10_save;
         uint64_t kernel_stack;
         int core_id;

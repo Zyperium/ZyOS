@@ -4,20 +4,25 @@
 #include <DRIVER.hpp>
 #include <SERVICES.hpp>
 #include <TTY.hpp>
+#include <LOG.hpp>
 #include <HAL.hpp>
 
 #include "Composer/Composer.hpp"
 
 namespace R0UI {
     int main() {
-        uint32_t *scr_bbuff = TTY::get_tty_bbuffer();
-        new Scheduler::Task([](void *tbuf){
-            for (;;) Composer::worker2((uint32_t *)tbuf);
-        }, "R0UI_W2",  true, scr_bbuff);
+        Debug::krnl_print("CMPSR", Debug::LOG_INFO, "Yes i run!");
 
         TTY::hook_callback(0, TTY::Callback::KEYBOARD_INPUT, Composer::handle_input);
 
-        for (;;) Composer::worker1();
+        Scheduler::Task *self_task = (Scheduler::Task *)HAL::CORE::get_core_data()->current_task;
+        self_task->task_name = "R0UI_W1";
+
+        Composer::worker1(TTY::get_tty_bbuffer());
+        Scheduler::Suicide();
+        for (;;);
+
+        return -1;
     }
 }
 

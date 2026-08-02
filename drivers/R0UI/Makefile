@@ -22,7 +22,7 @@ COMMON_FLAGS := -O2 -m64 -ffreestanding -fno-pie -mcmodel=large \
                 -Wall -Wextra -Iinclude
 
 CFLAGS   += $(COMMON_FLAGS) -std=c11
-CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions
+CXXFLAGS += $(COMMON_FLAGS) -std=c++23 -fno-rtti -fno-exceptions
 
 ASMFLAGS := -f elf64
 LDFLAGS  := -r -m elf_x86_64

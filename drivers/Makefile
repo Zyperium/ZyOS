@@ -2,7 +2,7 @@
 DRIVER_DIRS := $(sort $(dir $(wildcard */Makefile)))
 GLOBAL_INCLUDE_DIR := $(abspath ./ZyOS)
 
-CFLAGS   += -I$(GLOBAL_INCLUDE_DIR)
+CFLAGS   += -I$(GLOBAL_INCLUDE_DIR) -std=c++23
 CXXFLAGS += -I$(GLOBAL_INCLUDE_DIR)
 
 export CFLAGS

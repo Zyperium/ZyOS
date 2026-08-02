@@ -122,6 +122,11 @@ namespace TTY {
         return HAL::SCREEN::get_buffer();
     }
 
+    ScreenStructs::SCREEN_DATA get_scrdata() {
+        screen_dim d = get_dim();
+        return {d.width, d.height, d.pitch};
+    }
+
     ConHost::ConHost() {
         conhosts[total_hosts] = this;
         cohost_id = total_hosts++;

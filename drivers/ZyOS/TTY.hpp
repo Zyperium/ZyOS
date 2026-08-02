@@ -30,8 +30,14 @@ namespace TTY {
             int width, height;
             bool redraw;
         };
+
+        struct SCREEN_DATA {
+            uint32_t width, height, pitch;
+        };
     }
+
 
     void proc_screen_ctl(size_t tty_id, ScreenCTL control, uint64_t buf);
     uint32_t *get_tty_bbuffer();
+    ScreenStructs::SCREEN_DATA get_scrdata();
 }

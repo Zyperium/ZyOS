@@ -1,9 +1,9 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
 namespace R0UI::Composer {
-    void worker1();
-    void worker2(uint32_t *tty_bbuf);
+    void worker1(uint32_t *tty_bbuf);
 
     void add_damage(int x, int y, int w, int h);
     void force_redraw();
@@ -16,5 +16,15 @@ namespace R0UI::Composer {
         int x, y;
         bool m1, m2;
         IUPDATE *next;
+    };
+
+    enum class CMPSTR_STATE : size_t {
+        NONE,
+        INIT,
+        RUNNING,
+        HANDLE_KB,
+        HANDLE_MOUSE,
+        SHUTDOWN,
+        SIZE
     };
 }

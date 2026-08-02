@@ -48,6 +48,10 @@ namespace TTY {
             int x, y;
             uint32_t col;
         };
+
+        struct SCREEN_DATA {
+            uint32_t width, height, pitch;
+        };
     }
 
     void possess_host(int tty_id);
@@ -55,6 +59,7 @@ namespace TTY {
     void proc_screen_ctl(size_t tty_id, ScreenCTL control, uint64_t buf);
     int kernel_atoi(const char* str);
     uint32_t *get_tty_bbuffer();
+    ScreenStructs::SCREEN_DATA get_scrdata();
 
     extern ConHost *conhosts[];
 

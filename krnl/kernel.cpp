@@ -13,6 +13,7 @@
 #include <Services/ELF/KModule/KModule.hpp>
 #include <Services/Scheduler/Scheduler.hpp>
 #include <Services/Syscalls/Syscalls.hpp>
+#include <Services/Code/Decomp.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/regs.h>

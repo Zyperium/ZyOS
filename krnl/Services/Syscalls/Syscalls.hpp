@@ -5,19 +5,30 @@ extern "C" void SysEntry();
 
 namespace Syscalls {
     struct REGS {
+        // RAX
         uint64_t ID;
+        // RDI
         uint64_t A1;
+        // RSI
         uint64_t A2;
+        // RDX
         uint64_t A3;
+        // R10
         uint64_t A4;
+        // R8
         uint64_t A5;
     };
 
     struct SUBREGS {
+        // RDI
         uint64_t A1;
+        // RSI
         uint64_t A2;
+        // RDX
         uint64_t A3;
+        // R10
         uint64_t A4;
+        // R8
         uint64_t A5;
     };
 

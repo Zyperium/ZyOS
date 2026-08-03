@@ -227,7 +227,7 @@ namespace TTY::Commands {
             }
 
             VFS::VNode *target_directory = root_n->resolve_path_to_vnode(cur_host->current_wd);
-            Debug::krnl_print("VFS", Debug::LOG_INFO, "Target Directory pointer is: %x", target_directory);
+            Debug::krnl_print("CMD", Debug::LOG_INFO, "Target Directory pointer is: %x", target_directory);
 
             if (target_directory == (VFS::VNode *)0xCCCCCCCCCCCCCCCC) {
                 delete[] abs_path;
@@ -244,6 +244,7 @@ namespace TTY::Commands {
             result += "\nName      | Size      |\n";
             uint64_t byte_offset = 0;
             VFS::FAT32::DirectoryEntry entry;
+
 
             while (target_directory->read(byte_offset, &entry, sizeof(VFS::FAT32::DirectoryEntry))) {
                 Debug::krnl_print("CMD", Debug::LOG_INFO, "Read directory entry!");

@@ -120,18 +120,28 @@ namespace Syscalls {
     }
 
     /*
-    
+        @params file_descriptor: int value that points to the correlating file
+        @params read_offset: current integer offset to read
+        @params read_amount: how much from the offset to read
+        @params buffer: the buffer to pass the file content to
+        @returns bytes read
     */
     uint64_t SYS_READ_FILE(uint64_t file_descriptor, uint64_t read_offset, uint64_t read_amount, uint64_t buffer) {
         auto *usr_task = HAL::CORE::get_core_data()->current_task;
 
-        if (!usr_task->utask->descriptors[file_descriptor])
-            return 0;
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "Reading fd %i at %i to %i into %x", file_descriptor, read_offset, read_amount, buffer);
 
-        auto *target = usr_task->utask->descriptors[file_descriptor];
-        
-        if (read_offset >= target->get_size())
+        if (!usr_task->utask->descriptors[file_descriptor - 1]) {
+            Debug::krnl_print("SYS", Debug::LOG_WARN, "Invalid file descriptor");
             return 0;
+        }
+
+        auto *target = usr_task->utask->descriptors[file_descriptor - 1];
+        
+        if (read_offset >= target->get_size()) {
+            Debug::krnl_print("SYS", Debug::LOG_WARN, "Offset >= than target size");
+            return 0;
+        }
 
         if (read_offset + read_amount > target->get_size()) {
             read_amount = target->get_size() - read_offset;
@@ -147,6 +157,8 @@ namespace Syscalls {
         auto *virt_buf = (uint8_t *)(buf_phys + PMM::hhdm_offset);
 
         target->read(read_offset, virt_buf, read_amount);
+
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "Read %i bytes", read_amount);
 
         return read_amount;
     }

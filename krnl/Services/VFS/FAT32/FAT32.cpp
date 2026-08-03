@@ -393,6 +393,7 @@ namespace VFS::FAT32 {
     FAT32FileSystem::FAT32FileSystem(HAL::DISK::Disk *disk_device) : m_disk_device(disk_device) {}
 
     int FAT32VNode::read(uint64_t offset, void *buffer, uint32_t size) {
+        asm volatile ("pause"); // sync pause. Sometimes these things help.
         uint32_t safe_read_size = size;
         if (m_type == VFS::FileType::Regular) {
             if (offset >= m_size) {

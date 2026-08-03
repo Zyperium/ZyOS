@@ -14,6 +14,10 @@ tester_func:
     ; Now we should have the text file, lets read it!
     mov rdi, rax
     mov eax, 1
+    add rsp, 64
+    lea r10, [rsp - 64]
+    mov rsi, 0
+    mov rdx, 64
     ; NOTE: This is a temporary test
     syscall
     ret

@@ -20,4 +20,6 @@ namespace Decomp {
 
     // Make sure to log lines->text (I may forget this)
     Disasmrep *decomp_and_log(uint64_t at_addr, uint8_t around);
+    bool capture_disasm_stack(uint64_t rip, Disasmrep *rep, DisasmLine *history_buf, uint8_t history_size);
+    bool capture_disasm(uint64_t rip, Disasmrep *rep, uint8_t size);
 }

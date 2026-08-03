@@ -32,3 +32,10 @@ static inline uint32_t inl(uint16_t port) {
     asm volatile( "inl %1, %0" : "=a"(ret) : "Nd"(port) );
     return ret;
 }
+
+static inline void iol_wait() {
+    for (auto i{0uz}; i < 100; ++i) {
+        wait();
+        asm volatile("pause");
+    }
+}

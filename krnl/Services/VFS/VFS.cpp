@@ -22,7 +22,7 @@ namespace VFS {
 
     VNode::VNode(FileType type, uint64_t size) : m_type(type), m_size(size) {}
 
-    VFS::VNode *VNode::resolve_path_to_vnode(const lib::string& path) {
+    VFS::VNode *VNode::resolve_path_to_vnode(const lib::string &path) {
         if (path.length() >= 2 && path[1] == ':') {
             return nullptr;
         }

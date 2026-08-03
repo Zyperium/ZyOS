@@ -38,7 +38,7 @@ namespace ELF::KModule {
         Debug::krnl_print("KMOD", Debug::LOG_INFO, "Reading %i symbols", kernel_symbols->symbol_count);
 
         kernel_symbols->elements = new HashedElement[kernel_symbols->symbol_count];
-        kmap_node->read(sizeof(uint64_t), kernel_symbols->elements, kernel_symbols->symbol_count * sizeof(HashedElement));
+        kmap_node->read(sizeof(uint64_t), kernel_symbols->elements, kernel_symbols->symbol_count  *sizeof(HashedElement));
 
         Scheduler::Suicide();
         for (;;);
@@ -50,6 +50,8 @@ namespace ELF::KModule {
     E.G. C:/<USER>/my_driver.kmo
     */
     void *load_module(lib::string path) {
+        asm volatile("" ::: "memory");
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Beginning kmod setup");
         lib::fullpath parsed_path = lib::parse_path(path);
 
         if (!parsed_path.drv) {
@@ -63,7 +65,9 @@ namespace ELF::KModule {
             return nullptr;
         }
 
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Decoding vnode");
         lib::sptr<VFS::VNode> module_node = root_disk->rootnode->resolve_path_to_vnode(parsed_path.path);
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Resolved vnode");
 
         if (!module_node || module_node->get_size() == 0) {
             Debug::krnl_print("KMOD", Debug::LOG_WARN, "Bad module path or empty file.");
@@ -79,7 +83,7 @@ namespace ELF::KModule {
         }
 
         auto *sections = new SectionHeader[hdr.sh_count];
-        module_node->read(hdr.sh_offset, sections, hdr.sh_count * hdr.sh_entry_size);
+        module_node->read(hdr.sh_offset, sections, hdr.sh_count  *hdr.sh_entry_size);
 
         auto *shstrtab_hdr = &sections[hdr.sh_str_index];
         auto *shstrtab = new int8_t[shstrtab_hdr->size];
@@ -87,6 +91,8 @@ namespace ELF::KModule {
 
         auto *section_addrs = (uint64_t *)KMEM::calloc(hdr.sh_count, sizeof(uint64_t));
         auto entry_address{0uz};
+        
+        asm volatile("" ::: "memory");
 
         for (auto i{0uz}; i < hdr.sh_count; ++i) {
             if (!(sections[i].flags & SHF_ALLOC)) continue;
@@ -104,9 +110,13 @@ namespace ELF::KModule {
             }
         }
 
-        Symbol* global_symtab = nullptr;
-        char* global_strtab = nullptr;
+        asm volatile("" ::: "memory");
+
+        Symbol *global_symtab = nullptr;
+        char *global_strtab = nullptr;
         size_t global_sym_count = 0;
+
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Applying patches");
 
         for (auto i{0uz}; i < hdr.sh_count; ++i) {
             if (sections[i].type == SHT_SYMTAB) {
@@ -116,6 +126,8 @@ namespace ELF::KModule {
                 global_sym_count = symtab_hdr->size / sizeof(Symbol);
                 global_symtab = new Symbol[global_sym_count];
                 module_node->read(symtab_hdr->offset, global_symtab, symtab_hdr->size);
+
+                asm volatile("" ::: "memory");
 
                 global_strtab = new char[strtab_hdr->size];
                 module_node->read(strtab_hdr->offset, global_strtab, strtab_hdr->size);
@@ -140,13 +152,25 @@ namespace ELF::KModule {
                     auto *sym = &global_symtab[sym_idx];
                     auto sym_addr{0uz};
 
+                    asm volatile("" ::: "memory");
+
                     if (sym->shndx != 0 && sym->shndx < hdr.sh_count) {
                         sym_addr = section_addrs[sym->shndx] + sym->value;
                     } else if (sym->shndx == 0) {
                         sym_addr = resolve_symbol(global_strtab + sym->name);
+                        Debug::krnl_print("KMOD", Debug::LOG_ERROR, "Unable to resolve symbols.");
+                        delete[] global_symtab;
+                        delete[] global_strtab;
+                        delete[] sections;
+                        delete[] shstrtab;
+                        delete[] section_addrs;
+
+                        return nullptr;
                     }
 
                     uint64_t patch_site = target_base + rela->offset;
+
+                    asm volatile("" ::: "memory");
 
                     switch (type) {
                         case R_X86_64_64: {
@@ -167,7 +191,7 @@ namespace ELF::KModule {
             for (auto s{0uz}; s < global_sym_count; ++s) {
                 auto *sym = &global_symtab[s];
                 if ((sym->info >> SYM_INFO_SHIFT) == STB_GLOBAL && sym->shndx != 0 && sym->shndx < hdr.sh_count) {
-                    const char* sym_name = global_strtab + sym->name;
+                    const char *sym_name = global_strtab + sym->name;
                     
                     if (strcmp(sym_name, "init_module")) {
                         entry_address = section_addrs[sym->shndx] + sym->value;
@@ -178,6 +202,8 @@ namespace ELF::KModule {
                 }
             }
         }
+
+        asm volatile("" ::: "memory");
 
         delete[] global_symtab;
         delete[] global_strtab;

@@ -119,6 +119,10 @@ namespace HAL::CORE {
 
             __atomic_store_n(&core->goto_address, (limine_goto_address)addi_core_EP, __ATOMIC_SEQ_CST);
         }
+
+        Debug::krnl_print("CORE", Debug::LOG_INFO, "Finished core discovery");
+
+        Scheduler::Suicide();
     }
 
     size_t get_core_count() {

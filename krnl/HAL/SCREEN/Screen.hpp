@@ -12,6 +12,13 @@ namespace HAL::SCREEN {
         YELLOW = 0xFFFFFF00
     };
 
+    struct rect {
+        int x;
+        int y;
+        int width;
+        int height;
+    };
+
     struct screen_dim {
         uint32_t width, height;
         uint32_t pitch;
@@ -25,6 +32,9 @@ namespace HAL::SCREEN {
     void set_pixel(int x, int y, uint32_t col);
     void draw_char(char c, int x, int y, uint32_t col);
     void draw_char(char c, int x, int y, COL col);
+    void add_damage(int x, int y, int w, int h);
+    void add_damage(rect r);
+    void repaint();
     screen_dim get_dim();
     uint32_t *get_buffer();
 }

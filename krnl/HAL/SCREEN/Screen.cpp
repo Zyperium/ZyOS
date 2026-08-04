@@ -12,6 +12,43 @@ namespace HAL::SCREEN {
     uint32_t *backbuffer{};
     uint32_t *debug_layer{};
 
+    bool has_damage{false};
+    int damage_x1{0};
+    int damage_y1{0};
+    int damage_x2{0};
+    int damage_y2{0};
+
+    void add_damage(int x, int y, int w, int h) {
+        if (w <= 0 || h <= 0) return;
+
+        int x2 = x + w;
+        int y2 = y + h;
+
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x2 > screen_w) x2 = screen_w;
+        if (y2 > screen_h) y2 = screen_h;
+
+        if (x >= x2 || y >= y2) return;
+
+        if (!has_damage) {
+            damage_x1 = x;
+            damage_y1 = y;
+            damage_x2 = x2;
+            damage_y2 = y2;
+            has_damage = true;
+        } else {
+            if (x < damage_x1) damage_x1 = x;
+            if (y < damage_y1) damage_y1 = y;
+            if (x2 > damage_x2) damage_x2 = x2;
+            if (y2 > damage_y2) damage_y2 = y2;
+        }
+    }
+
+    void add_damage(rect r) {
+        add_damage(r.x, r.y, r.width, r.height);
+    }
+
     void initialize(limine_framebuffer_response *response) {
         Debug::krnl_print("SCRN", Debug::LOG_INFO, "Initialize");
         if (response->framebuffer_count == 0) {
@@ -24,7 +61,25 @@ namespace HAL::SCREEN {
         screen_p = response->framebuffers[0]->pitch;
 
         backbuffer = new uint32_t[screen_w * screen_h];
+        has_damage = false;
         return;
+    }
+
+    void repaint() {
+        if (!backbuffer || !has_damage) return;
+
+        int dest_pitch_pixels = screen_p / sizeof(uint32_t);
+        int copy_width = damage_x2 - damage_x1;
+        size_t copy_bytes = copy_width * sizeof(uint32_t);
+
+        for (int y = damage_y1; y < damage_y2; y++) {
+            uint32_t* src_row = backbuffer + (y * screen_w) + damage_x1;
+            uint32_t* dest_row = screen_addr + (y * dest_pitch_pixels) + damage_x1;
+
+            FMEM::FastCopy(dest_row, src_row, copy_bytes);
+        }
+
+        has_damage = false;
     }
 
     void flip_buffer() {
@@ -37,16 +92,20 @@ namespace HAL::SCREEN {
 
             FMEM::FastCopy(dest_row, src_row, screen_w * sizeof(uint32_t));
         }
+
+        has_damage = false;
     }
 
     void fill_screen(uint32_t col) {
         if (!backbuffer) return;
         FMEM::FastFill32(backbuffer, col, screen_w * screen_h);
+        add_damage(0, 0, screen_w, screen_h);
     }
 
     void fill_screen(COL col) {
         if (!backbuffer) return;
         FMEM::FastFill32(backbuffer, static_cast<uint32_t>(col), screen_w * screen_h);
+        add_damage(0, 0, screen_w, screen_h);
     }
 
     void set_pixel(int x, int y, uint32_t col) {
@@ -56,6 +115,7 @@ namespace HAL::SCREEN {
         }
         
         backbuffer[x + (y * screen_w)] = col;
+        add_damage(x, y, 1, 1);
     }
 
     void draw_char(char c, int x, int y, uint32_t col) {
@@ -72,6 +132,7 @@ namespace HAL::SCREEN {
                 }
             }
         }
+        add_damage(x, y, Font::WIDTH, Font::HEIGHT);
     }
 
     uint32_t *get_buffer() {
@@ -92,6 +153,7 @@ namespace HAL::SCREEN {
                 }
             }
         }
+        add_damage(x, y, Font::WIDTH, Font::HEIGHT);
     }
 
     screen_dim get_dim() {
@@ -149,5 +211,6 @@ namespace HAL::SCREEN {
                 }
             }
         }
+        add_damage(0, 0, screen_w, screen_h);
     }
 }

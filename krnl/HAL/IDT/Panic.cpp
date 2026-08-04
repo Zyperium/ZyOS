@@ -1,7 +1,10 @@
 #include <HAL/IDT/Panic.hpp>
 #include <HAL/SCREEN/Screen.hpp>
 
+#include <Services/Code/Decomp.hpp>
+
 #include <Library/debug.hpp>
+#include <Library/osconfig.hpp>
 
 void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
     HAL::SCREEN::fill_screen(HAL::SCREEN::COL::RED);
@@ -60,5 +63,38 @@ void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
     Debug::krnl_print("REG", Debug::LOG_INFO, "RSP: %x", iframe->rsp);
     Debug::krnl_print("REG", Debug::LOG_INFO, "SS:  %x", iframe->ss);
 
-    for (;;);
+    #if OSCONF_CRASH_DECOMPILER
+    Debug::krnl_print("IDT", Debug::LOG_INFO, "Beginning debug dump");
+
+    constexpr size_t kMaxAround = OSCONF_CRASH_LOG_COUNT;
+    constexpr size_t kTotalLines = (kMaxAround * 2) + 1;
+
+    Decomp::DisasmLine line_buffer[kTotalLines];
+    Decomp::DisasmLine history_buffer[kMaxAround];
+
+    Decomp::Disasmrep r{};
+    r.lines = line_buffer;
+    r.total_lines = kTotalLines;
+    r.count = 0;
+
+    uint8_t *raw = (uint8_t*)iframe->rip;
+Debug::krnl_print("RAW", Debug::LOG_INFO, "Bytes: %x %x %x %x %x %x %x %x",
+                  raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]);
+
+    if (Decomp::capture_disasm_stack(iframe->rip, &r, history_buffer, kMaxAround)) {
+        Debug::krnl_print("IDT", Debug::LOG_INFO, "Successfully decompiled rip");
+
+        for (auto i{0}; i < r.count; ++i) {
+            Debug::krnl_print("DCMP", Debug::LOG_INFO, "%s %x: %s", 
+                r.lines[i].is_rip ? "=>" : "  ", 
+                (void *)r.lines[i].addr, 
+                r.lines[i].text
+            );
+        }
+    } else {
+        Debug::krnl_print("IDT", Debug::LOG_WARN, "Failed to decompile rip in fault handler");
+    }
+#endif
+
+    for (;;) asm volatile ("hlt");
 }

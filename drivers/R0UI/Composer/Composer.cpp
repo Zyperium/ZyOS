@@ -32,8 +32,11 @@ namespace R0UI::Composer {
     }
 
     CMPSTR_STATE get_from_queue() {
-        --next_free;
-        return cmpqueue[next_free];
+        if (next_free == 0) {
+            return CMPSTR_STATE::NONE;
+        }
+        
+        return cmpqueue[--next_free];
     }
 
     void handle_input(uint64_t k) {
@@ -41,46 +44,50 @@ namespace R0UI::Composer {
     }
 
     void paint_init(uint32_t *ttybuffer, size_t x, size_t y) {
-        memset32(ttybuffer, 0xFF00FF00, x * y);
-
+        memset32(ttybuffer, 0xFF00FF00, x * y); // WARNING: causes crash? Investigate.
     }
 
     void worker1(uint32_t *tty_bbuf) {
-    append_queue(CMPSTR_STATE::INIT);
+        next_free = 0;
+        cmpqueue[0] = CMPSTR_STATE::NONE;
 
-    size_t height, pitch;
-    TTY::ScreenStructs::SCREEN_DATA b =  TTY::get_scrdata();
-    height = b.height;
-    pitch = b.pitch;
+        append_queue(CMPSTR_STATE::INIT);
 
-    Debug::krnl_print("CMPSR", Debug::LOG_INFO, "Running with visual address @ %x", tty_bbuf);
+        size_t height, pitch, width;
+        TTY::ScreenStructs::SCREEN_DATA b =  TTY::get_scrdata();
+        height = b.height;
+        pitch = b.pitch;
+        width = b.width;
 
-    w1_loop:
-    switch (get_from_queue()) {
-        case CMPSTR_STATE::INIT: {
-            paint_init(tty_bbuf, height, pitch);
-            break;
+        Debug::krnl_print("CMPSR", Debug::LOG_INFO, "Running with visual address @ %x", tty_bbuf);
+
+        w1_loop:
+        switch (get_from_queue()) {
+            case CMPSTR_STATE::INIT: {
+                Debug::krnl_print("R0UI", Debug::LOG_INFO, "Performed a paint");
+                paint_init(tty_bbuf, height, width);
+                break;
+            }
+            case CMPSTR_STATE::HANDLE_KB: {
+                break;
+            }
+            case CMPSTR_STATE::HANDLE_MOUSE: {
+                break;
+            }
+            case CMPSTR_STATE::RUNNING: {
+                break;
+            }
+            case CMPSTR_STATE::SHUTDOWN: {
+                break;
+            }
+            case CMPSTR_STATE::NONE: {
+                Scheduler::Yield();
+                break;
+            }
+            default:
+                break;
         }
-        case CMPSTR_STATE::HANDLE_KB: {
-            break;
-        }
-        case CMPSTR_STATE::HANDLE_MOUSE: {
-            break;
-        }
-        case CMPSTR_STATE::RUNNING: {
-            break;
-        }
-        case CMPSTR_STATE::SHUTDOWN: {
-            break;
-        }
-        case CMPSTR_STATE::NONE: {
-            Scheduler::Yield();
-            break;
-        }
-        default:
-            break;
-    }
-    
-    goto w1_loop;
+
+        goto w1_loop;
     }
 }

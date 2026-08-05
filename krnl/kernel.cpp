@@ -28,8 +28,7 @@ using namespace HAL;
 void SysIdleTask() {
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Entering idle task...");
     for (;;) {
-        Scheduler::Yield();
-        asm volatile("hlt");
+        asm volatile("sti; hlt");
     }
 }
 

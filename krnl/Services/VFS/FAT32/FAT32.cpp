@@ -394,7 +394,6 @@ namespace VFS::FAT32 {
     FAT32FileSystem::FAT32FileSystem(HAL::DISK::Disk *disk_device) : m_disk_device(disk_device) {}
 
     int FAT32VNode::read(uint64_t offset, void *buffer, uint32_t size) {
-        asm volatile("" ::: "memory");
         uint32_t safe_read_size = size;
         if (m_type == VFS::FileType::Regular) {
             if (offset >= m_size) {
@@ -437,21 +436,17 @@ namespace VFS::FAT32 {
             uint32_t bytes_left_in_sector = bytes_per_sector - byte_offset_in_sector;
             uint32_t bytes_left_to_read = safe_read_size - total_bytes_read;
             uint32_t chunk_size = (bytes_left_to_read < bytes_left_in_sector) ? bytes_left_to_read : bytes_left_in_sector;
-
-            asm volatile("" ::: "memory");
-
+            
             if (m_fs->read_sectors(physical_sector_lba, sector_bounce_buffer, 1) < 1) {
                 break;
             }
 
             memcpy(destination_buffer + total_bytes_read, sector_bounce_buffer + byte_offset_in_sector, chunk_size);
 
-            asm volatile("" ::: "memory");
-
             total_bytes_read += chunk_size;
 
             if (offset_within_cluster + chunk_size >= cluster_size) {
-                asm volatile("" ::: "memory");
+                
                 current_cluster = m_fs->read_FAT_entry(current_cluster);
             }
         }
@@ -469,7 +464,7 @@ namespace VFS::FAT32 {
             return nullptr;
         }
 
-        asm volatile("" ::: "memory");
+        
 
         uint8_t target_83_name[11];
         for (int i = 0; i < 11; ++i) {
@@ -500,7 +495,7 @@ namespace VFS::FAT32 {
             }
         }
 
-        asm volatile("" ::: "memory");
+        
 
         uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
         uint32_t sectors_per_cluster = m_fs->get_cluster_size() / bytes_per_sector;
@@ -544,7 +539,7 @@ namespace VFS::FAT32 {
                         }
                     }
 
-                    asm volatile("" ::: "memory");
+                    
 
                     if (identity_matches) {
                         uint32_t entry_target_cluster = entry.GetFirstCluster();
@@ -574,7 +569,7 @@ namespace VFS::FAT32 {
             current_cluster = m_fs->read_FAT_entry(current_cluster);
         }
 
-        asm volatile("" ::: "memory");
+        
 
         HAL::MEM::PMEM::free_page(sector_buffer);
         return nullptr;

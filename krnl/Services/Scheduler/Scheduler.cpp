@@ -1,3 +1,4 @@
+#include "Library/locks.hpp"
 #include <HAL/CORE/CoreLocal.hpp>
 #include <Library/ZyOS.hpp>
 #include <stddef.h>
@@ -22,6 +23,7 @@ namespace Scheduler {
     bool event_occured{};
 
     lib::RB_Tree *task_tree;
+    lib::Spinlock Task::lock{};
     TaskBlock *blocked_queue[(size_t)BlockReasons::TOTAL_REASONS]{};
 
     Task ***TaskDirectory;
@@ -38,6 +40,7 @@ namespace Scheduler {
 
         while (__atomic_test_and_set(&a_schd_lock, __ATOMIC_ACQUIRE)) {
             asm volatile("pause");
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Stuck!");
         }
 
         cur_rflags = rflags;
@@ -345,15 +348,19 @@ namespace Scheduler {
     }
 
     void Task::enqueue() {
+        lock.lock();
         if (vruntime < global_min_vruntime) {
             vruntime = global_min_vruntime;
         }
 
         task_tree->insert_node(this);
+        lock.unlock();
     }
 
     void Task::dequeue() {
+        lock.lock();
         task_tree->remove_node(this);
+        lock.unlock();
     }
 
     void Task::TerminateTask(Task *term) {
@@ -449,6 +456,8 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         return current_rsp;
     }
 
+    asm volatile("lfence" ::: "memory");
+
     Scheduler::aquire_lock();
 
     uint64_t curr_sys_time = ACPI::get_sys_time();
@@ -513,6 +522,8 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
             asm volatile("fxrstor %0" : : "m"(*next_task->fx_state));
         }
     }
+
+    asm volatile("lfence" ::: "memory");
 
     return next_rsp;
 }

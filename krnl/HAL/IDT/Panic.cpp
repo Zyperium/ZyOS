@@ -77,13 +77,7 @@ void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
     r.total_lines = kTotalLines;
     r.count = 0;
 
-    uint8_t *raw = (uint8_t*)iframe->rip;
-Debug::krnl_print("RAW", Debug::LOG_INFO, "Bytes: %x %x %x %x %x %x %x %x",
-                  raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]);
-
     if (Decomp::capture_disasm_stack(iframe->rip, &r, history_buffer, kMaxAround)) {
-        Debug::krnl_print("IDT", Debug::LOG_INFO, "Successfully decompiled rip");
-
         for (auto i{0}; i < r.count; ++i) {
             Debug::krnl_print("DCMP", Debug::LOG_INFO, "%s %x: %s", 
                 r.lines[i].is_rip ? "=>" : "  ", 

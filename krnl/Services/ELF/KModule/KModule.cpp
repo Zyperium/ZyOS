@@ -50,7 +50,7 @@ namespace ELF::KModule {
     E.G. C:/<USER>/my_driver.kmo
     */
     void *load_module(lib::string path) {
-        asm volatile("" ::: "memory");
+        asm volatile("mfence" ::: "memory");
         Debug::krnl_print("KMOD", Debug::LOG_INFO, "Beginning kmod setup");
         lib::fullpath parsed_path = lib::parse_path(path);
 
@@ -92,7 +92,7 @@ namespace ELF::KModule {
         auto *section_addrs = (uint64_t *)KMEM::calloc(hdr.sh_count, sizeof(uint64_t));
         auto entry_address{0uz};
         
-        asm volatile("" ::: "memory");
+        asm volatile("mfence" ::: "memory");
 
         for (auto i{0uz}; i < hdr.sh_count; ++i) {
             if (!(sections[i].flags & SHF_ALLOC)) continue;
@@ -110,7 +110,7 @@ namespace ELF::KModule {
             }
         }
 
-        asm volatile("" ::: "memory");
+        asm volatile("mfence" ::: "memory");
 
         Symbol *global_symtab = nullptr;
         char *global_strtab = nullptr;
@@ -127,7 +127,7 @@ namespace ELF::KModule {
                 global_symtab = new Symbol[global_sym_count];
                 module_node->read(symtab_hdr->offset, global_symtab, symtab_hdr->size);
 
-                asm volatile("" ::: "memory");
+                asm volatile("mfence" ::: "memory");
 
                 global_strtab = new char[strtab_hdr->size];
                 module_node->read(strtab_hdr->offset, global_strtab, strtab_hdr->size);
@@ -152,7 +152,7 @@ namespace ELF::KModule {
                     auto *sym = &global_symtab[sym_idx];
                     auto sym_addr{0uz};
 
-                    asm volatile("" ::: "memory");
+                    asm volatile("mfence" ::: "memory");
 
                     if (sym->shndx != 0 && sym->shndx < hdr.sh_count) {
                         sym_addr = section_addrs[sym->shndx] + sym->value;
@@ -170,7 +170,7 @@ namespace ELF::KModule {
 
                     uint64_t patch_site = target_base + rela->offset;
 
-                    asm volatile("" ::: "memory");
+                    asm volatile("mfence" ::: "memory");
 
                     switch (type) {
                         case R_X86_64_64: {
@@ -203,7 +203,7 @@ namespace ELF::KModule {
             }
         }
 
-        asm volatile("" ::: "memory");
+        asm volatile("mfence" ::: "memory");
 
         delete[] global_symtab;
         delete[] global_strtab;

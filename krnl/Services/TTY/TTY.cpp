@@ -213,7 +213,6 @@ namespace TTY {
     }
 
     void ConHost::worker() {
-        asm volatile("cli");
         BOOT::disable();
         Debug::krnl_print("TTY", Debug::LOG_INFO, "ConHost %i worker begin", cohost_id);
         fill_screen(COL::BLACK);
@@ -223,13 +222,13 @@ namespace TTY {
         print_cwd();
         flip_buffer();
 
-        cur_input = new char[MAX_CONSOLE_INPUT];
+        cur_input = new char[MAX_CONSOLE_INPUT]{0};
 
         screen_dim dim = get_dim();
         scr_height = dim.height;
         scr_width = dim.width;
 
-        asm volatile("" ::: "memory");
+        asm volatile("lfence" ::: "memory");
 
         if (!contask) {
             Debug::krnl_print("TTY", Debug::LOG_WARN, "TTY doesn't know it's own task!");
@@ -243,11 +242,9 @@ namespace TTY {
         Debug::krnl_print("TTY", Debug::LOG_INFO, "Initialized");
         contask->core_pinned = false;
         __atomic_test_and_set(&HAL::CORE::activate_cores, __ATOMIC_ACQUIRE);
-        asm volatile("sti");
         for (;;) {
             
             // contask->block(Scheduler::BlockReasons::AWAIT_KEYBOARD_INPUT);
-            asm volatile("" ::: "memory");
             // Why manually poll? Idk. QEMU refuses to call the IDT responsible for the handler, however...
             // The interrupts work flawlessly on real hardware. So QEMU quirk ig. (Or real hardware quirk idk)
             uint8_t ps2_status = inb(0x64); 

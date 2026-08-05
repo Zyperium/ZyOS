@@ -2,6 +2,7 @@
 #include <Library/ZyOS.hpp>
 #include <Library/cystr.hpp>
 #include <Library/redblack.hpp>
+#include <Library/locks.hpp>
 
 #include <HAL/ACPI/ACPI.hpp>
 
@@ -89,6 +90,7 @@ namespace Scheduler {
         bool blockmap[(size_t)BlockReasons::TOTAL_REASONS]{false};
         void *_arg;
         static ZyOS::QWORD global_min_vruntime;
+        static lib::Spinlock lock;
     };
 
     void EnableScheduler();

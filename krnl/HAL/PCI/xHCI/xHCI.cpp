@@ -25,8 +25,6 @@ namespace HAL::PCI {
     uint64_t core_id_holder = -1;
     int reentrancy = 0;
 
-    // I don't know why, but these locks cause it to break.
-
     void aquire_lock() {
         return;
         if (core_id_holder == HAL::CORE::get_core_data()->current_task->get_pid()) {

@@ -12,6 +12,7 @@
 namespace R0UI {
     int main() {
         Debug::krnl_print("CMPSR", Debug::LOG_INFO, "Yes i run!");
+        TTY::possess_host(0);
 
         TTY::hook_callback(0, TTY::Callback::KEYBOARD_INPUT, Composer::handle_input);
 

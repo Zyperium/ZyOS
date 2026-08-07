@@ -14,7 +14,7 @@ namespace HAL::MEM::KMEM {
 
     bool a_kmem_lock = false;
     uint64_t cur_rflags = 0;
-    void aquire_lock() {
+    void acquire_lock() {
         asm volatile("cli");
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
@@ -38,7 +38,7 @@ namespace HAL::MEM::KMEM {
 
     void initialize(uint64_t *kernel_pml4, uint64_t heap_start_addr, size_t initial_pages) {
         Debug::krnl_print("KMEM", Debug::LOG_INFO, "Initialize");
-        aquire_lock();
+        acquire_lock();
 
         pml4_root = kernel_pml4;
 
@@ -94,7 +94,7 @@ namespace HAL::MEM::KMEM {
     }
 
     void expand_heap(size_t length, HeapSegmentHeader *last_known_segment) {
-        aquire_lock();
+        acquire_lock();
         uint64_t old_heap_end = current_heap_end;
         length = align_up(length, PAGE_SIZE);
 

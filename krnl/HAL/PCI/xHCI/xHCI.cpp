@@ -25,7 +25,7 @@ namespace HAL::PCI {
     uint64_t core_id_holder = -1;
     int reentrancy = 0;
 
-    void aquire_lock() {
+    void acquire_lock() {
         return;
         if (core_id_holder == HAL::CORE::get_core_data()->current_task->get_pid()) {
             reentrancy++;
@@ -962,7 +962,8 @@ namespace HAL::PCI {
     }
 
     void xHCI::queue_bulk_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size) {
-        aquire_lock();
+        acquire_lock();
+
         uint8_t ep_num = endpoint_address & USB::USB_EP_NUM_MASK;
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
         uint8_t dci = (ep_num * 2) + (is_in ? 1 : 0);
@@ -971,18 +972,15 @@ namespace HAL::PCI {
         uint64_t idx = ep_enqueue_ptrs[slot_id][dci];
         uint8_t cycle = ep_cycle_states[slot_id][dci];
 
-        asm volatile("sfence" ::: "memory"); 
-        asm volatile("mfence" ::: "memory");
-
         if (idx == XHCI_CMD_RING_INDEX_LIMIT) {
             TRB *link = &ring[XHCI_CMD_RING_INDEX_LIMIT];
             link->param  = ep_ring_physs[slot_id][dci];
             link->status = 0;
+
+            asm volatile("" ::: "memory");
             link->control = (TRB_TYPE_LINK << XHCI_TRB_TYPE_SHIFT) | 
                             XHCI_TRB_LINK_TC | 
                             ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
-
-            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Hit xHCI ring index limit during the first check of bulk_transfer");
 
             idx = 0;
             cycle = !cycle;
@@ -990,44 +988,26 @@ namespace HAL::PCI {
 
         ring[idx].param = buffer_phys;
         ring[idx].status = buffer_size;
-        
+
         uint32_t control_val = (TRB_TYPE_NORMAL << XHCI_TRB_TYPE_SHIFT) | XHCI_TRB_IOC_ENABLE;
-        
+
+        asm volatile("" ::: "memory");
         ring[idx].control = control_val | ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
 
         idx++;
 
-        if (idx >= XHCI_CMD_RING_INDEX_LIMIT) {
-            TRB *link = &ring[XHCI_CMD_RING_INDEX_LIMIT];
-            link->param  = ep_ring_physs[slot_id][dci];
-            link->status = 0;
-
-            link->control = (TRB_TYPE_LINK << XHCI_TRB_TYPE_SHIFT) | 
-                            XHCI_TRB_LINK_TC | 
-                            ((cycle ? 1U : 0U) << XHCI_TRB_CYCLE_SHIFT);
-
-            asm volatile("sfence" ::: "memory"); 
-            asm volatile("mfence" ::: "memory");
-
-            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Hit xHCI ring index limit during the second check of bulk_transfer");
-
-            idx = 0;
-            cycle = !cycle;
-        }
-
         ep_enqueue_ptrs[slot_id][dci] = idx;
         ep_cycle_states[slot_id][dci] = cycle;
 
-        asm volatile("sfence" ::: "memory"); 
-        asm volatile("mfence" ::: "memory");
+        asm volatile("sfence" ::: "memory");
 
         *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
+
         release_lock();
-        return;
     }
 
     void xHCI::queue_int_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size) {
-        aquire_lock();
+        acquire_lock();
         uint8_t ep_num = endpoint_address & USB::USB_EP_NUM_MASK;
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
         uint8_t dci = (ep_num * 2) + (is_in ? 1 : 0);

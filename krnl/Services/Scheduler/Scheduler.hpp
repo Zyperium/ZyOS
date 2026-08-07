@@ -75,11 +75,14 @@ namespace Scheduler {
         void block(BlockReasons reason, ZyOS::QWORD arg = 0);
         void unblock(BlockReasons unreason);
         void suicide();
-        ZyOS::QWORD get_pid();
+        void sleep(ZyOS::QWORD time);
+        void wake();
         void fork();
         void enqueue();
         void dequeue();
-        int64_t compare(const lib::RB_Base* other) const override;
+        int64_t compare(const lib::RB_Base *other) const override;
+        ZyOS::QWORD get_wake_time();
+        ZyOS::QWORD get_pid();
 
         static void TerminateTask(Task *term);
         static void UnblockAll(BlockReasons whoisblocking);
@@ -95,6 +98,7 @@ namespace Scheduler {
 
     void EnableScheduler();
     void DisabledScheduler();
+    void ClearGarbage();
     void Initialize();
     void Yield();
     void Suicide();

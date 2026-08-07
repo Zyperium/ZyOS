@@ -247,18 +247,15 @@ namespace TTY::Commands {
 
 
             while (target_directory->read(byte_offset, &entry, sizeof(VFS::FAT32::DirectoryEntry))) {
-                Debug::krnl_print("CMD", Debug::LOG_INFO, "Read directory entry!");
                 byte_offset += sizeof(VFS::FAT32::DirectoryEntry);
                 uint8_t initial_byte = static_cast<uint8_t>(entry.name[0]);
                 if (initial_byte == VFS::FAT32::DIR_ENTRY_FREE_ONWARD) {                    
                     break; 
                 }
                 if (initial_byte == VFS::FAT32::DIR_ENTRY_FREE) {
-                    Debug::krnl_print("CMD", Debug::LOG_INFO, "Dir entry free!");
                     continue; 
                 }
                 if (entry.attr == VFS::FAT32::ATTR_LONG_NAME) {
-                    Debug::krnl_print("CMD", Debug::LOG_INFO, "Long name attribute!");
                     continue; 
                 }
 

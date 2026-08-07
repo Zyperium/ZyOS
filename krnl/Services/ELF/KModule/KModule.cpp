@@ -40,14 +40,16 @@ namespace ELF::KModule {
         kernel_symbols->elements = new HashedElement[kernel_symbols->symbol_count];
         kmap_node->read(sizeof(uint64_t), kernel_symbols->elements, kernel_symbols->symbol_count  *sizeof(HashedElement));
 
+        // Debug::krnl_print("KMOD", Debug::LOG_INFO, "Read %i symbols.", kernel_symbols->symbol_count);
+
         Scheduler::Suicide();
         for (;;);
     }
 
     /*
     This expects the path to be a DRIVE letter starting path.
-    E.G. A:/SYSTEM/DRIVERS/LinuxCMPT.kmo
-    E.G. C:/<USER>/my_driver.kmo
+    E.G. A:/SYSTEM/DRIVERS/Linxx.kmo
+    E.G. C:/my_driver.kmo
     */
     void *load_module(lib::string path) {
         asm volatile("mfence" ::: "memory");
@@ -152,20 +154,22 @@ namespace ELF::KModule {
                     auto *sym = &global_symtab[sym_idx];
                     auto sym_addr{0uz};
 
-                    asm volatile("mfence" ::: "memory");
-
                     if (sym->shndx != 0 && sym->shndx < hdr.sh_count) {
                         sym_addr = section_addrs[sym->shndx] + sym->value;
-                    } else if (sym->shndx == 0) {
+                    } 
+                    else if (sym->shndx == 0) {
                         sym_addr = resolve_symbol(global_strtab + sym->name);
-                        Debug::krnl_print("KMOD", Debug::LOG_ERROR, "Unable to resolve symbols.");
-                        delete[] global_symtab;
-                        delete[] global_strtab;
-                        delete[] sections;
-                        delete[] shstrtab;
-                        delete[] section_addrs;
 
-                        return nullptr;
+                        if (!sym_addr) {
+                            Debug::krnl_print("KMOD", Debug::LOG_WARN, "Unable to resolve symbol");
+                            delete[] global_symtab;
+                            delete[] global_strtab;
+                            delete[] sections;
+                            delete[] shstrtab;
+                            delete[] section_addrs;
+
+                            return nullptr;
+                        }
                     }
 
                     uint64_t patch_site = target_base + rela->offset;
@@ -240,7 +244,8 @@ namespace ELF::KModule {
             }
             if (mid_hash < target_hash) {
                 low = mid + 1;
-            } else {
+            } 
+            else {
                 high = mid - 1;
             }
         }

@@ -14,7 +14,7 @@ namespace HAL::MEM::PMM {
 
     bool a_pmm_lock = false;
     uint64_t cur_rflags = 0;
-    void aquire_lock() {
+    void acquire_lock() {
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         asm volatile("cli");
@@ -121,7 +121,7 @@ namespace HAL::MEM::PMM {
     }
 
     void *alloc_page() {
-        aquire_lock();
+        acquire_lock();
         uint64_t total_pages = total_memory / PAGE_SIZE;
 
         for (uint64_t i = 0; i < total_pages; i++) {
@@ -142,7 +142,7 @@ namespace HAL::MEM::PMM {
             return;
         }
 
-        aquire_lock();
+        acquire_lock();
 
         uint64_t ui_addr = (uint64_t)free_addr;
         uint64_t page_index = ui_addr / PAGE_SIZE;
@@ -160,7 +160,7 @@ namespace HAL::MEM::PMM {
     }
 
     void reference_page(void *page) {
-        aquire_lock();
+        acquire_lock();
         uint64_t ui_addr = (uint64_t)page;
         uint64_t page_index = ui_addr / PAGE_SIZE;
         

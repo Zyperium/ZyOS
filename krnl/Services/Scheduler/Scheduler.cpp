@@ -1,6 +1,3 @@
-#include "Library/locks.hpp"
-#include <HAL/CORE/CoreLocal.hpp>
-#include <Library/ZyOS.hpp>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -9,12 +6,15 @@
 #include <Library/regs.h>
 #include <Library/string.h>
 #include <Library/debug.hpp>
+#include <Library/locks.hpp>
+#include <Library/ZyOS.hpp>
 
 #include <HAL/CORE/Core.hpp>
 #include <HAL/MEM/PMEM.hpp>
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/IDT/Panic.hpp>
 #include <HAL/ACPI/ACPI.hpp>
+#include <HAL/CORE/CoreLocal.hpp>
 
 using namespace HAL::MEM;
 
@@ -33,7 +33,7 @@ namespace Scheduler {
     ZyOS::QWORD Task::global_min_vruntime{0};
     uint64_t cur_rflags = 0;
 
-    void aquire_lock() {
+    void acquire_lock() {
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         asm volatile("cli");
@@ -195,7 +195,7 @@ namespace Scheduler {
             a_schd_lock = false;
         }
         
-        aquire_lock();
+        acquire_lock();
 
         memset(krnl_stack_btm, 0, TASK_STACK_PAGES * PAGE_SIZE);
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Performed memset on kernel stack");
@@ -227,9 +227,14 @@ namespace Scheduler {
     }
 
     int64_t Task::compare(const lib::RB_Base* other) const {
-        const Task* o = static_cast<const Task*>(other);
+        const Task* o = static_cast<const Task *>(other);
+        
         if (vruntime < o->vruntime) return -1;
         if (vruntime > o->vruntime) return 1;
+        
+        if (pid < o->pid) return -1;
+        if (pid > o->pid) return 1;
+        
         return 0;
     }
 
@@ -262,7 +267,8 @@ namespace Scheduler {
 
         blockmap[(size_t)reason] = true;
 
-        dequeue();
+        if (!running)
+            dequeue();
 
         TaskBlock *n_block = new TaskBlock {
             reason,
@@ -276,7 +282,7 @@ namespace Scheduler {
         TaskBlock *r_block = blocked_queue[(size_t)reason];
         running = false;
 
-        aquire_lock();
+        acquire_lock();
 
         if (!r_block) {
             n_block->next = n_block;
@@ -292,7 +298,7 @@ namespace Scheduler {
         r_block->prev = n_block;
         n_block->prev->next = n_block;
         release_lock();
-
+ 
         Yield();
         return;
     }
@@ -300,7 +306,6 @@ namespace Scheduler {
     void Task::unblock(BlockReasons reason) {
         if (!blockmap[(size_t)reason]) {
 
-            release_lock();
             return;
         }
 
@@ -364,7 +369,7 @@ namespace Scheduler {
     }
 
     void Task::TerminateTask(Task *term) {
-        aquire_lock();
+        acquire_lock();
 
         term->block(BlockReasons::GARBAGE);
 
@@ -458,11 +463,9 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     asm volatile("lfence" ::: "memory");
 
-    Scheduler::aquire_lock();
+    Scheduler::acquire_lock();
 
     uint64_t curr_sys_time = ACPI::get_sys_time();
-
-    Scheduler::ClearGarbage();
 
     HAL::CORE::CoreLocal *thread_data = HAL::CORE::get_core_data();
     if (thread_data->current_task) {

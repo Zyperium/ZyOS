@@ -23,7 +23,7 @@ namespace HAL::DISK {
     uint64_t cur_rflags = 0;
     uint64_t core_id_holder = -1;
     int reentrancy = 0;
-    void aquire_lock() {
+    void acquire_lock() {
         if (core_id_holder == HAL::CORE::get_core_data()->current_task->get_pid()) {
             ++reentrancy;
             return;
@@ -58,7 +58,7 @@ namespace HAL::DISK {
     Disk::Disk(char letter, DiskDevice *dev) : drv_ltr(letter), dev(dev) {}
 
     bool Disk::initializefs() {
-        aquire_lock();
+        acquire_lock();
         Debug::krnl_print("DISK", Debug::LOG_INFO, "Begin filesystem init!");
         if (initialized) {
             Debug::krnl_print("DISK", Debug::LOG_WARN, "Reinitializing disk!");
@@ -93,7 +93,7 @@ namespace HAL::DISK {
     }
 
     Disk *Disk::CreateDisk(DiskDevice *dev, char letter) {
-        aquire_lock();
+        acquire_lock();
         if (!IsCapital(letter)) {
             letter = GetValidDriveLabel();
             release_lock();
@@ -196,7 +196,7 @@ namespace HAL::DISK {
 
     // FIX: Magic Numbers here!
     uint64_t find_fat32_lba(DiskDevice* dev) {
-        aquire_lock();
+        acquire_lock();
         uint8_t *sector_buffer = (uint8_t *)MEM::PMEM::alloc_page(MEM::VMM::PTE_PRESENT | MEM::VMM::PTE_WRITABLE);
         dev->read(0, 1, sector_buffer);
 

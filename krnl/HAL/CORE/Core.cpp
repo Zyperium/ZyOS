@@ -30,7 +30,7 @@ namespace HAL::CORE {
 
     bool a_core_lock = false;
     uint64_t cur_rflags = 0;
-    void aquire_lock() {
+    void acquire_lock() {
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         asm volatile("cli");
@@ -54,7 +54,7 @@ namespace HAL::CORE {
     volatile uint16_t core_count{1};
     volatile uint16_t total_cores{1};
     void addi_core_EP() {
-        aquire_lock();
+        acquire_lock();
         Debug::krnl_print("CORE", Debug::LOG_INFO, "New core initializing. Core ID: %i", core_count);
         HAL::GDT::initialize();
         HAL::IDT::reload_idt();

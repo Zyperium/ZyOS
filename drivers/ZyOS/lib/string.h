@@ -50,9 +50,9 @@ inline int abs(int a) {
     return out;
 }
 
-inline void memset(void *ptr, int value, size_t num) {
+inline void memset(void *ptr, int mem_to_this_value, size_t size_to_set) {
     unsigned char *p = (unsigned char*)ptr;
-    while (num--) {
-        *p++ = (unsigned char)value;
+    while (size_to_set--) {
+        *p++ = (unsigned char)mem_to_this_value;
     }
 }

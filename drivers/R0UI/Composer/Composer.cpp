@@ -1,4 +1,5 @@
 #include "Composer.hpp"
+
 #include <TTY.hpp>
 #include <LOG.hpp>
 #include <SERVICES.hpp>
@@ -44,7 +45,8 @@ namespace R0UI::Composer {
     }
 
     void paint_init(uint32_t *ttybuffer, size_t x, size_t y) {
-        memset32(ttybuffer, 0xFF00FF00, x * y); // WARNING: causes crash? Investigate.
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Received %x addr for tty", ttybuffer);
+        memset(ttybuffer, 0xFF1F1F1F, x * y);
     }
 
     void worker1(uint32_t *tty_bbuf) {
@@ -54,12 +56,13 @@ namespace R0UI::Composer {
         append_queue(CMPSTR_STATE::INIT);
 
         size_t height, pitch, width;
+        (void)pitch; // "useful?"
         TTY::ScreenStructs::SCREEN_DATA b =  TTY::get_scrdata();
         height = b.height;
         pitch = b.pitch;
         width = b.width;
 
-        Debug::krnl_print("CMPSR", Debug::LOG_INFO, "Running with visual address @ %x", tty_bbuf);
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Running with visual address @ %x", tty_bbuf);
 
         w1_loop:
         switch (get_from_queue()) {

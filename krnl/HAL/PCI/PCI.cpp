@@ -12,7 +12,7 @@ namespace HAL::PCI {
     bool a_msix_lock = false;
     uint64_t pci_cur_rflags = 0;
         
-    void pci_aquire_lock() {
+    void pci_acquire_lock() {
         return;
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
@@ -36,7 +36,7 @@ namespace HAL::PCI {
     }
 
     uint32_t Read32(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset) {
-        pci_aquire_lock();
+        pci_acquire_lock();
         uint32_t address = PCI_ENABLE_BIT |
                        ((uint32_t)bus << PCI_BUS_SHIFT) |
                        ((uint32_t)device << PCI_DEVICE_SHIFT) |
@@ -61,7 +61,7 @@ namespace HAL::PCI {
     }
 
     void Write32(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset, uint32_t value) {
-        pci_aquire_lock();
+        pci_acquire_lock();
         uint32_t address = PCI_ENABLE_BIT |
                        ((uint32_t)bus << PCI_BUS_SHIFT) |
                        ((uint32_t)device << PCI_DEVICE_SHIFT) |

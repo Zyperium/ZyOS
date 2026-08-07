@@ -13,7 +13,7 @@
 using namespace HAL::MEM;
 
 namespace HAL::PCI::HID {
-    void USBKeyboard::initialize(PCI::xHCI* _ctrl, uint8_t _slot, void *endpoints_ptr, int ep_count) {
+    void USBKeyboard::initialize(PCI::xHCI *_ctrl, uint8_t _slot, void *endpoints_ptr, int ep_count) {
         controller = _ctrl;
         slot_id = _slot;
 
@@ -37,6 +37,9 @@ namespace HAL::PCI::HID {
             return;
         }
 
+        controller->send_control_request(slot_id, 0x21, 0x0B, 0, 0, 0, 0); // Boot mode config
+        controller->send_control_request(slot_id, 0x21, 0x0A, 0, 0, 0, 0);
+
         report_virt = static_cast<KeyboardBootReport *>(PMEM::alloc_page(VMM::PTE_CACHELESS | VMM::PTE_PRESENT | VMM::PTE_WRITABLE));
         report_phys = VMM::GetPhysicalAddress(read_cr3(), reinterpret_cast<uint64_t>(report_virt));
 
@@ -57,21 +60,21 @@ namespace HAL::PCI::HID {
     size_t looped = 0;
     void USBKeyboard::on_int(uint32_t bytes_transferred, uint32_t endpoint_id, uint64_t param_event) {
         (void)param_event;
-
+        
         if (endpoint_id != interrupt_in_ep) {
-            Debug::krnl_print("KB", Debug::LOG_INFO, "Received an interrupt, but endpoint id didn't match!");
             return;
         }
-
+    
         if (bytes_transferred <= BOOT_REPORT_SIZE) {
             KeyboardBootReport current_report = *report_virt;
             process_report(current_report);
         }
-        
+    
         PCI::MSIX::xHCI::queue_bulk_transfer(controller, slot_id, interrupt_in_ep, report_phys, BOOT_REPORT_SIZE);
     }
 
     void USBKeyboard::process_report(const KeyboardBootReport& report) {
+        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Received proc report!");
         for (size_t i = 0; i < 6; i++) {
             uint8_t code = report.keycodes[i];
             if (code == 0) continue;

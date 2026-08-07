@@ -1,4 +1,5 @@
 #include <Library/debug.hpp>
+#include <Library/locks.hpp>
 #include <HAL/PCI/xHCI/xHCI.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/CORE/Core.hpp>
@@ -9,6 +10,8 @@ namespace HAL::PCI {
         using ::HAL::PCI::xHCI;
         xHCI *xHCI_instances[MAX_XHCI_INSTANCES]{nullptr};
         size_t curr_count{};
+
+        lib::Spinlock msixlock;
 
         struct bulk_queue {
             xHCI *instance;
@@ -23,51 +26,10 @@ namespace HAL::PCI {
         bool do_a_log = false;
 
         Scheduler::Task *xHCI_worker;
-        bool a_msix_lock = false;
-        uint64_t cur_rflags = 0;
-        uint64_t core_id_holder = -1;
-        int nested = 0;
-        
-        void aquire_lock() {
-            return;
-            if (core_id_holder == HAL::CORE::get_core_data()->current_task->get_pid()) {
-                ++nested;
-                return;
-            }
-
-            uint64_t rflags = 0;
-            asm volatile("pushfq; pop %0" : "=r"(rflags));
-            while (__atomic_test_and_set(&a_msix_lock, __ATOMIC_ACQUIRE)) {
-                asm volatile("pause");
-            }
-
-            // asm volatile("cli");
-
-            cur_rflags = rflags;
-            core_id_holder = HAL::CORE::get_core_data()->current_task->get_pid();
-
-            return;
-        }
-
-        void release_lock() {
-            return;
-            if (nested > 0) {
-                nested--;
-                return;
-            }
-
-            restore_rflags(cur_rflags);
-            cur_rflags = 0;
-            core_id_holder = -1;
-            __atomic_clear(&a_msix_lock, __ATOMIC_RELEASE);
-            return;
-        }
-
         int current_loops{};
         void worker() {
             for (;;) {
                 while (wrapper) {
-                    aquire_lock();
                     wrapper->instance->queue_bulk_transfer(wrapper->slot_id, 
                         wrapper->endpoint_addr,
                         wrapper->buff_phys,
@@ -78,15 +40,12 @@ namespace HAL::PCI {
 
                     wrapper = wrapper->next;
                     delete old_wrapper;
-                    release_lock();
                 }
 
                 bool did_work = false;
                 for (auto i{0uz}; i < MAX_XHCI_INSTANCES; ++i) {
                     if (!xHCI_instances[i]) continue;
-                    aquire_lock();
                     did_work = did_work || xHCI_instances[i]->poll_event_ring();
-                    release_lock();
                 }
 
                 if (!did_work)
@@ -94,8 +53,8 @@ namespace HAL::PCI {
                 else
                     MSIX::xHCI::current_loops = 0;
                 
-                if (current_loops >= LOOPS_BEFORE_YIELD)
-                    xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
+                // if (current_loops >= LOOPS_BEFORE_YIELD)
+                //     xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
 
                 Scheduler::Yield();
             }
@@ -114,7 +73,7 @@ namespace HAL::PCI {
         }
 
         void queue_bulk_transfer(xHCI *inst, uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size) {
-            aquire_lock();
+            lib::ScopedLock l(msixlock);
             bulk_queue *blk = new bulk_queue {
                 inst,
                 slot_id,
@@ -131,9 +90,6 @@ namespace HAL::PCI {
                 wrapper = blk;
                 // Debug::krnl_print("MSIX", Debug::LOG_INFO, "Shell CR3: %x, Wrapper Addr: %x", read_cr3(), &wrapper);
                 do_a_log = true;
-                release_lock();
-                asm volatile("sti");
-                Scheduler::Yield();
                 return;
             }
             
@@ -141,9 +97,6 @@ namespace HAL::PCI {
             wrapper = blk;
             // Debug::krnl_print("MSIX", Debug::LOG_INFO, "Shell CR3: %x, Wrapper Addr: %x", read_cr3(), &wrapper);
             do_a_log = true;
-            release_lock();
-            asm volatile("sti");
-            Scheduler::Yield();
         }
     }
 }

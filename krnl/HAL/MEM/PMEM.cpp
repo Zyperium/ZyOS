@@ -14,7 +14,7 @@ namespace HAL::MEM::PMEM {
     bool a_pmem_lock = false;
     uint64_t cur_rflags = 0;
 
-    void aquire_lock() {
+    void acquire_lock() {
         uint64_t rflags = 0;
         asm volatile("pushfq; pop %0" : "=r"(rflags));
         asm volatile("cli");
@@ -46,7 +46,7 @@ namespace HAL::MEM::PMEM {
     }
 
     void *alloc_page(uint64_t flags) {
-        aquire_lock();
+        acquire_lock();
         uint64_t virt_start = next_virt_addr;
         next_virt_addr += PAGE_SIZE;
 
@@ -70,7 +70,7 @@ namespace HAL::MEM::PMEM {
     }
 
     void *alloc_pages(size_t count, uint64_t flags) {
-        aquire_lock();
+        acquire_lock();
         uint64_t virt_start = next_virt_addr;
 
         for (auto i{0uz}; i < count; ++i) {
@@ -97,7 +97,7 @@ namespace HAL::MEM::PMEM {
     }
 
     void free_page(void *page) {
-        aquire_lock();
+        acquire_lock();
         uint64_t virt_start = (uint64_t)page;
         uint64_t kernel_pml4_phys = (uint64_t)KMEM::pml4_root - PMM::hhdm_offset;
 
@@ -116,7 +116,7 @@ namespace HAL::MEM::PMEM {
     }
 
     void free_pages(void *page_start, size_t count) {
-        aquire_lock();
+        acquire_lock();
         uint64_t virt_start = (uint64_t)page_start;
         uint64_t kernel_pml4_phys = (uint64_t)KMEM::pml4_root - PMM::hhdm_offset;
 
@@ -137,7 +137,7 @@ namespace HAL::MEM::PMEM {
     }
 
     void *map_mmio(uint64_t phys_addr, size_t num_pages) {
-        aquire_lock();
+        acquire_lock();
         uint64_t virt_start = next_virt_addr;
         next_virt_addr += (num_pages * PAGE_SIZE);
 

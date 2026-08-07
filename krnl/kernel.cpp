@@ -36,6 +36,13 @@ void TTY_Task(void *tty_cast) {
     static_cast<TTY::ConHost *>(tty_cast)->worker();
 }
 
+void Reaper() {
+    for (;;) {
+        Scheduler::ClearGarbage();
+        HAL::CORE::get_core_data()->current_task->block(Scheduler::BlockReasons::SLEEP, 100);
+    }
+}
+
 extern "C" void krnlmain() {
     initialize();
 

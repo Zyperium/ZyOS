@@ -4,6 +4,7 @@ global SchedulerHandler
 global QuietSwitch
 extern SchedulerSwitch ; C++ function
 extern AckInterrupt ; C++ function
+extern log_now
 
 section .text
 SchedulerHandler:
@@ -57,12 +58,17 @@ SchedulerHandler:
     pop r14
     pop r15
 
-    test qword [rsp + 8], 3 ; Pretty sure this is the SS
+    test qword [rsp + 8], 3
     jz .krnl_exit
 
     swapgs
-
     or qword [rsp + 32], 3 ; OR code segment
+
+    cmp qword [rsp + 32], 0x23
+    je .krnl_exit
+
+    mov qword [rsp + 8], 0x1B
+    mov qword [rsp + 32], 0x23
 
 .krnl_exit:
     iretq

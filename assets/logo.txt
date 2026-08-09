@@ -1,0 +1,8 @@
+ _ _ _ _ 
+|        |            | Kernel: ZyOS 0.01
+|___     |    _       | Environment: TTY0
+   /    /    | |      | System Up:     1h
+  /    /     | |      | Packages:      10
+ /    /__    |_|      | Display:2560x1440
+|        |    _       | WM:          none
+| _ _ _ _|   |_|      | Memory:50mb/500mb

@@ -36,7 +36,7 @@ namespace TTY {
         };
     }
 
-
+    int add_damage(int x, int y, int w, int h);
     void proc_screen_ctl(size_t tty_id, ScreenCTL control, uint64_t buf);
     uint32_t *get_tty_bbuffer();
     ScreenStructs::SCREEN_DATA get_scrdata();

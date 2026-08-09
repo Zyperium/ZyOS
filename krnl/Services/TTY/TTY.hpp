@@ -57,6 +57,7 @@ namespace TTY {
     void possess_host(int tty_id);
     void hook_callback(int tty_id, Callback cb, void (*func_back)(uint64_t));
     void proc_screen_ctl(size_t tty_id, ScreenCTL control, uint64_t buf);
+    void add_damage(int x, int y, int w, int h);
     int kernel_atoi(const char* str);
     uint32_t *get_tty_bbuffer();
     ScreenStructs::SCREEN_DATA get_scrdata();

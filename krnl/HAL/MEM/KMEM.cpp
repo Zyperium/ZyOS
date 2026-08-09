@@ -1,3 +1,4 @@
+#include <Library/locks.hpp>
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <HAL/MEM/KMEM.hpp>
@@ -14,31 +15,11 @@ namespace HAL::MEM::KMEM {
 
     bool a_kmem_lock = false;
     uint64_t cur_rflags = 0;
-    void acquire_lock() {
-        asm volatile("cli");
-        uint64_t rflags = 0;
-        asm volatile("pushfq; pop %0" : "=r"(rflags));
-        while (__atomic_test_and_set(&a_kmem_lock, __ATOMIC_ACQUIRE)) {
-            Debug::krnl_print("KMEM", Debug::LOG_INFO, "Locked!");
-            asm volatile("pause");
-        }
 
-        cur_rflags = rflags;
-
-        return;
-    }
-
-    void release_lock() {
-        restore_rflags(cur_rflags);
-        cur_rflags = 0;
-
-        __atomic_clear(&a_kmem_lock, __ATOMIC_RELEASE);
-        return;
-    }
+    lib::Spinlock lockd;
 
     void initialize(uint64_t *kernel_pml4, uint64_t heap_start_addr, size_t initial_pages) {
         Debug::krnl_print("KMEM", Debug::LOG_INFO, "Initialize");
-        acquire_lock();
 
         pml4_root = kernel_pml4;
 
@@ -49,8 +30,6 @@ namespace HAL::MEM::KMEM {
 
         current_heap_end = heap_start_addr;
         expand_heap(initial_pages  *PAGE_SIZE);
-
-        release_lock();
     }
 
     void expand_heap(size_t length) {
@@ -94,7 +73,6 @@ namespace HAL::MEM::KMEM {
     }
 
     void expand_heap(size_t length, HeapSegmentHeader *last_known_segment) {
-        acquire_lock();
         uint64_t old_heap_end = current_heap_end;
         length = align_up(length, PAGE_SIZE);
 
@@ -126,18 +104,15 @@ namespace HAL::MEM::KMEM {
             current->next = new_segment;
             new_segment->last = current;
         }
-        release_lock();
     }
 
     void *malloc(size_t size) {
-
+        lib::ScopedLock x(lockd);
         if (size == 0) {
-            release_lock();
             return nullptr;
         } 
 
         if (first_segment == nullptr) {
-            release_lock();
             return nullptr;
         }
 
@@ -191,12 +166,12 @@ namespace HAL::MEM::KMEM {
 
     void free(void *addr) {
         if (!addr) return;
+        lib::ScopedLock x(lockd);
 
         HeapSegmentHeader *header = (HeapSegmentHeader*)((uint64_t)addr - sizeof(HeapSegmentHeader));
         memset(addr, MEM_POISON_VALUE, header->length);
 
         if (header->magic != SEGMENT_MAGIC) {
-            release_lock();
             return;
         }
 

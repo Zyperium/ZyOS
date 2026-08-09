@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <SERVICES.hpp>
+
 namespace HAL {
     namespace MEM {
         namespace PMM {
@@ -10,6 +12,14 @@ namespace HAL {
             void free_page(void *free_addr);
 
             void reference_page(void *page);
+
+            extern uint8_t *bitmap;
+            extern uint16_t *ref_counts;
+            extern uint64_t bitmap_size;
+            extern uint64_t ref_counts_size;
+            extern uint64_t total_memory;
+            extern uint64_t used_memory;
+            extern uint64_t hhdm_offset;
         }
 
         namespace VMM {
@@ -21,6 +31,7 @@ namespace HAL {
             constexpr uint64_t PTE_HUGE = 1ULL << 7;
             constexpr uint64_t PTE_NX = 1ULL << 63;
             constexpr uint64_t PTE_ADDR_MASK = 0x000FFFFFFFFFF000;
+            constexpr uint64_t SIZE_OF_PAGE = 4096;
 
             uint64_t *get_next_level(uint64_t* current_table, uint64_t index, bool allocate, int level, uint64_t target_flags = 0);
             void map_page(uint64_t *pml4_root, uint64_t virt, uint64_t phys, uint64_t flags);
@@ -51,17 +62,22 @@ namespace HAL {
     namespace CORE {
         struct alignas(uint64_t) CoreLocal {
             CoreLocal *self;
-            uint64_t current_task; // SCHEDULER::TASK *
-            uint64_t last_task; // SCHEDULER::TASK *
+            Scheduler::Task *current_task;
+            uint64_t last_task_runtime;
             uint64_t r10_save;
             uint64_t kernel_stack;
             int core_id;
             uint32_t lapic_ticks_per_ms;
-            uint64_t system_idle_task; // SCHEDULER::TASK *
+            Scheduler::Task *system_idle_task;
         };
 
         CoreLocal *get_core_data();
         void set_lapic_shot(uint64_t milliseconds);
         size_t get_core_count();
+    }
+
+    namespace SCREEN {
+        void repaint();
+        void add_damage(int x, int y, int w, int h);
     }
 }

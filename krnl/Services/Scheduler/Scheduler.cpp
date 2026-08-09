@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include <Services/Scheduler/Scheduler.hpp>
+#include <Services/ELF/ELF.hpp>
 
 #include <Library/regs.h>
 #include <Library/string.h>
@@ -18,6 +19,11 @@
 
 using namespace HAL::MEM;
 
+extern "C" void log_now() {
+    Debug::krnl_print("SCHD", Debug::LOG_INFO, "IF disbaled on iretq!");
+    return;
+}
+
 namespace Scheduler {
     bool active{false};
     bool event_occured{};
@@ -31,30 +37,6 @@ namespace Scheduler {
     bool a_schd_lock = false;
     ZyOS::QWORD watch_pid = -1;
     ZyOS::QWORD Task::global_min_vruntime{0};
-    uint64_t cur_rflags = 0;
-
-    void acquire_lock() {
-        uint64_t rflags = 0;
-        asm volatile("pushfq; pop %0" : "=r"(rflags));
-        asm volatile("cli");
-
-        while (__atomic_test_and_set(&a_schd_lock, __ATOMIC_ACQUIRE)) {
-            asm volatile("pause");
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Stuck!");
-        }
-
-        cur_rflags = rflags;
-
-        return;
-    }
-
-    void release_lock() {
-        restore_rflags(cur_rflags);
-        cur_rflags = 0;
-
-        __atomic_clear(&a_schd_lock, __ATOMIC_RELEASE);
-        return;
-    }
 
     void CheckEvents() {
         if (!event_occured) return;
@@ -96,6 +78,13 @@ namespace Scheduler {
         return Task::GetNextTask();
     }
 
+    Task *SpawnR3Task(const lib::string &name, const lib::string &path) {
+        return new Task((Task::EntryPoint)[](void *path) {
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Running as %s", (const char *)path);
+            ELF::Runway((const char *)path);
+        }, name, true, (void *)path.c_str());
+    }
+
     Task *Task::GetNextTask() {
         lib::RB_Base* leftmost_node = task_tree->get_leftmost();
         if (!leftmost_node) {
@@ -131,12 +120,11 @@ namespace Scheduler {
         }
 
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Task is being assigned PID of %i, in dir %i and table %i", pid, dir_idx, tbl_idx);
-
         if (!TaskDirectory[dir_idx]) {
-            Debug::krnl_print("SCHD", Debug::LOG_WARN, "Non-existent directory!");
-        }
-        else {
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Tables & Directories verified!");
+            TaskDirectory[dir_idx] = new Task*[TASK_TABLE_SIZE];
+            for (size_t i = 0; i < TASK_TABLE_SIZE; i++) {
+                TaskDirectory[dir_idx][i] = nullptr;
+            }
         }
 
         TaskDirectory[dir_idx][tbl_idx] = this;
@@ -150,6 +138,7 @@ namespace Scheduler {
         HAL::CORE::CoreLocal *tdata = HAL::CORE::get_core_data();
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Fetching core info {Core data @ %x}", tdata);
         current_core = tdata->core_id;
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "ints are %s", (is_interrupt_enabled()) ? "on" : "off");
         current_queue = 0;
         running = false;
         malignedfx = new uint8_t[FX_STATE_SIZE];
@@ -160,7 +149,6 @@ namespace Scheduler {
         if (addr % 0x10 != 0) {
             addr = (addr + 0x10) & ~0xF;
         }
-
         fx_state = reinterpret_cast<uint8_t *>(addr);
         uint32_t *mxcsr = reinterpret_cast<uint32_t*>(&fx_state[24]);
         *mxcsr = 0x1F80;
@@ -190,13 +178,6 @@ namespace Scheduler {
         krnl_stack_btm = reinterpret_cast<ZyOS::QWORD *>(btm_address);
         krnl_stack_top = reinterpret_cast<ZyOS::QWORD *>(top_address);
 
-        if (a_schd_lock) {
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Literally impossible! [for single core ig]");
-            a_schd_lock = false;
-        }
-        
-        acquire_lock();
-
         memset(krnl_stack_btm, 0, TASK_STACK_PAGES * PAGE_SIZE);
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Performed memset on kernel stack");
 
@@ -210,8 +191,6 @@ namespace Scheduler {
         for (auto i{0uz}; i < 15; ++i) *(--ktop) = 0; // zero out the 15 registers.
 
         rsp = reinterpret_cast<uint64_t>(ktop);
-
-        release_lock();
 
         constexpr uint8_t RDI_OFFSET_ASM = 5;
         uint64_t *RDI_REG = &ktop[RDI_OFFSET_ASM];
@@ -227,7 +206,7 @@ namespace Scheduler {
     }
 
     int64_t Task::compare(const lib::RB_Base* other) const {
-        const Task* o = static_cast<const Task *>(other);
+        const Task *o = static_cast<const Task *>(other);
         
         if (vruntime < o->vruntime) return -1;
         if (vruntime > o->vruntime) return 1;
@@ -239,7 +218,6 @@ namespace Scheduler {
     }
 
     void Yield() {
-        // Debug::krnl_print("SCHD", Debug::LOG_INFO, "Yield called");
         uint64_t _rflags;
         asm volatile("pushfq; pop %0" : "=r"(_rflags));
         asm volatile("sti\nint $0x67");
@@ -261,7 +239,7 @@ namespace Scheduler {
         }
 
         if (blockmap[(size_t)reason]) {
-            release_lock();
+            
             return;
         }
 
@@ -278,17 +256,14 @@ namespace Scheduler {
             nullptr
         };
 
-
         TaskBlock *r_block = blocked_queue[(size_t)reason];
         running = false;
-
-        acquire_lock();
 
         if (!r_block) {
             n_block->next = n_block;
             n_block->prev = n_block;
             blocked_queue[(size_t)reason] = n_block;
-            release_lock();
+            
             Yield();
             return;
         }
@@ -297,7 +272,6 @@ namespace Scheduler {
         n_block->prev = r_block->prev;
         r_block->prev = n_block;
         n_block->prev->next = n_block;
-        release_lock();
  
         Yield();
         return;
@@ -321,15 +295,14 @@ namespace Scheduler {
             }
         }
         
-        if (found_self_block->prev == found_self_block) {
+        if (found_self_block->next == found_self_block) {
             blocked_queue[(size_t)reason] = nullptr;
-            delete found_self_block;
-        }
-        else if (found_self_block == blocked_queue[(size_t)reason]) {
-            blocked_queue[(size_t)reason] = blocked_queue[(size_t)reason]->next;
+        } else {
+            if (found_self_block == blocked_queue[(size_t)reason]) {
+                blocked_queue[(size_t)reason] = found_self_block->next;
+            }
             found_self_block->prev->next = found_self_block->next;
             found_self_block->next->prev = found_self_block->prev;
-            delete found_self_block;
         }
 
         bool requeue_task{true};
@@ -353,27 +326,22 @@ namespace Scheduler {
     }
 
     void Task::enqueue() {
-        lock.lock();
+        lib::ScopedLock x(lock);
         if (vruntime < global_min_vruntime) {
             vruntime = global_min_vruntime;
         }
 
         task_tree->insert_node(this);
-        lock.unlock();
     }
 
     void Task::dequeue() {
-        lock.lock();
+        lib::ScopedLock x(lock);
         task_tree->remove_node(this);
-        lock.unlock();
     }
 
     void Task::TerminateTask(Task *term) {
-        acquire_lock();
-
         term->block(BlockReasons::GARBAGE);
-
-        release_lock();
+        
         return;
     }
 
@@ -461,17 +429,8 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         return current_rsp;
     }
 
-    asm volatile("lfence" ::: "memory");
-
-    Scheduler::acquire_lock();
-
-    uint64_t curr_sys_time = ACPI::get_sys_time();
-
     HAL::CORE::CoreLocal *thread_data = HAL::CORE::get_core_data();
-    if (thread_data->current_task) {
-        thread_data->current_task->rsp = current_rsp;
-    }
-
+    uint64_t curr_sys_time = ACPI::get_sys_time();
     auto prev_task = thread_data->current_task;
 
     if (prev_task && prev_task->running && prev_task != thread_data->system_idle_task) {
@@ -482,53 +441,39 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
         prev_task->vruntime += delta_time;
         prev_task->last_ran_time = curr_sys_time;
+        prev_task->running = false;
 
         prev_task->enqueue();
- 
-        prev_task->running = false;
     }
 
-    auto next_rsp{0uz};
     Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
-
-    if (next_task != thread_data->system_idle_task) {
+    if (next_task && next_task != thread_data->system_idle_task) {
         next_task->dequeue();
     }
 
-    HAL::CORE::set_lapic_shot(next_task->niceness);
-
-    next_rsp = next_task->rsp;
-    next_task->running = true;
-
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
-
-    if (next_task->get_pid() == Scheduler::watch_pid) {
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swapped to target PID %i", next_task->get_pid());
+    if (!next_task) {
+        next_task = thread_data->system_idle_task;
     }
 
+    HAL::CORE::set_lapic_shot(next_task->niceness);
+    next_task->running = true;
     thread_data->current_task = next_task;
-
-    Scheduler::release_lock();
 
     if (next_task != prev_task) {
         if (prev_task) {
             if (prev_task->cr3 != next_task->cr3) {
                 asm volatile("mov %0, %%cr3" :: "r"(next_task->cr3) : "memory");
             }
-
             if (prev_task->fx_state) {
                 asm volatile("fxsave %0" : "=m"(*prev_task->fx_state));
             }
         }
-
         if (next_task->fx_state) {
             asm volatile("fxrstor %0" : : "m"(*next_task->fx_state));
         }
     }
 
-    asm volatile("lfence" ::: "memory");
-
-    return next_rsp;
+    return next_task->rsp;
 }
 
 extern "C" void AckInterrupt() {

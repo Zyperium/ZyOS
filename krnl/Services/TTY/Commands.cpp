@@ -468,7 +468,7 @@ namespace TTY::Commands {
             new Scheduler::Task([](void *entry) {
                 Debug::krnl_print("CMD", Debug::LOG_INFO, "Executing entry target at: %x", entry);
                 asm volatile(
-                    "call %0"
+                    "sti\ncall %0"
                     :
                     : "r"(entry)
                     : "memory"
@@ -478,7 +478,6 @@ namespace TTY::Commands {
                 for (;;);
             }, "Kernel Module", true, entry_point);
 
-            Scheduler::Yield();
             return "Module Loaded!\n";
         }
 

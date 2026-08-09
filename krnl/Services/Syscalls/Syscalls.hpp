@@ -33,10 +33,32 @@ namespace Syscalls {
     };
 
     enum class SYSCALL_ID : uint64_t {
-        SYS_OPEN,
+        SYS_OPEN = 0,
         SYS_READ,
         SYS_WRITE,
         SYS_CLOSE,
+        SYS_IOCTL,
+        SYS_LOUT,
+
+        SYS_MMAP,
+        SYS_MUNMAP,
+        SYS_MPROTECT,
+
+        SYS_EXIT,
+        SYS_YIELD,
+        SYS_SPAWN,
+        SYS_SET_FS_BASE,
+
+        SYS_SHM_CREATE,
+        SYS_SHM_MAP,
+        SYS_SHM_UNMAP,
+
+        SYS_FUTEX_WAIT,
+        SYS_FUTEX_WAKE,
+
+        SYS_GET_TIME,
+        SYS_GET_PID,
+
         MAX_ID
     };
 

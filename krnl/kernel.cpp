@@ -17,9 +17,13 @@
 
 #include <Library/debug.hpp>
 #include <Library/regs.h>
+
 unsigned long __stack_chk_guard = 0xDEADDEADDEADDEAD;
 
 extern "C" void __stack_chk_fail() {
+    uint64_t return_address = (uint64_t)__builtin_return_address(0);
+
+    Debug::krnl_print("IDT", Debug::LOG_ERROR, "Stack check failed! Caller RIP: %x", return_address);
     panic(PanicReasons::STACK_KERNEL_CORRUPTION);
 }
 
@@ -39,7 +43,8 @@ void TTY_Task(void *tty_cast) {
 void Reaper() {
     for (;;) {
         Scheduler::ClearGarbage();
-        HAL::CORE::get_core_data()->current_task->block(Scheduler::BlockReasons::SLEEP, 100);
+        Scheduler::Yield();
+        asm volatile("pause");
     }
 }
 
@@ -67,7 +72,13 @@ extern "C" void krnlmain() {
     default_host->contask = new Scheduler::Task((Scheduler::Task::EntryPoint)TTY_Task, "TTY0", true, default_host);
     default_host->contask->core_pinned = true;
 
-    new Scheduler::Task((Scheduler::Task::EntryPoint)ELF::KModule::initialize, "KMODULE", true);
+    new Scheduler::Task(
+        (Scheduler::Task::EntryPoint)ELF::KModule::initialize, 
+        "KMODULE", 
+        true
+    );
+
+    new Scheduler::Task((Scheduler::Task::EntryPoint)Reaper, "Reaper", true);
 
     PS2::Keyboard::Initialize();
 

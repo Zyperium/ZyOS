@@ -567,7 +567,7 @@ namespace HAL::PCI {
                     uint8_t cmd_type = (completed_cmd_trb->control >> XHCI_TRB_TYPE_SHIFT) & XHCI_TRB_TYPE_MASK;
 
 
-                    asm volatile("cli");
+                    // asm volatile("cli");
                     if (cmd_type == TRB_TYPE_ENABLE_SLOT) {
                         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Slot assigned: %i", allocated_slot);
 

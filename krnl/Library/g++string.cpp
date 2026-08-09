@@ -14,3 +14,14 @@ extern "C" {
         return ptr;
     }
 }
+
+extern "C" {
+    void* __dso_handle __attribute__((visibility("hidden"))) = &__dso_handle;
+
+    int __cxa_atexit(void (*destructor)(void*), void* arg, void* dso) {
+        (void)destructor;
+        (void)arg;
+        (void)dso;
+        return 0; 
+    }
+}

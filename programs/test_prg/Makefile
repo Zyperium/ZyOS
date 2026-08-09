@@ -19,7 +19,7 @@ OBJS := $(CPPSRC:%.cpp=$(OBJ_DIR)/%.o) \
         $(ASMSRC:%.asm=$(OBJ_DIR)/%.o)
 
 COMMON_FLAGS := -O2 -m64 -ffreestanding -fno-pie -mcmodel=small \
-                -Wall -Wextra -Iinclude
+                -Wall -Wextra -Iinclude -I../lib
 
 CFLAGS   += $(COMMON_FLAGS) -std=c11
 CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics

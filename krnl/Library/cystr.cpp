@@ -4,18 +4,18 @@
 namespace lib {
     
     bool string::is_local() const {
-        return (local.info <= SSO_CAPACITY);
+        return (info <= SSO_CAPACITY);
     }
 
     string::string() {
         local.data[0] = '\0';
-        local.info = 0;
+        info = 0;
     }
 
     string::string(const char *s) {
         if (!s) {
             local.data[0] = '\0';
-            local.info = 0;
+            info = 0;
             return;
         }
 
@@ -24,14 +24,14 @@ namespace lib {
         if (len <= SSO_CAPACITY) {
             memcpy(local.data, s, len);
             local.data[len] = '\0';
-            local.info = (unsigned char)len;
+            info = (unsigned char)len;
         } else {
             remote.data = new char[len + 1];
             memcpy(remote.data, s, len);
             remote.data[len] = '\0';
             remote.size = len;
             remote.capacity = len;
-            local.info = 0xFF;
+            info = 0xFF;
         }
     }
 
@@ -39,113 +39,107 @@ namespace lib {
         if (!is_local()) delete[] remote.data;
     }
 
-    string::string(const string& other) {
+    string::string(const string &other) {
         if (other.is_local()) {
             memcpy(local.data, other.local.data, SSO_CAPACITY + 1);
-            local.info = other.local.info;
+            info = other.info;
         } else {
             size_t len = other.remote.size;
             remote.data = new char[len + 1];
             memcpy(remote.data, other.remote.data, len + 1);
             remote.size = len;
             remote.capacity = len;
-            local.info = 0xFF;
+            info = 0xFF;
         }
     }
 
     string string::substr(size_t pos, size_t count) const {
         size_t len = length();
 
-        if (pos >= len) {
-            return string();
-        }
+        if (pos >= len) return string();
 
         if (count == static_cast<size_t>(-1) || pos + count > len) {
             count = len - pos;
         }
 
+        string result;
         const char* source = c_str() + pos;
 
-        if (count <= SSO_CAPACITY) {
-            char tmp[SSO_CAPACITY + 1];
-            memcpy(tmp, source, count);
-            tmp[count] = '\0';
-            return string(tmp);
-        } else {
-            char* tmp = new char[count + 1];
-            memcpy(tmp, source, count);
-            tmp[count] = '\0';
-            
-            string result(tmp);
-            delete[] tmp;
-            return result;
+        for (size_t i = 0; i < count; ++i) {
+            result += source[i];
         }
+
+        return result;
     }
 
-    string::string(string&& other) noexcept {
+    string::string(string &&other) noexcept {
         if (other.is_local()) {
             memcpy(local.data, other.local.data, SSO_CAPACITY + 1);
-            local.info = other.local.info;
+            info = other.info;
         } else {
             remote.data = other.remote.data;
             remote.size = other.remote.size;
             remote.capacity = other.remote.capacity;
-            local.info = 0xFF;
+            info = 0xFF;
         }
 
         other.local.data[0] = '\0';
-        other.local.info = 0;
+        other.info = 0;
     }
 
-    string& string::operator=(const string& other) {
+    string &string::operator=(const string &other) {
         if (this == &other) return *this;
 
         if (!is_local()) delete[] remote.data;
 
         if (other.is_local()) {
             memcpy(local.data, other.local.data, SSO_CAPACITY + 1);
-            local.info = other.local.info;
+            info = other.info;
         } else {
             size_t len = other.remote.size;
             remote.data = new char[len + 1];
             memcpy(remote.data, other.remote.data, len + 1);
             remote.size = len;
             remote.capacity = len;
-            local.info = 0xFF;
+            info = 0xFF;
         }
         return *this;
     }
 
-    string& string::operator=(const char* s) {
-        if (!is_local()) {
-            delete[] remote.data;
-        }
-    
+    string &string::operator=(const char* s) {
         if (s == nullptr) {
-            local.data[0] = '\0';
-            local.info = 0;
+            clear();
             return *this;
         }
-    
+
+        const char* old_data = !is_local() ? remote.data : nullptr;
         size_t len = strlen(s);
-    
+
         if (len <= SSO_CAPACITY) {
-            memcpy(local.data, s, len);
-            local.data[len] = '\0';
-            local.info = (unsigned char)len;
+            char tmp[SSO_CAPACITY + 1];
+            memcpy(tmp, s, len);
+            tmp[len] = '\0';
+
+            if (old_data) delete[] old_data;
+
+            memcpy(local.data, tmp, len + 1);
+            info = static_cast<unsigned char>(len);
         } else {
-            remote.data = new char[len + 1];
-            memcpy(remote.data, s, len);
-            remote.data[len] = '\0';
+            char* new_buf = new char[len + 1];
+            memcpy(new_buf, s, len + 1);
+
+            if (old_data) delete[] old_data;
+
+            remote.data = new_buf;
             remote.size = len;
             remote.capacity = len;
-            local.info = 0xFF;
+            info = 0xFF;
         }
-    
+
         return *this;
     }
 
-    string& string::operator--() {
+    string &string::operator--() {
         size_t len = length();
         
         if (len == 0) return *this;
@@ -154,7 +148,7 @@ namespace lib {
 
         if (is_local()) {
             local.data[new_len] = '\0';
-            local.info = static_cast<unsigned char>(new_len);
+            info = static_cast<unsigned char>(new_len);
         } else {
             remote.data[new_len] = '\0';
             remote.size = new_len;
@@ -169,7 +163,7 @@ namespace lib {
         return duplicate;
     }
 
-    string& string::operator+=(char c) {
+    string &string::operator+=(char c) {
         size_t len = length();
         size_t new_len = len + 1;
 
@@ -177,7 +171,7 @@ namespace lib {
             if (new_len <= SSO_CAPACITY) {
                 local.data[len] = c;
                 local.data[new_len] = '\0';
-                local.info = static_cast<unsigned char>(new_len);
+                info = static_cast<unsigned char>(new_len);
             } else {
                 size_t new_cap = new_len * 2;
                 char* new_data = new char[new_cap + 1];
@@ -189,7 +183,7 @@ namespace lib {
                 remote.data = new_data;
                 remote.size = new_len;
                 remote.capacity = new_cap;
-                local.info = 0xFF;
+                info = 0xFF;
             }
         } else {
             if (new_len <= remote.capacity) {
@@ -214,7 +208,7 @@ namespace lib {
         return *this;
     }
 
-    string& string::operator+=(const char* s) {
+    string &string::operator+=(const char* s) {
         if (!s) return *this;
     
         for (size_t i = 0; s[i] != '\0'; ++i) {
@@ -223,7 +217,7 @@ namespace lib {
         return *this;
     }
 
-    string& string::operator=(string&& other) noexcept {
+    string &string::operator=(string &&other) noexcept {
         if (this == &other) return *this;
         if (!is_local()) {
             delete[] remote.data;
@@ -231,16 +225,16 @@ namespace lib {
 
         if (other.is_local()) {
             memcpy(local.data, other.local.data, SSO_CAPACITY + 1);
-            local.info = other.local.info;
+            info = other.info;
         } else {
             remote.data = other.remote.data;
             remote.size = other.remote.size;
             remote.capacity = other.remote.capacity;
-            local.info = 0xFF;
+            info = 0xFF;
         }
 
         other.local.data[0] = '\0';
-        other.local.info = 0;
+        other.info = 0;
 
         return *this;
     }
@@ -249,16 +243,16 @@ namespace lib {
         return is_local() ? local.data : remote.data;
     }
 
-    char& string::operator[](size_t index) {
+    char &string::operator[](size_t index) {
         return is_local() ? local.data[index] : remote.data[index];
     }
 
-    const char& string::operator[](size_t index) const {
+    const char &string::operator[](size_t index) const {
         return is_local() ? local.data[index] : remote.data[index];
     }
 
     size_t string::length() const {
-        return is_local() ? local.info : remote.size;
+        return is_local() ? info : remote.size;
     }
 
     bool string::empty() const {
@@ -270,24 +264,24 @@ namespace lib {
             delete[] remote.data;
         }
         memset(local.data, 0, SSO_CAPACITY + 1);
-        local.info = 0;
+        info = 0;
     }
 
     bool lib::string::operator==(const char* other) const {
         if (!other) return empty();
-        return strcmp(c_str(), other) == 0;
+        return strcmp(c_str(), other);
     }
 
-    bool lib::string::operator==(const string& other) const {
+    bool lib::string::operator==(const string &other) const {
         if (length() != other.length()) return false;
-        return strcmp(c_str(), other.c_str()) == 0;
+        return strcmp(c_str(), other.c_str());
     }
 
     bool lib::string::operator!=(const char* other) const {
         return !(*this == other);
     }
 
-    bool lib::string::operator!=(const string& other) const {
+    bool lib::string::operator!=(const string &other) const {
         return !(*this == other);
     }
 }

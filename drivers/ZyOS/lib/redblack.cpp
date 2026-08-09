@@ -59,7 +59,8 @@ namespace lib {
             parent = current;
             if (node->compare(current) < 0) {
                 current = current->left;
-            } else {
+            } 
+            else {
                 current = current->right;
             }
         }
@@ -68,9 +69,11 @@ namespace lib {
 
         if (parent == nullptr) {
             root = node;
-        } else if (node->compare(parent) < 0) {
+        } 
+        else if (node->compare(parent) < 0) {
             parent->left = node;
-        } else {
+        } 
+        else {
             parent->right = node;
         }
 
@@ -161,40 +164,38 @@ namespace lib {
         if (z == leftmost) {
             if (z->right != nullptr) {
                 leftmost = tree_minimum(z->right);
-            } else {
-                RB_Base *current = z;
-                RB_Base *succ = z->parent;
+            } 
+            else {
+                RB_Base* current = z;
+                RB_Base* succ = z->parent;
                 while (succ != nullptr && current == succ->right) {
                     current = succ;
                     succ = succ->parent;
                 }
-                leftmost = succ;
+                leftmost = succ; 
             }
         }
 
         RB_Base *x = nullptr;
-        RB_Base *x_parent = nullptr;
         RB_Base *y = z;
         RB_Colour y_original_color = y->col;
 
         if (z->left == nullptr) {
             x = z->right;
-            x_parent = z->parent;
             transplant(z, z->right);
-        } else if (z->right == nullptr) {
+        } 
+        else if (z->right == nullptr) {
             x = z->left;
-            x_parent = z->parent;
             transplant(z, z->left);
-        } else {
+        } 
+        else {
             y = tree_minimum(z->right);
             y_original_color = y->col;
             x = y->right;
 
             if (y->parent == z) {
-                x_parent = y;
                 if (x != nullptr) x->parent = y;
             } else {
-                x_parent = y->parent;
                 transplant(y, y->right);
                 y->right = z->right;
                 y->right->parent = y;
@@ -210,16 +211,19 @@ namespace lib {
         z->right = nullptr;
         z->parent = nullptr;
 
-        if (y_original_color == RB_Colour::BLACK) {
-            fix_delete(x, x_parent);
+        if (y_original_color == RB_Colour::BLACK && x != nullptr) {
+            fix_delete(x, x->parent);
+        } 
+        else if (y_original_color == RB_Colour::BLACK && x == nullptr) {
+            fix_delete(nullptr, y->parent);
         }
     }
 
-    void RB_Tree::fix_delete(RB_Base *node, RB_Base *parent) {
+    void RB_Tree::fix_delete(RB_Base* node, RB_Base* parent) {
         while (node != root && (node == nullptr || node->col == RB_Colour::BLACK)) {
             if (parent == nullptr) break;
             if (node == parent->left) {
-                RB_Base *sibling = parent->right;
+                RB_Base* sibling = parent->right;
 
                 if (sibling != nullptr && sibling->col == RB_Colour::RED) {
                     sibling->col = RB_Colour::BLACK;
@@ -253,7 +257,7 @@ namespace lib {
                 }
             }
             else {
-                RB_Base *sibling = parent->left;
+                RB_Base* sibling = parent->left;
 
                 if (sibling != nullptr && sibling->col == RB_Colour::RED) {
                     sibling->col = RB_Colour::BLACK;
@@ -262,13 +266,12 @@ namespace lib {
                     sibling = parent->left;
                 }
 
-                if (sibling == nullptr ||
-                    ((sibling->left == nullptr || sibling->left->col == RB_Colour::BLACK) &&
-                     (sibling->right == nullptr || sibling->right->col == RB_Colour::BLACK))) {
-                    if (sibling != nullptr) sibling->col = RB_Colour::RED;
+                if ((sibling->left == nullptr || sibling->left->col == RB_Colour::BLACK) &&
+                    (sibling->right == nullptr || sibling->right->col == RB_Colour::BLACK)) {
+                    sibling->col = RB_Colour::RED;
                     node = parent;
                     parent = node->parent;
-                }
+                } 
                 else {
                     if (sibling->left == nullptr || sibling->left->col == RB_Colour::BLACK) {
                         if (sibling->right != nullptr) sibling->right->col = RB_Colour::BLACK;

@@ -133,6 +133,10 @@ namespace TTY {
         return;
     }
 
+    void add_damage(int x, int y, int w, int h) {
+        HAL::SCREEN::add_damage(x, y, w, h);
+    }
+
     void ConHost::print_cwd() {
         draw_string("[");
         char t[3] = { _ltrdrive, ':', 0 };

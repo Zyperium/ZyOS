@@ -3,6 +3,7 @@
 #include <Library/cystr.hpp>
 #include <Library/redblack.hpp>
 #include <Library/locks.hpp>
+#include <Library/vec.hpp>
 
 #include <HAL/ACPI/ACPI.hpp>
 
@@ -29,10 +30,13 @@ namespace Scheduler {
     };
 
     constexpr uint8_t MAX_USR_FD = 16;
+    constexpr size_t USR_MMAP_BEGIN = 0x0000'7000'0000'0000;
     struct UserTask {
         VFS::VNode *descriptors[MAX_USR_FD]{nullptr};
         size_t permissions{0};
         size_t next_free_ds{0};
+        size_t usr_virt_mmap{USR_MMAP_BEGIN};
+        lib::vec<lib::string> opened_drvrs;
 
         ~UserTask();
         UserTask() = default;
@@ -115,6 +119,7 @@ namespace Scheduler {
     Task *GetTaskByPID(ZyOS::QWORD PID);
     void RegisterSystemIdleTask(Task *task);
     Task *StealCoCoreTask();
+    Task *SpawnR3Task(const lib::string &task_name, const lib::string &path);
 
     constexpr uint8_t TASK_STACK_PAGES = 8; // 8 * 4096 = 32KB of ram. Plenty.
     constexpr uint8_t TOTAL_SCHD_QUEUES = 32;

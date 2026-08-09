@@ -1,7 +1,9 @@
 #include "Composer.hpp"
+#include "Members.hpp"
 
 #include <TTY.hpp>
 #include <LOG.hpp>
+#include <HAL.hpp>
 #include <SERVICES.hpp>
 #include <lib/string.h>
 
@@ -41,23 +43,43 @@ namespace R0UI::Composer {
     }
 
     void handle_input(uint64_t k) {
-        (void)k;
+        if (k == 'x') {
+            Debug::krnl_print("R0UI", Debug::LOG_INFO, "I am %s (handle input)", HAL::CORE::get_core_data()->current_task->task_name.c_str());
+        }
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "You pressed %x", k);
     }
 
     void paint_init(uint32_t *ttybuffer, size_t x, size_t y) {
-        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Received %x addr for tty", ttybuffer);
-        memset(ttybuffer, 0xFF1F1F1F, x * y);
+        memset32(ttybuffer, 0xFF1F1F1F, x * y);
+        HAL::SCREEN::add_damage(0, 0, x * 4, y);
+        HAL::SCREEN::repaint();
+        append_queue(CMPSTR_STATE::RUNNING);
     }
 
+    void do_run_through(uint32_t *ttybuf) {
+        if (!linked_io) return;
+        lib::ScopedLock n(linklock);
+        volatile winpair *first = linked_io;
+        do {
+            first->ref->paint(ttybuf);
+            first = first->next;
+        } while (first != linked_io);
+
+        return;
+    }
+
+
+    size_t height, pitch, width;
     void worker1(uint32_t *tty_bbuf) {
         next_free = 0;
         cmpqueue[0] = CMPSTR_STATE::NONE;
 
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "I am %s (default)", HAL::CORE::get_core_data()->current_task->task_name.c_str());
+
         append_queue(CMPSTR_STATE::INIT);
 
-        size_t height, pitch, width;
         (void)pitch; // "useful?"
-        TTY::ScreenStructs::SCREEN_DATA b =  TTY::get_scrdata();
+        TTY::ScreenStructs::SCREEN_DATA b = TTY::get_scrdata();
         height = b.height;
         pitch = b.pitch;
         width = b.width;
@@ -78,6 +100,8 @@ namespace R0UI::Composer {
                 break;
             }
             case CMPSTR_STATE::RUNNING: {
+                do_run_through(tty_bbuf);
+                append_queue(CMPSTR_STATE::RUNNING);
                 break;
             }
             case CMPSTR_STATE::SHUTDOWN: {

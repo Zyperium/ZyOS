@@ -13,6 +13,7 @@
 #include <HAL/MSR.hpp>
 
 #include <Services/Syscalls/Syscalls.hpp>
+#include <Services/IPC/drvio.hpp>
 
 using namespace HAL;
 using namespace MEM;
@@ -163,8 +164,32 @@ namespace Syscalls {
         return read_amount;
     }
 
-    uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
+    uint64_t SYS_KRNL_IO(uint64_t path, uint64_t data, uint64_t path_len) {
+        if (path_len > 32) path_len = 32;
+        auto *val = usr_to_string(path, path_len);
+        auto path_str = lib::string(val);
 
+        auto **found = IPC::regdrvrs.find(path_str);
+
+        if (!found) {
+            Debug::krnl_print("SYS", Debug::LOG_WARN, "Unable to find ioctl");
+            return -1;
+        }
+
+        auto *regdrvr = *found;
+
+        if (!regdrvr->is_relier(HAL::CORE::get_core_data()->current_task))
+            regdrvr->add_relier(HAL::CORE::get_core_data()->current_task);
+
+        delete[] val;
+
+        uint64_t mem_val = regdrvr->on_call(HAL::CORE::get_core_data()->current_task, data);
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "Mem_val %x", mem_val);
+        return mem_val;
+    }
+
+    uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "Syscall! %i", id);
         switch(id) {
             /*
                 Expects A1 to contain a user address that is either:
@@ -180,7 +205,12 @@ namespace Syscalls {
                 return SYS_OPEN_FILE(regs.A1, regs.A2);
             }
             case SYSCALL_ID::SYS_READ: {
-                Debug::krnl_print("SYS", Debug::LOG_INFO, "Reading file %i", regs.A1);
+                Debug::krnl_print(
+                    "SYS", 
+                    Debug::LOG_INFO, 
+                    "Reading file %i", 
+                    regs.A1
+                );
                 return SYS_READ_FILE(regs.A1, regs.A2, regs.A3, regs.A4);
             }
             case SYSCALL_ID::SYS_WRITE: {
@@ -188,6 +218,20 @@ namespace Syscalls {
             }
             case SYSCALL_ID::SYS_CLOSE: {
                 break;
+            }
+            case SYSCALL_ID::SYS_IOCTL: {
+                return SYS_KRNL_IO(regs.A1, regs.A2, regs.A3);
+            }
+            case SYSCALL_ID::SYS_LOUT: {
+                char *x = usr_to_string(regs.A1, regs.A2);
+                Debug::krnl_print(
+                    "SYS", 
+                    Debug::LOG_INFO, 
+                    "%s: %s", 
+                    HAL::CORE::get_core_data()->current_task->task_name.c_str(), 
+                    x
+                );
+                return 0;
             }
             default:
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unknown syscall ID!");

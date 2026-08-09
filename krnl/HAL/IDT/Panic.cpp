@@ -25,8 +25,12 @@ void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
                 Debug::krnl_print("SCHD", Debug::LOG_INFO, "%x", stack[i]);
             break;
         }
+        case PanicReasons::STACK_KERNEL_CORRUPTION: {
+            Debug::krnl_print("IDT", Debug::LOG_WARN, "Critical stack corruption detected.");
+            break;
+        }
         default:
-            Debug::krnl_print("IDT", Debug::LOG_INFO, "Unknown kmode error!");
+            Debug::krnl_print("IDT", Debug::LOG_INFO, "Unknown kmode error! (%i)", reason);
             break;
     }
 

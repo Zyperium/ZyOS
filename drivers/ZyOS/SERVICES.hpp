@@ -154,7 +154,6 @@ namespace Scheduler {
     void Initialize();
     void Yield();
     void Suicide();
-    Task *SpawnR3Task(const lib::string &name, const lib::string &path);
 
     constexpr uint64_t TASK_TABLE_SIZE = 1024;
     constexpr uint32_t TASK_DIR_SIZE = 32;

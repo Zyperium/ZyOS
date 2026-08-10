@@ -490,16 +490,15 @@ namespace TTY::Commands {
             char *k_buf = new char[alloc_size];
             strcpy(k_buf, argv[1]);
             k_buf[alloc_size - 1] = 0;
-            Scheduler::Task *t = new Scheduler::Task([](void *path) {
+            new Scheduler::Task([](void *path) {
                 char *p = (char *)path;
                 lib::string cp_path = p;
                 delete p;
                 Debug::krnl_print("CMD", Debug::LOG_INFO, "Executing ring 3 task at: %s", cp_path.c_str());
                 ELF::Runway(cp_path);
                 for (;;);
-            }, "Usr Task", true, k_buf);
+            }, k_buf, true, k_buf);
 
-            Debug::krnl_print("CMD", Debug::LOG_INFO, "Task has id %i, path %s", t->get_pid(), k_buf);
 
             Scheduler::Yield();
             return "User process loaded!\n";

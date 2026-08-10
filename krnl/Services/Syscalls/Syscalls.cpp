@@ -296,7 +296,7 @@ namespace Syscalls {
     }
 
     uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
-        Debug::krnl_print("SYS", Debug::LOG_INFO, "Syscall! %i", id);
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "%s Syscall! %i", HAL::CORE::get_core_data()->current_task->task_name.c_str(), id);
         switch(id) {
             /*
                 Expects A1 to contain a user address that is either:
@@ -351,6 +351,7 @@ namespace Syscalls {
                 return -1;
             }
             case SYSCALL_ID::SYS_EXIT: {
+                Debug::krnl_print("SYS", Debug::LOG_INFO, "Task %s is exiting", HAL::CORE::get_core_data()->current_task->task_name.c_str());
                 Scheduler::Suicide();
                 return 0;
             }
@@ -359,15 +360,19 @@ namespace Syscalls {
                 return 0;
             }
             case SYSCALL_ID::SYS_FORK: {
-                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (fork)");
                 auto t = HAL::CORE::get_core_data()->current_task;
+                uint64_t og_pid = HAL::CORE::get_core_data()->current_task->get_pid();
+
                 t->block(Scheduler::BlockReasons::FORK);
-                // regrab because child will have a different PID.
-                return HAL::CORE::get_core_data()->current_task->get_pid();
+                
+                return og_pid;
             }
             case SYSCALL_ID::SYS_SET_FS_BASE: {
-                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (Set fs base)");
-                return -1;
+                if (regs.A1 >= ZyOS::END_OF_LOWER_HALF)
+                    return -EINVAL;
+
+                MSR::wrmsr(MSR::IA32_FS_BASE, regs.A1);
+                return 0;
             }
             case SYSCALL_ID::SYS_SHM_CREATE: {
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (shm create)");
@@ -401,7 +406,7 @@ namespace Syscalls {
                 break;
         }
 
-        return -1;
+        return -EINVAL;
     }
 }
 

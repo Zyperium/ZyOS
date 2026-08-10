@@ -111,6 +111,7 @@ namespace HAL::MEM::VMM {
         }
 
         pt[pt_idx] = phys | flags;
+        PMM::reference_page((void *)phys);
         
         asm volatile("invlpg (%0)" :: "r" (virt) : "memory");
     }
@@ -153,6 +154,72 @@ namespace HAL::MEM::VMM {
         }
 
         return (uint64_t)new_pml4_phys;
+    }
+
+
+    uint64_t ClonePageDirectory(uint64_t cr3_to_clone) {
+        uint64_t new_pml4_phys = CreateProcessPageTable(cr3_to_clone);
+
+        uint64_t* src_pml4 = (uint64_t*)(cr3_to_clone + PMM::hhdm_offset);
+        uint64_t* dst_pml4 = (uint64_t*)(new_pml4_phys + PMM::hhdm_offset);
+
+        constexpr uint64_t PHYS_ADDR_MASK = 0x000FFFFFFFFFF000ULL;
+
+        for (int pml4_i = 0; pml4_i < 256; pml4_i++) {
+            if (!(src_pml4[pml4_i] & 1)) continue;
+
+            uint64_t src_pdpt_phys = src_pml4[pml4_i] & PHYS_ADDR_MASK;
+            uint64_t* src_pdpt = (uint64_t*)(src_pdpt_phys + PMM::hhdm_offset);
+
+            uint64_t dst_pdpt_phys = (uint64_t)PMM::alloc_page();
+            uint64_t* dst_pdpt = (uint64_t*)(dst_pdpt_phys + PMM::hhdm_offset);
+            memset(dst_pdpt, 0, PAGE_SIZE);
+
+            dst_pml4[pml4_i] = dst_pdpt_phys | (src_pml4[pml4_i] & 0xFFFULL);
+
+            for (int pdpt_i = 0; pdpt_i < 512; pdpt_i++) {
+                if (!(src_pdpt[pdpt_i] & 1)) continue;
+                if (src_pdpt[pdpt_i] & (1 << 7)) continue; 
+
+                uint64_t src_pd_phys = src_pdpt[pdpt_i] & PHYS_ADDR_MASK;
+                uint64_t* src_pd = (uint64_t*)(src_pd_phys + PMM::hhdm_offset);
+
+                uint64_t dst_pd_phys = (uint64_t)PMM::alloc_page();
+                uint64_t* dst_pd = (uint64_t*)(dst_pd_phys + PMM::hhdm_offset);
+                memset(dst_pd, 0, PAGE_SIZE);
+
+                dst_pdpt[pdpt_i] = dst_pd_phys | (src_pdpt[pdpt_i] & 0xFFFULL);
+
+                for (int pd_i = 0; pd_i < 512; pd_i++) {
+                    if (!(src_pd[pd_i] & 1)) continue;
+                    if (src_pd[pd_i] & (1 << 7)) continue;
+
+                    uint64_t src_pt_phys = src_pd[pd_i] & PHYS_ADDR_MASK;
+                    uint64_t* src_pt = (uint64_t*)(src_pt_phys + PMM::hhdm_offset);
+
+                    uint64_t dst_pt_phys = (uint64_t)PMM::alloc_page();
+                    uint64_t* dst_pt = (uint64_t*)(dst_pt_phys + PMM::hhdm_offset);
+                    memset(dst_pt, 0, PAGE_SIZE);
+
+                    dst_pd[pd_i] = dst_pt_phys | (src_pd[pd_i] & 0xFFFULL);
+
+                    for (int pt_i = 0; pt_i < 512; pt_i++) {
+                        if (!(src_pt[pt_i] & 1)) continue;
+
+                        uint64_t src_frame_phys = src_pt[pt_i] & PHYS_ADDR_MASK;
+                        uint64_t dst_frame_phys = (uint64_t)PMM::alloc_page();
+
+                        memcpy((void*)(dst_frame_phys + PMM::hhdm_offset),
+                               (void*)(src_frame_phys + PMM::hhdm_offset),
+                               PAGE_SIZE);
+
+                        dst_pt[pt_i] = dst_frame_phys | (src_pt[pt_i] & 0xFFFULL);
+                    }
+                }
+            }
+        }
+
+        return new_pml4_phys;
     }
 
     uint64_t GetPhysicalAddress(uint64_t cr3, uint64_t virtAddr) {

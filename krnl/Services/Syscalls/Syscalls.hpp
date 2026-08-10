@@ -17,6 +17,8 @@ namespace Syscalls {
         uint64_t A4;
         // R8
         uint64_t A5;
+        // R9
+        uint64_t A6;
     };
 
     struct SUBREGS {
@@ -35,31 +37,31 @@ namespace Syscalls {
     };
 
     enum class SYSCALL_ID : uint64_t {
-        SYS_OPEN = 0,
-        SYS_READ,
-        SYS_WRITE,
-        SYS_CLOSE,
-        SYS_IOCTL,
-        SYS_LOUT,
+        SYS_OPEN = 0, // functional
+        SYS_READ, // functional
+        SYS_WRITE, // functional
+        SYS_CLOSE, // functional
+        SYS_IOCTL, // functional
+        SYS_LOUT, // functional
 
-        SYS_MMAP,
-        SYS_MUNMAP,
-        SYS_MPROTECT,
+        SYS_MMAP, // functional
+        SYS_MUNMAP, // functional
+        SYS_MPROTECT, // stub, however MMAP supports setting permissions
 
-        SYS_EXIT,
-        SYS_YIELD,
-        SYS_FORK,
-        SYS_SET_FS_BASE,
+        SYS_EXIT, // functional
+        SYS_YIELD, // functional
+        SYS_FORK, // functional
+        SYS_SET_FS_BASE, // functional
 
-        SYS_SHM_CREATE,
-        SYS_SHM_MAP,
-        SYS_SHM_UNMAP,
+        SYS_SHM_CREATE, // stub
+        SYS_SHM_MAP, // stub
+        SYS_SHM_UNMAP, // stub
 
-        SYS_FUTEX_WAIT,
-        SYS_FUTEX_WAKE,
+        SYS_FUTEX_WAIT, // stub
+        SYS_FUTEX_WAKE, // stub
 
-        SYS_GET_TIME,
-        SYS_GET_PID,
+        SYS_GET_TIME, // functional
+        SYS_GET_PID, // functional
 
         MAX_ID
     };

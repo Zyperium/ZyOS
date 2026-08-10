@@ -9,7 +9,11 @@ namespace VFS {
     }
 
     void VNode::release() {
-        if (--m_ref_count == 0) delete this;
+        if (--m_ref_count == 0) {
+            Debug::krnl_print("VFS", Debug::LOG_INFO, "Cleaning vnode");
+            delete this;
+        }
+        Debug::krnl_print("VFS", Debug::LOG_INFO, "vnode release");
     }
 
     FileType VNode::get_type() const {

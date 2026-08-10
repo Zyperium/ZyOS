@@ -19,11 +19,6 @@
 
 using namespace HAL::MEM;
 
-extern "C" void log_now() {
-    Debug::krnl_print("SCHD", Debug::LOG_INFO, "IF disbaled on iretq!");
-    return;
-}
-
 namespace Scheduler {
     bool active{false};
     bool event_occured{};
@@ -33,6 +28,7 @@ namespace Scheduler {
     TaskBlock *blocked_queue[(size_t)BlockReasons::TOTAL_REASONS]{};
 
     Task ***TaskDirectory;
+    Task *reaper_task{nullptr};
 
     bool a_schd_lock = false;
     ZyOS::QWORD watch_pid = -1;
@@ -54,25 +50,41 @@ namespace Scheduler {
 
     }
 
+    Task *frkr_task;
     void ForkerTask() {
-        Task *this_task = HAL::CORE::get_core_data()->current_task;
+        frkr_task = HAL::CORE::get_core_data()->current_task;
 
         for (;;) {
             if (!blocked_queue[(int)BlockReasons::FORK]) {
-                this_task->block(BlockReasons::FORKER);
+                Yield();
                 continue;
             }
+            
+            asm volatile("cli");
 
             Task *to_fork = blocked_queue[(int)BlockReasons::FORK]->t_ptr;
 
-            Task *fork = new Scheduler::Task(nullptr, to_fork->task_name, true);
+            Debug::krnl_print("FRKR", Debug::LOG_INFO, "Forking task %s", to_fork->task_name.c_str());
+
+            char *nname = new char[to_fork->task_name.length() + sizeof(FORK_APPEND_TEXT)];
+            memcpy(nname, to_fork->task_name.c_str(), to_fork->task_name.length());
+            memcpy(nname + to_fork->task_name.length(), FORK_APPEND_TEXT, sizeof(FORK_APPEND_TEXT));
+
+            Task *fork = new Scheduler::Task(nullptr, nname, true);
             fork->block(BlockReasons::FORKD);
+            delete[] nname;
 
             fork->utask = new UserTask();
             memcpy(fork->utask, to_fork->utask, sizeof(UserTask));
 
-            // fork->cr3 = VMM::ClonePageDirectory(to_fork->cr3); // IMPLEMENT ME !!! 
-            // (Copy all of the parents pages into the child)
+            for (auto i{0uz}; i < MAX_USR_FD; ++i) {
+                if (!fork->utask->descriptors[i])
+                    continue;
+
+                fork->utask->descriptors[i]->add_ref();
+            }
+
+            fork->cr3 = VMM::ClonePageDirectory(to_fork->cr3);
 
             fork->heap_ptr = to_fork->heap_ptr;
             fork->mapped_limit = to_fork->mapped_limit;
@@ -80,32 +92,21 @@ namespace Scheduler {
             fork->niceness = to_fork->niceness;
             fork->syscalls_allowed = to_fork->syscalls_allowed;
 
-            constexpr size_t FX_STATE_SIZE = 512; 
-            fork->malignedfx = new uint8_t[FX_STATE_SIZE + 16];
-            fork->fx_state = reinterpret_cast<uint8_t*>(
-                (reinterpret_cast<uintptr_t>(fork->malignedfx) + 15) & ~15
-            );
-
             memcpy(fork->fx_state, to_fork->fx_state, FX_STATE_SIZE);
 
-            size_t krnl_stack_size = reinterpret_cast<uintptr_t>(to_fork->krnl_stack_top) - 
-                                     reinterpret_cast<uintptr_t>(to_fork->krnl_stack_btm);
-
-            fork->krnl_stack_btm = reinterpret_cast<ZyOS::QWORD*>(new uint8_t[krnl_stack_size]);
-            fork->krnl_stack_top = reinterpret_cast<ZyOS::QWORD*>(
-                reinterpret_cast<uintptr_t>(fork->krnl_stack_btm) + krnl_stack_size
-            );
-
-            memcpy(fork->krnl_stack_btm, to_fork->krnl_stack_btm, krnl_stack_size);
+            memcpy(fork->krnl_stack_btm, to_fork->krnl_stack_btm, PAGE_SIZE * TASK_STACK_PAGES);
 
             uintptr_t parent_rsp_offset = to_fork->rsp - reinterpret_cast<uintptr_t>(to_fork->krnl_stack_btm);
 
             fork->rsp = reinterpret_cast<uintptr_t>(fork->krnl_stack_btm) + parent_rsp_offset;
 
             to_fork->unblock(BlockReasons::FORK);
+            fork->unblock(BlockReasons::FORKD);
 
-            fork->vruntime = to_fork->vruntime;
-            fork->enqueue();
+
+            asm volatile("sti");
+
+            Yield();
         }
     }
 
@@ -120,7 +121,6 @@ namespace Scheduler {
         task_tree = new lib::RB_Tree{};
 
         active = false;
-
         TaskDirectory[0] = new Task*[TASK_TABLE_SIZE];
         for (auto i{0uz}; i < TASK_TABLE_SIZE; i++) {
             TaskDirectory[0][i] = nullptr;
@@ -131,13 +131,6 @@ namespace Scheduler {
     // This is a bit of a weird thing idk. Fix this later ig.
     Task *StealCoCoreTask() {
         return Task::GetNextTask();
-    }
-
-    Task *SpawnR3Task(const lib::string &name, const lib::string &path) {
-        return new Task((Task::EntryPoint)[](void *path) {
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Running as %s", (const char *)path);
-            ELF::Runway((const char *)path);
-        }, name, true, (void *)path.c_str());
     }
 
     Task *Task::GetNextTask() {
@@ -153,10 +146,12 @@ namespace Scheduler {
     }
 
     UserTask::~UserTask() {
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Running utask destructor");
         for (auto i{0uz}; i < Scheduler::MAX_USR_FD; ++i) {
             if (!descriptors[i])
                 continue;
-            delete descriptors[i];
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "releasing desc. %i", i);
+            descriptors[i]->release();
         }
 
         return;
@@ -205,7 +200,7 @@ namespace Scheduler {
             addr = (addr + 0x10) & ~0xF;
         }
         fx_state = reinterpret_cast<uint8_t *>(addr);
-        uint32_t *mxcsr = reinterpret_cast<uint32_t*>(&fx_state[24]);
+        uint32_t *mxcsr = reinterpret_cast<uint32_t *>(&fx_state[24]);
         *mxcsr = 0x1F80;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
@@ -280,6 +275,7 @@ namespace Scheduler {
     }
 
     void Task::suicide() {
+        reaper_task->unblock(BlockReasons::SLEEP);
         block(BlockReasons::GARBAGE);
         for (;;) asm volatile("hlt");
     }
@@ -289,12 +285,12 @@ namespace Scheduler {
     }
 
     void Task::block(BlockReasons reason, uint64_t arg1) {
-        if (this == HAL::CORE::get_core_data()->current_task) {
-            asm volatile("sti");
-        }
+        // if (this == HAL::CORE::get_core_data()->current_task) {
+        //     asm volatile("sti");
+        // }
 
         if (blockmap[(size_t)reason]) {
-            
+            Yield();
             return;
         }
 
@@ -334,7 +330,6 @@ namespace Scheduler {
 
     void Task::unblock(BlockReasons reason) {
         if (!blockmap[(size_t)reason]) {
-
             return;
         }
 
@@ -417,68 +412,52 @@ namespace Scheduler {
         if (!head) {
             return;
         }
-
-        Task *exclude = HAL::CORE::get_core_data()->current_task;
+    
+        blocked_queue[(size_t)BlockReasons::GARBAGE] = nullptr;
+    
         TaskBlock *current = head;
         TaskBlock *next_node = nullptr;
-        TaskBlock *keep_head = nullptr;
-        blocked_queue[(size_t)BlockReasons::GARBAGE] = nullptr;
-
+        ZyOS::QWORD krnl_cr3 = read_cr3();
+    
         do {
-            next_node = current->next; 
-
-            if (current->t_ptr == exclude) {
-
-                if (!keep_head) {
-                    keep_head = current;
-                    keep_head->next = keep_head;
-                    keep_head->prev = keep_head;
-                } else {
-                    current->next = keep_head;
-                    current->prev = keep_head->prev;
-                    keep_head->prev->next = current;
-                    keep_head->prev = current;
-                }
-            } 
-            else {
-                if (current->t_ptr) {
-                    Task *t = current->t_ptr;
-
-                    uint32_t pid = t->get_pid();
-                    ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;
-                    ZyOS::QWORD idx = pid % TASK_TABLE_SIZE;
-
-                    if (t->utask) {
-                        delete[] t->utask;
-                    }
-
-                    if (TaskDirectory[dir]) {
-                        TaskDirectory[dir][idx] = nullptr;
-                    }
-
-                    ZyOS::QWORD krnl_cr3 = read_cr3();
-                    if (t->cr3 != krnl_cr3) {
-                        VMM::FreeProcessPages(t->cr3);
-                    }
-
-                    if (t->krnl_stack_btm) {
-                        uintptr_t original_alloc_ptr = reinterpret_cast<uintptr_t>(t->krnl_stack_btm) - PAGE_SIZE;
-                        PMEM::free_pages(reinterpret_cast<void *>(original_alloc_ptr), TASK_STACK_PAGES + 1);
-                    }
-
-                    delete t;
+            next_node = current->next;
+        
+            if (current->t_ptr) {
+                Task *t = current->t_ptr;
+            
+                ZyOS::QWORD pid = t->get_pid();
+                ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;
+                ZyOS::QWORD idx = pid % TASK_TABLE_SIZE;
+            
+                if (TaskDirectory[dir]) {
+                    TaskDirectory[dir][idx] = nullptr;
                 }
 
-                delete current;
+                if (t->utask) {
+                    Debug::krnl_print("SCHD", Debug::LOG_INFO, "Deleting utask %x", t->utask);
+                    delete t->utask;
+                    Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished deleting utask");
+                }
+            
+                if (t->cr3 != krnl_cr3) {
+                    VMM::FreeProcessPages(t->cr3);
+                }
+            
+                if (t->krnl_stack_btm) {
+                    uintptr_t original_alloc_ptr = reinterpret_cast<uintptr_t>(t->krnl_stack_btm) - PAGE_SIZE;
+                    PMEM::free_pages(reinterpret_cast<void *>(original_alloc_ptr), TASK_STACK_PAGES + 1);
+                }
+            
+                delete t;
             }
-
+        
+            delete current;
             current = next_node;
         } while (current != head);
-
-        blocked_queue[(size_t)BlockReasons::GARBAGE] = keep_head;
     }
 }
 
+volatile bool log_switches = false;
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (!Scheduler::active) {
         return current_rsp;
@@ -488,17 +467,19 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     uint64_t curr_sys_time = ACPI::get_sys_time();
     auto prev_task = thread_data->current_task;
 
-    if (prev_task && prev_task->running && prev_task != thread_data->system_idle_task) {
+    if (prev_task && prev_task != thread_data->system_idle_task) {
         prev_task->rsp = current_rsp;
 
-        uint64_t delta_time = (curr_sys_time - thread_data->last_task_runtime) + 1;
-        thread_data->last_task_runtime = curr_sys_time;
+        if (prev_task->running) {
+            uint64_t delta_time = (curr_sys_time - thread_data->last_task_runtime) + 1;
+            thread_data->last_task_runtime = curr_sys_time;
 
-        prev_task->vruntime += delta_time;
-        prev_task->last_ran_time = curr_sys_time;
-        prev_task->running = false;
+            prev_task->vruntime += delta_time;
+            prev_task->last_ran_time = curr_sys_time;
+            prev_task->running = false;
 
-        prev_task->enqueue();
+            prev_task->enqueue();
+        }
     }
 
     Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
@@ -527,6 +508,10 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
             asm volatile("fxrstor %0" : : "m"(*next_task->fx_state));
         }
     }
+
+
+    if (log_switches)
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swap to %s", next_task->task_name.c_str());
 
     return next_task->rsp;
 }

@@ -40,7 +40,6 @@ namespace Scheduler {
         size_t permissions{0};
         size_t next_free_ds{0};
         size_t usr_virt_mmap{USR_MMAP_BEGIN};
-        lib::umap<uint64_t, uint64_t> mapped_pages{16};
         lib::vec<lib::string> opened_drvrs;
 
         ~UserTask();
@@ -121,14 +120,19 @@ namespace Scheduler {
     constexpr ZyOS::DWORD FX_STATE_SIZE = 0x200 + 0x10;
     extern Task ***TaskDirectory;
     extern ZyOS::QWORD watch_pid;
+    extern Task *frkr_task;
+    extern Task *reaper_task;
 
     Task *GetTaskByPID(ZyOS::QWORD PID);
     void RegisterSystemIdleTask(Task *task);
     Task *StealCoCoreTask();
-    Task *SpawnR3Task(const lib::string &task_name, const lib::string &path);
 
     constexpr uint8_t TASK_STACK_PAGES = 8; // 8 * 4096 = 32KB of ram. Plenty.
     constexpr uint8_t TOTAL_SCHD_QUEUES = 32;
     constexpr uint16_t MIN_VRUNTIME_OFFSET = 128;
     constexpr uint8_t DEFAULT_SCHD_QUEUE = 0;
+
+    #define FORK_APPEND_TEXT " (Forked)"
 }
+
+extern volatile bool log_switches;

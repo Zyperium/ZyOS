@@ -142,10 +142,6 @@ namespace HAL::MEM::KMEM {
             }
 
             current = current->next;
-
-            if (current == nullptr) {
-                return nullptr;
-            }
         }
 
         return nullptr;

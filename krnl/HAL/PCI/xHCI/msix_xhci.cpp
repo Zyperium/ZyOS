@@ -53,8 +53,8 @@ namespace HAL::PCI {
                 else
                     MSIX::xHCI::current_loops = 0;
                 
-                // if (current_loops >= LOOPS_BEFORE_YIELD)
-                //     xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
+                if (current_loops >= LOOPS_BEFORE_YIELD)
+                    xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
 
                 Scheduler::Yield();
             }

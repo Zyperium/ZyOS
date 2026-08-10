@@ -17,5 +17,6 @@ namespace HAL::MEM::VMM {
 
     uint64_t GetPhysicalAddress(uint64_t cr3, uint64_t virtAddr);
     uint64_t CreateProcessPageTable(uint64_t kernel_pml4_phys);
+    uint64_t ClonePageDirectory(uint64_t cr3_to_clone);
     void FreeProcessPages(uint64_t cr3);
 }

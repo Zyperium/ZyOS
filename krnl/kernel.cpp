@@ -41,9 +41,10 @@ void TTY_Task(void *tty_cast) {
 }
 
 void Reaper() {
+    Scheduler::reaper_task = HAL::CORE::get_core_data()->current_task;
     for (;;) {
         Scheduler::ClearGarbage();
-        Scheduler::Yield();
+        Scheduler::reaper_task->block(Scheduler::BlockReasons::SLEEP);
         asm volatile("pause");
     }
 }
@@ -60,7 +61,17 @@ extern "C" void krnlmain() {
 
     Syscalls::initialize();
 
-    new Scheduler::Task((Scheduler::Task::EntryPoint)HAL::CORE::discover_all_cores, "CoreFinder", true);
+    new Scheduler::Task(
+        (Scheduler::Task::EntryPoint)Reaper, 
+        "Reaper", 
+        true
+    );
+
+    new Scheduler::Task(
+        (Scheduler::Task::EntryPoint)HAL::CORE::discover_all_cores, 
+        "CoreFinder", 
+        true
+    );
 
     while (HAL::CORE::total_cores != HAL::CORE::core_count) {
         asm volatile("pause");
@@ -78,7 +89,11 @@ extern "C" void krnlmain() {
         true
     );
 
-    new Scheduler::Task((Scheduler::Task::EntryPoint)Reaper, "Reaper", true);
+    new Scheduler::Task(
+        (Scheduler::Task::EntryPoint)Scheduler::ForkerTask,
+        "Forker",
+        true
+    );
 
     PS2::Keyboard::Initialize();
 

@@ -8,7 +8,7 @@ section .data
 
 section .text
 tester_func:
-    sub rsp, 72
+    sub rsp, 80
     mov eax, 0
     lea rdi, [rel sys_msg]
     mov rsi, msg_len
@@ -22,6 +22,7 @@ tester_func:
     mov rdx, 64
     ; NOTE: This is a temporary test
     syscall
+    mov r9, rax
 
     mov rax, 4 ; Now we can open an IOCTL with the R0UI
     lea rdi, [rel ioctl_ptr]
@@ -31,11 +32,11 @@ tester_func:
 
     mov rax, 5 ; log some stuff
     lea rdi, [rsp]
-    mov rsi, 64
+    mov rsi, r9
     syscall
-.loop:
-    pause
-    jmp .loop
 
-    add rsp, 72
+    mov rax, 9
+    syscall
+
+    add rsp, 80
     ret

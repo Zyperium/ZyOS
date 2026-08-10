@@ -134,13 +134,13 @@ namespace VFS::FAT32 {
         bool m_is_dirty;
 
     public:
-        FAT32VNode(FAT32FileSystem* fs, VFS::FileType type, uint64_t size, uint32_t first_cluster, uint32_t dir_cluster, uint32_t dir_offset);
+        FAT32VNode(FAT32FileSystem *fs, VFS::FileType type, uint64_t size, uint32_t first_cluster, uint32_t dir_cluster, uint32_t dir_offset);
         virtual ~FAT32VNode() override = default;
 
         virtual int read(uint64_t offset, void *buffer, uint32_t size) override;
         virtual int write(uint64_t offset, const void *buffer, uint32_t size) override;
-        virtual VFS::VNode* create(const char* name, VFS::FileType type) override;
-        virtual VFS::VNode* lookup(const char *name) override;
+        virtual VFS::VNode *create(const char *name, VFS::FileType type) override;
+        virtual VFS::VNode *lookup(const char *name) override;
 
         uint32_t GetFirstCluster() const { return m_first_cluster; }
     };
@@ -158,15 +158,15 @@ namespace VFS::FAT32 {
         FAT32FileSystem(HAL::DISK::Disk *disk_dev);
         ~FAT32FileSystem() = default;
         bool initialize();
-        int read_sectors(uint64_t sector, void* buffer, uint32_t count);
-        int write_sectors(uint64_t sector, const void* buffer, uint32_t count);
+        int read_sectors(uint64_t sector, void *buffer, uint32_t count);
+        int write_sectors(uint64_t sector, const void *buffer, uint32_t count);
 
         uint32_t cluster_to_sector(uint32_t cluster) const;
         uint32_t read_FAT_entry(uint32_t cluster);
         uint32_t get_cluster_size() const;
         uint32_t get_bytes_per_sector() const;
         bool write_FAT_entry(uint32_t cluster, uint32_t value);
-        VFS::VNode* get_root_node();
+        VFS::VNode *get_root_node();
         HAL::DISK::Disk *get_disk_device() const;
     };
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include <Library/umap.hpp>
 #include <Library/ZyOS.hpp>
 #include <Library/cystr.hpp>
 #include <Library/redblack.hpp>
@@ -17,6 +18,9 @@ namespace Scheduler {
         AWAIT_KEYBOARD_INPUT,
         GARBAGE,
         AWAIT_MSIX_EVENT,
+        FORK,
+        FORKER,
+        FORKD,
         TOTAL_REASONS // This should always be last
     };
 
@@ -36,6 +40,7 @@ namespace Scheduler {
         size_t permissions{0};
         size_t next_free_ds{0};
         size_t usr_virt_mmap{USR_MMAP_BEGIN};
+        lib::umap<uint64_t, uint64_t> mapped_pages{16};
         lib::vec<lib::string> opened_drvrs;
 
         ~UserTask();
@@ -103,6 +108,7 @@ namespace Scheduler {
     void EnableScheduler();
     void DisabledScheduler();
     void ClearGarbage();
+    void ForkerTask();
     void Initialize();
     void Yield();
     void Suicide();

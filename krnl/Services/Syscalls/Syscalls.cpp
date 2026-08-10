@@ -9,11 +9,13 @@
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/MEM/PMM.hpp>
 #include <HAL/CORE/Core.hpp>
+#include <HAL/ACPI/ACPI.hpp>
 #include <HAL/DISK/Disk.hpp>
 #include <HAL/MSR.hpp>
 
 #include <Services/Syscalls/Syscalls.hpp>
 #include <Services/IPC/drvio.hpp>
+#include <Services/Scheduler/Scheduler.hpp>
 
 using namespace HAL;
 using namespace MEM;
@@ -164,6 +166,50 @@ namespace Syscalls {
         return read_amount;
     }
 
+    uint64_t SYS_WRITE_FILE(uint64_t file_descriptor, uint64_t write_offset, uint64_t write_amount, uint64_t buffer) {
+        auto *usr_task = HAL::CORE::get_core_data()->current_task;
+
+        if (!usr_task->utask->descriptors[file_descriptor - 1]) {
+            Debug::krnl_print("SYS", Debug::LOG_WARN, "Invalid file descriptor");
+            return 0;
+        }
+
+        auto *target = usr_task->utask->descriptors[file_descriptor - 1];
+
+        if (write_offset >= target->get_size()) {
+            Debug::krnl_print("SYS", Debug::LOG_WARN, "Offset >= than target size");
+            return 0;
+        }
+
+        auto buf_phys = VMM::GetPhysicalAddress(usr_task->cr3, buffer);
+
+        if (!buf_phys) {
+            Debug::krnl_print("SYS", Debug::LOG_INFO, "Bad virtual address!");
+            return 0;
+        }
+        
+        auto *virt_buf = (uint8_t *)(buf_phys + PMM::hhdm_offset);
+
+        target->write(write_offset, virt_buf, write_amount);
+
+        return write_amount;
+    }
+
+    uint64_t SYS_CLOSE_FILE(uint64_t fd) {
+        auto *usr_task = HAL::CORE::get_core_data()->current_task->utask;
+
+        if (!usr_task->descriptors[fd]) {
+            return 1; // invalid fd
+        }
+
+        delete usr_task->descriptors[fd];
+        usr_task->descriptors[fd] = nullptr;
+
+        usr_task->next_free_ds = fd;
+
+        return 0;
+    }
+
     uint64_t SYS_KRNL_IO(uint64_t path, uint64_t data, uint64_t path_len) {
         if (path_len > 32) path_len = 32;
         auto *val = usr_to_string(path, path_len);
@@ -186,6 +232,67 @@ namespace Syscalls {
         uint64_t mem_val = regdrvr->on_call(HAL::CORE::get_core_data()->current_task, data);
         Debug::krnl_print("SYS", Debug::LOG_INFO, "Mem_val %x", mem_val);
         return mem_val;
+    }
+
+    uint64_t SYS_MMAP(uint64_t addr, uint64_t len, int prot, int flags, int fd, uint64_t off) {
+        if (len == 0) return -EINVAL;
+        (void)fd;
+        (void)off;
+
+        uint64_t aligned_len = (len + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+        uint64_t pages = aligned_len / PAGE_SIZE;
+
+        auto *usr_task = HAL::CORE::get_core_data()->current_task;
+        uint64_t target = 0;
+
+        if ((flags & MAP_FIXED) && addr != 0) {
+            if (addr % PAGE_SIZE != 0) return -EINVAL;
+            target = addr;
+        } else {
+            target = usr_task->utask->usr_virt_mmap;
+            usr_task->utask->usr_virt_mmap += aligned_len;
+        }
+
+        uint64_t pte_flags = VMM::PTE_USER;
+        if (prot != 0) pte_flags |= VMM::PTE_PRESENT;
+        if (prot & 0x2) pte_flags |= VMM::PTE_WRITABLE;
+        if (!(prot & 0x4)) pte_flags |= VMM::PTE_NX;
+
+        for (size_t i = 0; i < pages; ++i) {
+            uint64_t vaddr = target + (i * PAGE_SIZE);
+            uint64_t phys_page = (uint64_t)PMM::alloc_page();
+
+            if (!phys_page) return -ENOMEM;
+
+            VMM::map_page(
+                (uint64_t *)(usr_task->cr3 + PMM::hhdm_offset),
+                vaddr,
+                phys_page,
+                pte_flags
+            );
+        }
+
+        return target;
+    }
+
+    uint64_t SYS_MUNMAP(uint64_t addr, uint64_t len) {
+        if (addr % PAGE_SIZE != 0 || len == 0) return -EINVAL;
+
+        auto *usr_task = HAL::CORE::get_core_data()->current_task;
+        uint64_t aligned_len = (len + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+        uint64_t pages = aligned_len / PAGE_SIZE;
+
+        for (size_t i = 0; i < pages; ++i) {
+            uint64_t vaddr = addr + (i * PAGE_SIZE);
+            uint64_t phys = VMM::GetPhysicalAddress(usr_task->cr3, vaddr);
+
+            if (phys) {
+                VMM::unmap_page((uint64_t *)(usr_task->cr3 + PMM::hhdm_offset), vaddr);
+                PMM::free_page((void *)phys);
+            }
+        }
+
+        return 0;
     }
 
     uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
@@ -214,10 +321,10 @@ namespace Syscalls {
                 return SYS_READ_FILE(regs.A1, regs.A2, regs.A3, regs.A4);
             }
             case SYSCALL_ID::SYS_WRITE: {
-                break;
+                return SYS_WRITE_FILE(regs.A1, regs.A2, regs.A3, regs.A4);
             }
             case SYSCALL_ID::SYS_CLOSE: {
-                break;
+                return SYS_CLOSE_FILE(regs.A1);
             }
             case SYSCALL_ID::SYS_IOCTL: {
                 return SYS_KRNL_IO(regs.A1, regs.A2, regs.A3);
@@ -232,6 +339,62 @@ namespace Syscalls {
                     x
                 );
                 return 0;
+            }
+            case SYSCALL_ID::SYS_MMAP: {
+                return SYS_MMAP(regs.A1, regs.A2, regs.A3, regs.A4, regs.A5, regs.A6);
+            }
+            case SYSCALL_ID::SYS_MUNMAP: {
+                return SYS_MUNMAP(regs.A1, regs.A2);
+            }
+            case SYSCALL_ID::SYS_MPROTECT: {
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (mprotect)");
+                return -1;
+            }
+            case SYSCALL_ID::SYS_EXIT: {
+                Scheduler::Suicide();
+                return 0;
+            }
+            case SYSCALL_ID::SYS_YIELD: {
+                Scheduler::Yield();
+                return 0;
+            }
+            case SYSCALL_ID::SYS_FORK: {
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (fork)");
+                auto t = HAL::CORE::get_core_data()->current_task;
+                t->block(Scheduler::BlockReasons::FORK);
+                // regrab because child will have a different PID.
+                return HAL::CORE::get_core_data()->current_task->get_pid();
+            }
+            case SYSCALL_ID::SYS_SET_FS_BASE: {
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (Set fs base)");
+                return -1;
+            }
+            case SYSCALL_ID::SYS_SHM_CREATE: {
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (shm create)");
+                return -1;
+            }
+            case SYSCALL_ID::SYS_SHM_MAP: {
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (shm map)");
+                return -1;
+            }
+            case SYSCALL_ID::SYS_SHM_UNMAP: {
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (shm unmap)");
+                return -1;
+            }
+            case SYSCALL_ID::SYS_FUTEX_WAIT: {
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (futex wait)");
+                return -1;
+            }
+            case SYSCALL_ID::SYS_FUTEX_WAKE: {
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (futex wake)");
+                return -1;
+            }
+            case SYSCALL_ID::SYS_GET_TIME: {
+                return ACPI::get_sys_time();
+            }
+            case SYSCALL_ID::SYS_GET_PID: {
+                uint64_t pid = HAL::CORE::get_core_data()->current_task->get_pid();
+                return pid;
             }
             default:
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unknown syscall ID!");

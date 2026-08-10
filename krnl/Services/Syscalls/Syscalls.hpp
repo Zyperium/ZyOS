@@ -30,6 +30,8 @@ namespace Syscalls {
         uint64_t A4;
         // R8
         uint64_t A5;
+        // R9
+        uint64_t A6;
     };
 
     enum class SYSCALL_ID : uint64_t {
@@ -46,7 +48,7 @@ namespace Syscalls {
 
         SYS_EXIT,
         SYS_YIELD,
-        SYS_SPAWN,
+        SYS_FORK,
         SYS_SET_FS_BASE,
 
         SYS_SHM_CREATE,
@@ -66,4 +68,10 @@ namespace Syscalls {
 
     constexpr uint64_t MSR_STAR_VAL = 0x00130008ULL << 32;
     constexpr uint64_t MSR_FSTAR_VAL = 0x202; // clean RFLAGS
+    constexpr uint64_t EINVAL = 22;
+    constexpr uint64_t ENOMEM = 12;
+
+    #define MAP_FAILED ((void*)-1)
+    #define MAP_FIXED 0x10
+    #define MAP_ANONYMOUS 0x20
 }

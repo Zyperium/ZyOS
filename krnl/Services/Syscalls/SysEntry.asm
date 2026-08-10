@@ -10,6 +10,7 @@ section .text
 ; RDX = A3
 ; R10 = A4
 ; R8  = A5
+; R9  = A6
 SysEntry:
     swapgs             ; Swap to kernel GS
 

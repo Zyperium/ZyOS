@@ -54,6 +54,61 @@ namespace Scheduler {
 
     }
 
+    void ForkerTask() {
+        Task *this_task = HAL::CORE::get_core_data()->current_task;
+
+        for (;;) {
+            if (!blocked_queue[(int)BlockReasons::FORK]) {
+                this_task->block(BlockReasons::FORKER);
+                continue;
+            }
+
+            Task *to_fork = blocked_queue[(int)BlockReasons::FORK]->t_ptr;
+
+            Task *fork = new Scheduler::Task(nullptr, to_fork->task_name, true);
+            fork->block(BlockReasons::FORKD);
+
+            fork->utask = new UserTask();
+            memcpy(fork->utask, to_fork->utask, sizeof(UserTask));
+
+            // fork->cr3 = VMM::ClonePageDirectory(to_fork->cr3); // IMPLEMENT ME !!! 
+            // (Copy all of the parents pages into the child)
+
+            fork->heap_ptr = to_fork->heap_ptr;
+            fork->mapped_limit = to_fork->mapped_limit;
+            fork->fs_base = to_fork->fs_base;
+            fork->niceness = to_fork->niceness;
+            fork->syscalls_allowed = to_fork->syscalls_allowed;
+
+            constexpr size_t FX_STATE_SIZE = 512; 
+            fork->malignedfx = new uint8_t[FX_STATE_SIZE + 16];
+            fork->fx_state = reinterpret_cast<uint8_t*>(
+                (reinterpret_cast<uintptr_t>(fork->malignedfx) + 15) & ~15
+            );
+
+            memcpy(fork->fx_state, to_fork->fx_state, FX_STATE_SIZE);
+
+            size_t krnl_stack_size = reinterpret_cast<uintptr_t>(to_fork->krnl_stack_top) - 
+                                     reinterpret_cast<uintptr_t>(to_fork->krnl_stack_btm);
+
+            fork->krnl_stack_btm = reinterpret_cast<ZyOS::QWORD*>(new uint8_t[krnl_stack_size]);
+            fork->krnl_stack_top = reinterpret_cast<ZyOS::QWORD*>(
+                reinterpret_cast<uintptr_t>(fork->krnl_stack_btm) + krnl_stack_size
+            );
+
+            memcpy(fork->krnl_stack_btm, to_fork->krnl_stack_btm, krnl_stack_size);
+
+            uintptr_t parent_rsp_offset = to_fork->rsp - reinterpret_cast<uintptr_t>(to_fork->krnl_stack_btm);
+
+            fork->rsp = reinterpret_cast<uintptr_t>(fork->krnl_stack_btm) + parent_rsp_offset;
+
+            to_fork->unblock(BlockReasons::FORK);
+
+            fork->vruntime = to_fork->vruntime;
+            fork->enqueue();
+        }
+    }
+
     void Initialize() {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Initialize");
 

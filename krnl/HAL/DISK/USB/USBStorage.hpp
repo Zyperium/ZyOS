@@ -28,14 +28,14 @@ namespace HAL::DISK::USB {
         USBStorage *usbptr;
     public:
         virtual int read(uint64_t sector, uint32_t count, void *buffer) override;
-        virtual int write(uint64_t sector, uint32_t count, void* buffer) override;
+        virtual int write(uint64_t sector, uint32_t count, void *buffer) override;
 
         friend USBStorage;
     };
 
     class USBStorage : public PCI::xHCIDriver {
     public:
-        virtual void initialize(PCI::xHCI* _ctrl, uint8_t _slot, void *endpoints, int ep_count) override;
+        virtual void initialize(PCI::xHCI *_ctrl, uint8_t _slot, void *endpoints, int ep_count) override;
         virtual void on_int(uint32_t bytes_transferred, uint32_t endpoint_id, uint64_t param_event) override;
         virtual void start() override;
 
@@ -64,18 +64,19 @@ namespace HAL::DISK::USB {
         uint64_t current_data_phys;
         uint32_t current_data_len;
 
-        CBW* current_cbw;
-        CSW* current_csw;
+        CBW *current_cbw;
+        CSW *current_csw;
         uint64_t cbw_phys;
         uint64_t csw_phys;
 
-        uint8_t* bounce_virt;
+        uint8_t *bounce_virt;
         uint64_t bounce_phys;
 
         volatile bool io_pending = false;
 
         static constexpr uint32_t VALID_STATUS = 0;
         static constexpr uint32_t BULK_BUFF_SIZE = 13;
+        static constexpr uint8_t  TOTAL_BOUNCE_PAGES = 16;
 
         static constexpr uint8_t EP_DIR_MASK        = 0x80;
         static constexpr uint8_t EP_NUM_MASK        = 0x0F;

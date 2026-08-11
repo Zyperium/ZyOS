@@ -137,6 +137,46 @@ namespace HAL::MEM::PMM {
         return nullptr;
     }
 
+    void *alloc_contig(size_t count) {
+        if (count == 0) {
+            return nullptr;
+        }
+    
+        acquire_lock();
+        uint64_t total_pages = total_memory / PAGE_SIZE;
+    
+        if (count > total_pages) {
+            release_lock();
+            return nullptr;
+        }
+    
+        for (uint64_t i = 0; i <= total_pages - count; i++) {
+            bool found = true;
+            uint64_t j = 0;
+
+            for (j = 0; j < count; j++) {
+                if (is_page_used(i + j)) {
+                    found = false;
+                    break;
+                }
+            }
+
+            if (found) {
+                for (uint64_t k = 0; k < count; k++) {
+                    lock_page(i + k);
+                    ref_counts[i + k] = 1;
+                }
+                release_lock();
+                return (void *)(i * PAGE_SIZE);
+            }
+
+            i += j;
+        }
+
+        release_lock();
+        return nullptr;
+    }
+
     void free_page(void *free_addr) {
         if ((uint64_t)free_addr > total_memory) {
             return;

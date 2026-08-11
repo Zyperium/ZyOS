@@ -1,4 +1,3 @@
-#include <Library/string.h>
 #include <Services/ELF/ELF.hpp>
 #include <Services/VFS/VFS.hpp>
 
@@ -15,11 +14,15 @@
 #include <Library/debug.hpp>
 #include <Library/krnlptr.hpp>
 #include <Library/regs.h>
+#include <Library/string.h>
+#include <Library/locks.hpp>
 
 using namespace HAL;
 using namespace MEM;
 
 namespace ELF {
+    lib::Spinlock lock{};
+
     /*
     Used for an bad read error during ELF mapping.
     */
@@ -40,9 +43,16 @@ namespace ELF {
         }
     }
 
-    constexpr size_t ELF_READ_CHUNK = 1 * 1024 * 1024; // 512kb
+    constexpr size_t ELF_READ_CHUNK = 1 * 1024 * 1024; // 1 MiB - tune to taste
 
+    /*
+    Loads an app from the passed path (expects a full, lettered path!)
+    Note: This loads the app to the current address space. So unless you
+    want ring 0 user apps, swap to a ring 3 address space, then load
+    the app.
+    */
     void *load_elf(lib::string path) {
+        lib::ScopedLock x(lib::Spinlock);
         Debug::krnl_print("ELF", Debug::LOG_INFO, "Loading %s (starting clock)", path.c_str());
         auto start_t = ACPI::get_sys_time();
         auto fp = lib::parse_path(path);
@@ -91,7 +101,16 @@ namespace ELF {
             return nullptr;
         };
 
-        size_t phase1_t{0}, phase2_t{0};
+        // Aggregate diagnostics across ALL segments (the previous set-once
+        // timers only ever captured segment 0 - that's why total didn't
+        // match p1+p2). Also split "time waiting on the VFS/disk" apart
+        // from "time spent copying in RAM" apart from "time spent in the
+        // allocator/page tables" so we can see which one is actually
+        // eating the clock instead of guessing.
+        size_t map_t_total{0}, read_t_total{0}, copy_t_total{0};
+        size_t reads_total{0}, bytes_read_grand_total{0};
+        size_t new_pages_total{0}, reused_pages_total{0};
+
         for (auto i{0uz}; i < elf_header.ph_count; ++i) {
             if (prog_hdr[i].type != 1)
                 continue;
@@ -109,7 +128,10 @@ namespace ELF {
                 flags |= VMM::PTE_NX;
             }
 
+            auto seg_t0 = ACPI::get_sys_time();
+
             auto *phys_pages = new uint64_t[pages_needed];
+            size_t seg_new_pages{0}, seg_reused_pages{0};
 
             for (auto y{0uz}; y < pages_needed; ++y) {
                 auto curr_vaddr = page_start + (y * PAGE_SIZE);
@@ -118,6 +140,7 @@ namespace ELF {
 
                 if (existing_phys) {
                     phys_pages[y] = existing_phys;
+                    seg_reused_pages++;
                     continue;
                 }
 
@@ -130,24 +153,32 @@ namespace ELF {
                 VMM::map_page(app_pml4, curr_vaddr, (uint64_t)phys_page, flags);
                 memset((uint8_t *)((uint64_t)phys_page + PMM::hhdm_offset), 0, PAGE_SIZE);
                 phys_pages[y] = (uint64_t)phys_page;
+                seg_new_pages++;
             }
 
-            if (!phase1_t)
-                phase1_t = ACPI::get_sys_time() - start_t;
+            auto seg_map_t = ACPI::get_sys_time() - seg_t0;
 
             auto file_size = prog_hdr[i].file_size;
             auto file_off  = 0uz;
+            size_t seg_read_t{0}, seg_copy_t{0}, seg_reads{0}, seg_bytes{0};
 
             while (file_off < file_size) {
                 auto chunk_len = file_size - file_off;
                 if (chunk_len > ELF_READ_CHUNK) chunk_len = ELF_READ_CHUNK;
 
+                auto r0 = ACPI::get_sys_time();
                 size_t bytes_read = target_node->read(prog_hdr[i].offset + file_off, stage, chunk_len);
+                seg_read_t += ACPI::get_sys_time() - r0;
+                seg_reads++;
+                seg_bytes += bytes_read;
+
                 if (bytes_read != chunk_len) {
                     Debug::krnl_print("ELF", Debug::LOG_ERROR, "VFS read mismatch or error during loading!");
                     delete[] phys_pages;
                     return cleanup_and_fail(i);
                 }
+
+                auto c0 = ACPI::get_sys_time();
 
                 auto remaining  = chunk_len;
                 auto stage_off  = 0uz;
@@ -169,22 +200,36 @@ namespace ELF {
                     remaining  -= copy_len;
                 }
 
+                seg_copy_t += ACPI::get_sys_time() - c0;
                 file_off += chunk_len;
             }
 
-            if (!phase2_t)
-                phase2_t = ACPI::get_sys_time() - start_t - phase1_t;
+            Debug::krnl_print("ELF", Debug::LOG_INFO,
+                "  seg[%i] file=%i mem=%i pages=%i(new:%i reuse:%i) map:%ims read:%ims(%i call,%i bytes) copy:%ims",
+                i, prog_hdr[i].file_size, prog_hdr[i].mem_size, pages_needed, seg_new_pages, seg_reused_pages,
+                seg_map_t, seg_read_t, seg_reads, seg_bytes, seg_copy_t);
+
+            map_t_total  += seg_map_t;
+            read_t_total += seg_read_t;
+            copy_t_total += seg_copy_t;
+            reads_total  += seg_reads;
+            bytes_read_grand_total += seg_bytes;
+            new_pages_total += seg_new_pages;
+            reused_pages_total += seg_reused_pages;
 
             delete[] phys_pages;
         }
-
 
         delete[] stage;
         delete[] prog_hdr;
 
         size_t total_time = ACPI::get_sys_time() - start_t;
 
-        Debug::krnl_print("ELF", Debug::LOG_INFO, "Load complete, entry: %x (t: %ims, p1: %ims, p2: %ims)", elf_header.entry_point, total_time, phase1_t, phase2_t);
+        Debug::krnl_print("ELF", Debug::LOG_INFO,
+            "Load complete, entry: %x (t:%ims | map:%ims read:%ims[%i calls,%i bytes] copy:%ims | pages new:%i reuse:%i)",
+            elf_header.entry_point, total_time, map_t_total, read_t_total, reads_total, bytes_read_grand_total,
+            copy_t_total, new_pages_total, reused_pages_total);
+
         if (elf_header.header_size == 0) {
             Debug::krnl_print("ELF", Debug::LOG_WARN, "Something is up with then read file!?");
         }

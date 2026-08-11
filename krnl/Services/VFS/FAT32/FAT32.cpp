@@ -11,6 +11,9 @@
 using namespace HAL::MEM;
 
 namespace VFS::FAT32 {
+
+    constexpr uint32_t PAGE_SIZE = 4096;
+
     bool FAT32FileSystem::initialize() {
         uint8_t sector_buffer[SCRATCH_BUF_SIZE];
 
@@ -100,7 +103,7 @@ namespace VFS::FAT32 {
 
             m_disk_device->dev->read(actual_sector, 1, sector_buffer);
 
-            uint32_t* entry_ptr = reinterpret_cast<uint32_t*>(&sector_buffer[entry_offset]);
+            uint32_t *entry_ptr = reinterpret_cast<uint32_t *>(&sector_buffer[entry_offset]);
             *entry_ptr = (*entry_ptr & 0xF0000000) | (val & CLUSTER_MASK);
 
             m_disk_device->dev->write(actual_sector, 1, sector_buffer);
@@ -124,8 +127,8 @@ namespace VFS::FAT32 {
         }
 
         uint32_t cluster_size = m_fs->get_cluster_size();
-        uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
-        const uint8_t* source_buffer = static_cast<const uint8_t*>(buffer);
+        uint32_t sectors_per_cluster = cluster_size / m_fs->get_bytes_per_sector();
+        const uint8_t *source_buffer = static_cast<const uint8_t *>(buffer);
         uint32_t total_bytes_written = 0;
 
         if (m_first_cluster == 0) {
@@ -168,30 +171,27 @@ namespace VFS::FAT32 {
             }
         }
 
-        uint8_t* sector_bounce_buffer = static_cast<uint8_t*>(
-            HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+        size_t pages_needed = (cluster_size + PAGE_SIZE - 1) / PAGE_SIZE;
+        uint8_t *cluster_bounce_buffer = static_cast<uint8_t *>(
+            PMEM::alloc_pages(pages_needed, VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
         );
 
         while (total_bytes_written < size) {
             uint32_t absolute_file_position = offset + total_bytes_written;
             uint32_t offset_within_cluster = absolute_file_position % cluster_size;
 
-            uint32_t sector_offset_in_cluster = offset_within_cluster / bytes_per_sector;
-            uint32_t byte_offset_in_sector = offset_within_cluster % bytes_per_sector;
-
-            uint32_t physical_sector_lba = m_fs->cluster_to_sector(current_cluster) + sector_offset_in_cluster;
-
-            uint32_t bytes_left_in_sector = bytes_per_sector - byte_offset_in_sector;
+            uint32_t physical_sector_lba = m_fs->cluster_to_sector(current_cluster);
+            uint32_t bytes_left_in_cluster = cluster_size - offset_within_cluster;
             uint32_t bytes_left_to_write = size - total_bytes_written;
-            uint32_t chunk_size = (bytes_left_to_write < bytes_left_in_sector) ? bytes_left_to_write : bytes_left_in_sector;
+            uint32_t chunk_size = (bytes_left_to_write < bytes_left_in_cluster) ? bytes_left_to_write : bytes_left_in_cluster;
 
-            if (byte_offset_in_sector != 0 || chunk_size < bytes_per_sector) {
-                m_fs->read_sectors(physical_sector_lba, sector_bounce_buffer, 1);
+            if (offset_within_cluster != 0 || chunk_size < cluster_size) {
+                m_fs->read_sectors(physical_sector_lba, cluster_bounce_buffer, sectors_per_cluster);
             }
 
-            memcpy(sector_bounce_buffer + byte_offset_in_sector, source_buffer + total_bytes_written, chunk_size);
+            memcpy(cluster_bounce_buffer + offset_within_cluster, source_buffer + total_bytes_written, chunk_size);
 
-            if (m_fs->write_sectors(physical_sector_lba, sector_bounce_buffer, 1) < 1) {
+            if (m_fs->write_sectors(physical_sector_lba, cluster_bounce_buffer, sectors_per_cluster) < (int)sectors_per_cluster) {
                 break;
             }
 
@@ -219,7 +219,7 @@ namespace VFS::FAT32 {
             }
         }
 
-        HAL::MEM::PMEM::free_page(sector_bounce_buffer);
+        PMEM::free_pages(cluster_bounce_buffer, pages_needed);
 
         if (offset + total_bytes_written > m_size) {
             m_size = offset + total_bytes_written;
@@ -227,15 +227,16 @@ namespace VFS::FAT32 {
         }
 
         if (m_is_dirty && m_dir_cluster != 0) {
-            uint8_t* dir_sector_buffer = static_cast<uint8_t*>(
-                HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+            uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
+            uint8_t *dir_sector_buffer = static_cast<uint8_t *>(
+                PMEM::alloc_page(VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
             );
 
             uint32_t dir_sector_lba = m_fs->cluster_to_sector(m_dir_cluster) + (m_dir_offset / bytes_per_sector);
             uint32_t entry_offset_in_sector = m_dir_offset % bytes_per_sector;
 
             if (m_fs->read_sectors(dir_sector_lba, dir_sector_buffer, 1) >= 1) {
-                DirectoryEntry* entry = reinterpret_cast<DirectoryEntry*>(&dir_sector_buffer[entry_offset_in_sector]);
+                DirectoryEntry *entry = reinterpret_cast<DirectoryEntry *>(&dir_sector_buffer[entry_offset_in_sector]);
                 
                 entry->file_size = static_cast<uint32_t>(m_size);
                 
@@ -246,7 +247,7 @@ namespace VFS::FAT32 {
                 m_is_dirty = false;
             }
 
-            HAL::MEM::PMEM::free_page(dir_sector_buffer);
+            PMEM::free_page(dir_sector_buffer);
         }
 
         return total_bytes_written;
@@ -291,50 +292,47 @@ namespace VFS::FAT32 {
             }
         }
 
-        uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
-        uint32_t sectors_per_cluster = m_fs->get_cluster_size() / bytes_per_sector;
+        uint32_t cluster_size = m_fs->get_cluster_size();
+        uint32_t sectors_per_cluster = cluster_size / m_fs->get_bytes_per_sector();
         uint32_t current_cluster = m_first_cluster;
 
-        uint8_t *sector_buffer = static_cast<uint8_t *>(
-            HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+        size_t pages_needed = (cluster_size + PAGE_SIZE - 1) / PAGE_SIZE;
+        uint8_t *cluster_buffer = static_cast<uint8_t *>(
+            PMEM::alloc_pages(pages_needed, VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
         );
 
         while (true) {
             uint32_t cluster_base_sector = m_fs->cluster_to_sector(current_cluster);
 
-            for (uint32_t sector_offset = START_INDEX; sector_offset < sectors_per_cluster; ++sector_offset) {
-                uint32_t physical_sector_lba = cluster_base_sector + sector_offset;
-                m_fs->read_sectors(physical_sector_lba, sector_buffer, SECTOR_COUNT_ONE);
+            m_fs->read_sectors(cluster_base_sector, cluster_buffer, sectors_per_cluster);
 
-                uint32_t directory_entries_per_sector = bytes_per_sector / sizeof(DirectoryEntry);
-                DirectoryEntry *entry_array = reinterpret_cast<DirectoryEntry *>(sector_buffer);
+            uint32_t total_entries_in_cluster = cluster_size / sizeof(DirectoryEntry);
+            DirectoryEntry *entry_array = reinterpret_cast<DirectoryEntry *>(cluster_buffer);
 
-                for (uint32_t entry_index = START_INDEX; entry_index < directory_entries_per_sector; ++entry_index) {
-                    DirectoryEntry &entry = entry_array[entry_index];
-                    uint8_t initial_byte = static_cast<uint8_t>(entry.name[FIRST_BYTE_INDEX]);
+            for (uint32_t entry_index = START_INDEX; entry_index < total_entries_in_cluster; ++entry_index) {
+                DirectoryEntry &entry = entry_array[entry_index];
+                uint8_t initial_byte = static_cast<uint8_t>(entry.name[FIRST_BYTE_INDEX]);
 
-                    if (initial_byte == DIR_ENTRY_FREE|| initial_byte == DIR_ENTRY_FREE_ONWARD) {
-                        memcpy(entry.name, target_83_name, FAT_83_NAME_SIZE);
-                        entry.attr = (type == VFS::FileType::Directory) ? ATTR_DIRECTORY : ATTR_ARCHIVE;
-                        entry.file_size = INITIAL_SIZE;
-                        entry.cluster_high = INITIAL_CLUSTER_HI;
-                        entry.cluster_low = INITIAL_CLUSTER_LO;
+                if (initial_byte == DIR_ENTRY_FREE || initial_byte == DIR_ENTRY_FREE_ONWARD) {
+                    memcpy(entry.name, target_83_name, FAT_83_NAME_SIZE);
+                    entry.attr = (type == VFS::FileType::Directory) ? ATTR_DIRECTORY : ATTR_ARCHIVE;
+                    entry.file_size = INITIAL_SIZE;
+                    entry.cluster_high = INITIAL_CLUSTER_HI;
+                    entry.cluster_low = INITIAL_CLUSTER_LO;
 
-                        m_fs->write_sectors(physical_sector_lba, sector_buffer, SECTOR_COUNT_ONE);
-                        HAL::MEM::PMEM::free_page(sector_buffer);
+                    m_fs->write_sectors(cluster_base_sector, cluster_buffer, sectors_per_cluster);
+                    PMEM::free_pages(cluster_buffer, pages_needed);
 
-                        uint32_t intra_sector_byte_offset = entry_index * sizeof(DirectoryEntry);
-                        uint32_t total_dir_offset = (sector_offset * bytes_per_sector) + intra_sector_byte_offset;
+                    uint32_t total_dir_offset = entry_index * sizeof(DirectoryEntry);
 
-                        return new FAT32VNode(
-                            m_fs,
-                            type,
-                            INITIAL_SIZE,
-                            INITIAL_CLUSTER,
-                            current_cluster,
-                            total_dir_offset
-                        );
-                    }
+                    return new FAT32VNode(
+                        m_fs,
+                        type,
+                        INITIAL_SIZE,
+                        INITIAL_CLUSTER,
+                        current_cluster,
+                        total_dir_offset
+                    );
                 }
             }
 
@@ -356,15 +354,14 @@ namespace VFS::FAT32 {
                 m_fs->write_FAT_entry(free_cluster, CLUSTER_EOF_MAX);
 
                 uint8_t *zero_buffer = static_cast<uint8_t *>(
-                    HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+                    PMEM::alloc_pages(pages_needed, VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
                 );
-                memset(zero_buffer, 0, bytes_per_sector);
+                memset(zero_buffer, 0, cluster_size);
 
                 uint32_t new_cluster_base_sector = m_fs->cluster_to_sector(free_cluster);
-                for (uint32_t sector_offset = START_INDEX; sector_offset < sectors_per_cluster; ++sector_offset) {
-                    m_fs->write_sectors(new_cluster_base_sector + sector_offset, zero_buffer, SECTOR_COUNT_ONE);
-                }
-                HAL::MEM::PMEM::free_page(zero_buffer);
+                m_fs->write_sectors(new_cluster_base_sector, zero_buffer, sectors_per_cluster);
+                
+                PMEM::free_pages(zero_buffer, pages_needed);
 
                 current_cluster = free_cluster;
             } else {
@@ -372,11 +369,11 @@ namespace VFS::FAT32 {
             }
         }
 
-        HAL::MEM::PMEM::free_page(sector_buffer);
+        PMEM::free_pages(cluster_buffer, pages_needed);
         return nullptr;
     }
 
-    VFS::VNode* FAT32FileSystem::get_root_node() {
+    VFS::VNode *FAT32FileSystem::get_root_node() {
         uint64_t directory_size_placeholder = 0;
         uint32_t root_directory_parent_cluster = 0;
         uint32_t root_directory_parent_offset = 0;
@@ -416,42 +413,39 @@ namespace VFS::FAT32 {
             }
         }
 
-        uint8_t* destination_buffer = static_cast<uint8_t*>(buffer);
+        uint8_t *destination_buffer = static_cast<uint8_t *>(buffer);
         uint32_t total_bytes_read = 0;
 
-        uint32_t bytes_per_sector = m_fs->get_bytes_per_sector(); 
-        uint8_t* sector_bounce_buffer = static_cast<uint8_t*>(
-            HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+        uint32_t sectors_per_cluster = cluster_size / m_fs->get_bytes_per_sector(); 
+        size_t pages_needed = (cluster_size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+        uint8_t *cluster_bounce_buffer = static_cast<uint8_t *>(
+            PMEM::alloc_pages(pages_needed, VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
         );
 
         while (total_bytes_read < safe_read_size && current_cluster < VFS::FAT32::CLUSTER_EOF_MIN) {
             uint32_t absolute_file_position = offset + total_bytes_read;
             uint32_t offset_within_cluster = absolute_file_position % cluster_size;
-
-            uint32_t sector_offset_in_cluster = offset_within_cluster / bytes_per_sector;
-            uint32_t byte_offset_in_sector = offset_within_cluster % bytes_per_sector;
-
-            uint32_t physical_sector_lba = m_fs->cluster_to_sector(current_cluster) + sector_offset_in_cluster;
-
-            uint32_t bytes_left_in_sector = bytes_per_sector - byte_offset_in_sector;
-            uint32_t bytes_left_to_read = safe_read_size - total_bytes_read;
-            uint32_t chunk_size = (bytes_left_to_read < bytes_left_in_sector) ? bytes_left_to_read : bytes_left_in_sector;
             
-            if (m_fs->read_sectors(physical_sector_lba, sector_bounce_buffer, 1) < 1) {
+            uint32_t physical_sector_lba = m_fs->cluster_to_sector(current_cluster);
+            uint32_t bytes_left_in_cluster = cluster_size - offset_within_cluster;
+            uint32_t bytes_left_to_read = safe_read_size - total_bytes_read;
+            uint32_t chunk_size = (bytes_left_to_read < bytes_left_in_cluster) ? bytes_left_to_read : bytes_left_in_cluster;
+            
+            if (m_fs->read_sectors(physical_sector_lba, cluster_bounce_buffer, sectors_per_cluster) < (int)sectors_per_cluster) {
                 break;
             }
 
-            memcpy(destination_buffer + total_bytes_read, sector_bounce_buffer + byte_offset_in_sector, chunk_size);
+            memcpy(destination_buffer + total_bytes_read, cluster_bounce_buffer + offset_within_cluster, chunk_size);
 
             total_bytes_read += chunk_size;
 
             if (offset_within_cluster + chunk_size >= cluster_size) {
-                
                 current_cluster = m_fs->read_FAT_entry(current_cluster);
             }
         }
 
-        HAL::MEM::PMEM::free_page(sector_bounce_buffer);
+        PMEM::free_pages(cluster_bounce_buffer, pages_needed);
         return total_bytes_read;
     }
 
@@ -459,12 +453,10 @@ namespace VFS::FAT32 {
         return m_disk_device;
     }
 
-    VFS::VNode* FAT32VNode::lookup(const char* name) {
+    VFS::VNode *FAT32VNode::lookup(const char *name) {
         if (m_type != VFS::FileType::Directory) {
             return nullptr;
         }
-
-        
 
         uint8_t target_83_name[11];
         for (int i = 0; i < 11; ++i) {
@@ -495,88 +487,79 @@ namespace VFS::FAT32 {
             }
         }
 
-        
-
-        uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
-        uint32_t sectors_per_cluster = m_fs->get_cluster_size() / bytes_per_sector;
+        uint32_t cluster_size = m_fs->get_cluster_size();
+        uint32_t sectors_per_cluster = cluster_size / m_fs->get_bytes_per_sector();
         uint32_t current_cluster = m_first_cluster;
 
-        uint8_t* sector_buffer = static_cast<uint8_t*>(
-            HAL::MEM::PMEM::alloc_page(HAL::MEM::VMM::PTE_PRESENT | HAL::MEM::VMM::PTE_WRITABLE)
+        size_t pages_needed = (cluster_size + PAGE_SIZE - 1) / PAGE_SIZE;
+        uint8_t *cluster_buffer = static_cast<uint8_t *>(
+            PMEM::alloc_pages(pages_needed, VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
         );
 
         while (current_cluster < VFS::FAT32::CLUSTER_EOF_MIN) {
             uint32_t cluster_base_sector = m_fs->cluster_to_sector(current_cluster);
 
-            for (uint32_t sector_offset = 0; sector_offset < sectors_per_cluster; ++sector_offset) {
-                uint32_t physical_sector_lba = cluster_base_sector + sector_offset;
+            m_fs->read_sectors(cluster_base_sector, cluster_buffer, sectors_per_cluster);
 
-                m_fs->read_sectors(physical_sector_lba, sector_buffer, 1);
+            uint32_t total_entries_in_cluster = cluster_size / sizeof(DirectoryEntry);
+            DirectoryEntry *entry_array = reinterpret_cast<DirectoryEntry *>(cluster_buffer);
 
-                uint32_t directory_entries_per_sector = bytes_per_sector / sizeof(DirectoryEntry);
-                DirectoryEntry* entry_array = reinterpret_cast<DirectoryEntry*>(sector_buffer);
+            for (uint32_t entry_index = 0; entry_index < total_entries_in_cluster; ++entry_index) {
+                DirectoryEntry &entry = entry_array[entry_index];
+                uint8_t initial_name_byte = static_cast<uint8_t>(entry.name[0]);
 
-                for (uint32_t entry_index = 0; entry_index < directory_entries_per_sector; ++entry_index) {
-                    DirectoryEntry& entry = entry_array[entry_index];
-                    uint8_t initial_name_byte = static_cast<uint8_t>(entry.name[0]);
+                if (initial_name_byte == VFS::FAT32::DIR_ENTRY_FREE_ONWARD) { 
+                    PMEM::free_pages(cluster_buffer, pages_needed);
+                    return nullptr;
+                }
+                if (initial_name_byte == VFS::FAT32::DIR_ENTRY_FREE) { 
+                    continue;
+                }
+                if (entry.attr == VFS::FAT32::ATTR_LONG_NAME) { 
+                    continue;
+                }
 
-                    if (initial_name_byte == VFS::FAT32::DIR_ENTRY_FREE_ONWARD) { 
-                        HAL::MEM::PMEM::free_page(sector_buffer);
-                        return nullptr;
+                bool identity_matches = true;
+                for (int byte_index = 0; byte_index < 11; ++byte_index) {
+                    if (static_cast<uint8_t>(entry.name[byte_index]) != target_83_name[byte_index]) {
+                        identity_matches = false;
+                        break;
                     }
-                    if (initial_name_byte == VFS::FAT32::DIR_ENTRY_FREE) { 
-                        continue;
-                    }
-                    if (entry.attr == VFS::FAT32::ATTR_LONG_NAME) { 
-                        continue;
-                    }
+                }
 
-                    bool identity_matches = true;
-                    for (int byte_index = 0; byte_index < 11; ++byte_index) {
-                        if (static_cast<uint8_t>(entry.name[byte_index]) != target_83_name[byte_index]) {
-                            identity_matches = false;
-                            break;
-                        }
+                if (identity_matches) {
+                    uint32_t entry_target_cluster = entry.GetFirstCluster();
+
+                    VFS::FileType calculated_type = VFS::FileType::Regular;
+                    if (entry.attr & VFS::FAT32::ATTR_DIRECTORY) { 
+                        calculated_type = VFS::FileType::Directory;
                     }
 
-                    
+                    uint32_t intra_cluster_byte_offset = entry_index * sizeof(DirectoryEntry);
 
-                    if (identity_matches) {
-                        uint32_t entry_target_cluster = entry.GetFirstCluster();
+                    VFS::VNode *discovered_node = new FAT32VNode(
+                        m_fs,
+                        calculated_type,
+                        entry.file_size,
+                        entry_target_cluster,
+                        current_cluster,
+                        intra_cluster_byte_offset
+                    );
 
-                        VFS::FileType calculated_type = VFS::FileType::Regular;
-                        if (entry.attr & VFS::FAT32::ATTR_DIRECTORY) { 
-                            calculated_type = VFS::FileType::Directory;
-                        }
-
-                        uint32_t intra_sector_byte_offset = entry_index * sizeof(DirectoryEntry);
-
-                        VFS::VNode* discovered_node = new FAT32VNode(
-                            m_fs,
-                            calculated_type,
-                            entry.file_size,
-                            entry_target_cluster,
-                            current_cluster,
-                            intra_sector_byte_offset
-                        );
-
-                        HAL::MEM::PMEM::free_page(sector_buffer);
-                        return discovered_node;
-                    }
+                    PMEM::free_pages(cluster_buffer, pages_needed);
+                    return discovered_node;
                 }
             }
 
             current_cluster = m_fs->read_FAT_entry(current_cluster);
         }
 
-        
-
-        HAL::MEM::PMEM::free_page(sector_buffer);
+        PMEM::free_pages(cluster_buffer, pages_needed);
         return nullptr;
     }
 
     FAT32VNode::FAT32VNode(
-        FAT32FileSystem* fs, 
+        FAT32FileSystem *fs, 
         VFS::FileType type, 
         uint64_t size, 
         uint32_t first_cluster, 
@@ -589,11 +572,11 @@ namespace VFS::FAT32 {
         m_dir_offset(dir_offset),
         m_is_dirty(false) {}
 
-    int FAT32FileSystem::read_sectors(uint64_t sector, void* buffer, uint32_t count) {
+    int FAT32FileSystem::read_sectors(uint64_t sector, void *buffer, uint32_t count) {
         return m_disk_device->dev->read(sector, count, buffer);
     }
 
-    int FAT32FileSystem::write_sectors(uint64_t sector, const void* buffer, uint32_t count) {
+    int FAT32FileSystem::write_sectors(uint64_t sector, const void *buffer, uint32_t count) {
         return m_disk_device->dev->write(sector, count, const_cast<void *>(buffer));
     }
 }

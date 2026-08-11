@@ -1,6 +1,7 @@
 #pragma once
 #include <limine.h>
 #include <stdint.h>
+#include <stddef.h>
 
 namespace HAL::MEM::PMM {
     extern uint8_t *bitmap;
@@ -16,6 +17,7 @@ namespace HAL::MEM::PMM {
 
     void initialize(volatile limine_memmap_response *memmap_resp, volatile struct limine_hhdm_request *hhdm_resp);
     void *alloc_page();
+    void *alloc_contig(size_t count);
     void free_page(void *free_addr);
     void reference_page(void *page);
 }

@@ -1,13 +1,19 @@
+#include <HAL/CORE/Core.hpp>
 #include <HAL/DISK/Disk.hpp>
+#include <HAL/DISK/USB/USBStorage.hpp>
 #include <HAL/PCI/xHCI/xHCI.hpp>
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
-#include <Library/debug.hpp>
-#include <HAL/DISK/USB/USBStorage.hpp>
 #include <HAL/MEM/PMEM.hpp>
+#include <HAL/MEM/PMM.hpp>
 #include <HAL/MEM/VMM.hpp>
+#include <HAL/MEM/FMEM.hpp>
+#include <HAL/ACPI/ACPI.hpp>
+
 #include <Services/Scheduler/Scheduler.hpp>
+
 #include <Library/regs.h>
 #include <Library/string.h>
+#include <Library/debug.hpp>
 
 using namespace HAL::MEM;
 
@@ -43,8 +49,9 @@ namespace HAL::DISK::USB {
         cbw_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)current_cbw);
         csw_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)current_csw);
 
-        bounce_virt = static_cast<uint8_t *>(PMEM::alloc_page(VMM::PTE_CACHELESS | VMM::PTE_PRESENT | VMM::PTE_WRITABLE));
-        bounce_phys = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)bounce_virt);
+        bounce_phys = (uint64_t)PMM::alloc_contig(TOTAL_BOUNCE_PAGES);
+        
+        bounce_virt = (uint8_t *)(bounce_phys + PMM::hhdm_offset);
 
         initialized = true;
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Finished initialization!");
@@ -115,9 +122,10 @@ namespace HAL::DISK::USB {
         uint32_t current_lba = lba;
         uint32_t total_sectors_written = 0;
 
-        const uint16_t MAX_SECTORS_PER_CHUNK = 8;
+        const uint16_t MAX_SECTORS_PER_CHUNK = TOTAL_BOUNCE_PAGES * PAGE_SIZE / SECTOR_SIZE; 
 
         while (sectors_left > 0) {
+            size_t elapsed = ACPI::get_sys_time();
             uint16_t chunk_sectors = (sectors_left > MAX_SECTORS_PER_CHUNK) ? MAX_SECTORS_PER_CHUNK : sectors_left;
             uint32_t chunk_bytes = chunk_sectors * SECTOR_SIZE;
             Debug::krnl_print("xHCI", Debug::LOG_INFO, "Writing sector %x, (%i remaining)", lba, count - total_sectors_written);
@@ -160,6 +168,7 @@ namespace HAL::DISK::USB {
             current_lba += chunk_sectors;
             sectors_left -= chunk_sectors;
             total_sectors_written += chunk_sectors;
+            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Writing %i sectors took %ims", chunk_sectors, ACPI::get_sys_time() - elapsed);
         }
 
         return total_sectors_written;
@@ -171,9 +180,10 @@ namespace HAL::DISK::USB {
         uint32_t current_lba = lba;
         uint32_t total_sectors_read = 0;
 
-        const uint16_t MAX_SECTORS_PER_CHUNK = 8; 
+        const uint16_t MAX_SECTORS_PER_CHUNK = TOTAL_BOUNCE_PAGES * PAGE_SIZE / SECTOR_SIZE; 
 
         while (sectors_left > 0) {
+            size_t elapsed = ACPI::get_sys_time();
             uint16_t chunk_sectors = (sectors_left > MAX_SECTORS_PER_CHUNK) ? MAX_SECTORS_PER_CHUNK : sectors_left;
             uint32_t chunk_bytes = chunk_sectors * 512;
 
@@ -209,12 +219,13 @@ namespace HAL::DISK::USB {
                 asm volatile("pause");
             }
 
-            memcpy(dest, bounce_virt, chunk_bytes);
+            FMEM::FastCopy(dest, bounce_virt, chunk_bytes);
 
             dest += chunk_bytes;
             current_lba += chunk_sectors;
             sectors_left -= chunk_sectors;
             total_sectors_read += chunk_sectors;
+            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Reading %i sectors took %ims", chunk_sectors, ACPI::get_sys_time() - elapsed);
         }
 
         return total_sectors_read;

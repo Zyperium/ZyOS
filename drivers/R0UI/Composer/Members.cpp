@@ -82,6 +82,24 @@ namespace R0UI {
             );
         }
 
+        winref->usr_pix_buf = (uint32_t *)write_at;
+
+        write_at = pass_to->utask->usr_virt_mmap;
+        pass_to->utask->usr_virt_mmap += VMM::SIZE_OF_PAGE;
+
+        uintptr_t virt_ptr = reinterpret_cast<uintptr_t>(winref);
+        uint64_t phys_addr = VMM::GetPhysicalAddress(read_cr3(), virt_ptr);
+        VMM::map_page(
+            (uint64_t *)(pass_to->cr3 + PMM::hhdm_offset), 
+            (uint64_t)write_at,
+            phys_addr,
+            VMM::PTE_PRESENT | 
+            VMM::PTE_WRITABLE | 
+            VMM::PTE_NX | 
+            VMM::PTE_WRITEBACK | 
+            VMM::PTE_USER
+        );
+
         return (uint32_t *)write_at;
     }
 
@@ -98,7 +116,19 @@ namespace R0UI {
     }
 
     void Window::paint(uint32_t *screen) {
-        memset32(&screen[factposn.x + (factposn.y * Composer::pitch)], 0xFFFF0000, factposn.width * factposn.height);
+        const uint32_t src_stride = factposn.width; 
+
+        for (auto i{0}; i < factposn.height; ++i) {
+            uint32_t dest_offset = factposn.x + ((factposn.y + i) * Composer::width);
+            uint32_t src_offset  = i * src_stride;
+
+            memcpy(
+                &screen[dest_offset],
+                &buffer[src_offset],
+                factposn.width * sizeof(uint32_t) // Convert pixel count to bytes
+            );
+        }
+
         TTY::add_damage(factposn.x, factposn.y, factposn.width, factposn.height);
         HAL::SCREEN::repaint();
     }

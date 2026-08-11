@@ -9,6 +9,7 @@ namespace R0UI::Composer {
     void add_damage(int x, int y, int w, int h);
     void force_redraw();
     void handle_input(uint64_t k);
+    void do_run_through();
 
     struct IUPDATE {
         char key;
@@ -32,7 +33,6 @@ namespace R0UI::Composer {
     static inline bool is_interrupt_enabled(void) {
         uint64_t rflags;
         
-        // Push RFLAGS onto the stack, then pop it into a general-purpose register
         __asm__ __volatile__(
             "pushfq\n\t"
             "pop %0"
@@ -41,7 +41,6 @@ namespace R0UI::Composer {
             : "memory"
         );
 
-        // The Interrupt Flag (IF) is at bit offset 9
         return (rflags & (1ULL << 9)) != 0;
     }
 }

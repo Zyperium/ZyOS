@@ -38,6 +38,7 @@ namespace Syscalls {
 
     enum class SYSCALL_ID : uint64_t {
         SYS_OPEN = 0, // functional
+        SYS_GLEN,
         SYS_READ, // functional
         SYS_WRITE, // functional
         SYS_CLOSE, // functional

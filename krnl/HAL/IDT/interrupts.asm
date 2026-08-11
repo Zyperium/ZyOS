@@ -52,7 +52,8 @@ interrupt_common:
     pop_a
 
     add rsp, 16
-
+    
+.krnl_exit:
     iretq
 
 %macro ISR_NOERRCODE 1

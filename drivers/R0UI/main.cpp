@@ -18,6 +18,12 @@ namespace R0UI {
         return 0;
     }
 
+    uint64_t on_exit(Scheduler::Task *nt) {
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "%s is shutting down the link!", nt->task_name.c_str());
+
+        return 0;
+    }
+
     uint64_t on_call(Scheduler::Task *from, uint64_t data) {
         Debug::krnl_print(
             "R0UI", 
@@ -27,6 +33,9 @@ namespace R0UI {
             from->task_name.c_str()
         );
 
+        if (data == 0) {
+            Composer::do_run_through();
+        }
         if (data == 1) {
             Window *nwin = new Window({{10, 10}, 200, 200});
             return (uint64_t)nwin->map_to(from);
@@ -47,6 +56,7 @@ namespace R0UI {
         IPC::drvio *new_io = new IPC::drvio("R0UI/");
         new_io->on_entry = on_enter;
         new_io->on_call = on_call;
+        new_io->on_exit = on_exit;
 
         Scheduler::Yield();
 

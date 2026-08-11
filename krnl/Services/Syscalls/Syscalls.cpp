@@ -88,12 +88,24 @@ namespace Syscalls {
         filed = usr_task->utask->next_free_ds;
 
         if (filed > Scheduler::MAX_USR_FD) {
-            delete[] val;
-            Debug::krnl_print("SYS", Debug::LOG_WARN, "Out of filedescriptors!");
-            return 0;
+            usr_task->utask->next_free_ds = Scheduler::MAX_USR_FD + 1;
+            for (auto i{0uz}; i < Scheduler::MAX_USR_FD; ++i) {
+                if (!usr_task->utask->descriptors[i]) {
+                    usr_task->utask->next_free_ds = i;
+                    break;
+                }
+            }
+
+            if (usr_task->utask->next_free_ds > Scheduler::MAX_USR_FD) {
+                delete[] val;
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Out of filedescriptors!");
+                return 0;
+            }
+
+            filed = usr_task->utask->next_free_ds;
         }
 
-        usr_task->utask->next_free_ds = Scheduler::MAX_USR_FD;
+        usr_task->utask->next_free_ds = Scheduler::MAX_USR_FD + 1;
         for (auto i{0uz}; i < Scheduler::MAX_USR_FD; ++i) {
             if (!usr_task->utask->descriptors[i]) {
                 usr_task->utask->next_free_ds = i;
@@ -202,7 +214,7 @@ namespace Syscalls {
             return 1; // invalid fd
         }
 
-        delete usr_task->descriptors[fd];
+        usr_task->descriptors[fd]->release();
         usr_task->descriptors[fd] = nullptr;
 
         usr_task->next_free_ds = fd;
@@ -230,11 +242,11 @@ namespace Syscalls {
         delete[] val;
 
         uint64_t mem_val = regdrvr->on_call(HAL::CORE::get_core_data()->current_task, data);
-        Debug::krnl_print("SYS", Debug::LOG_INFO, "Mem_val %x", mem_val);
         return mem_val;
     }
 
     uint64_t SYS_MMAP(uint64_t addr, uint64_t len, int prot, int flags, int fd, uint64_t off) {
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "MMAP with %x, %x, %x", addr, len, prot);
         if (len == 0) return -EINVAL;
         (void)fd;
         (void)off;
@@ -272,6 +284,8 @@ namespace Syscalls {
             );
         }
 
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "Successfully mapped %x at %x", len, target);
+
         return target;
     }
 
@@ -296,7 +310,6 @@ namespace Syscalls {
     }
 
     uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
-        Debug::krnl_print("SYS", Debug::LOG_INFO, "%s Syscall! %i", HAL::CORE::get_core_data()->current_task->task_name.c_str(), id);
         switch(id) {
             /*
                 Expects A1 to contain a user address that is either:
@@ -312,13 +325,19 @@ namespace Syscalls {
                 return SYS_OPEN_FILE(regs.A1, regs.A2);
             }
             case SYSCALL_ID::SYS_READ: {
-                Debug::krnl_print(
-                    "SYS", 
-                    Debug::LOG_INFO, 
-                    "Reading file %i", 
-                    regs.A1
-                );
                 return SYS_READ_FILE(regs.A1, regs.A2, regs.A3, regs.A4);
+            }
+            case SYSCALL_ID::SYS_GLEN: {
+                auto *usr_task = HAL::CORE::get_core_data()->current_task;
+
+                if (!usr_task->utask->descriptors[regs.A1 - 1]) {
+                    Debug::krnl_print("SYS", Debug::LOG_WARN, "Invalid file descriptor");
+                    return 0;
+                }
+
+                auto *target = usr_task->utask->descriptors[regs.A1 - 1];
+
+                return target->get_size();
             }
             case SYSCALL_ID::SYS_WRITE: {
                 return SYS_WRITE_FILE(regs.A1, regs.A2, regs.A3, regs.A4);

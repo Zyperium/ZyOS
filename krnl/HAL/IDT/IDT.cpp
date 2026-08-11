@@ -1,3 +1,4 @@
+#include <Services/Scheduler/Scheduler.hpp>
 #include <HAL/IDT/IDT.hpp>
 #include <HAL/IDT/Panic.hpp>
 #include <HAL/IDT/IOAPIC/IOAPIC.hpp>
@@ -7,13 +8,32 @@
 
 #include <Library/debug.hpp>
 #include <Library/io.hpp>
-// Right, i am writing everything out so I don't get confused. This should:
-// Init:
-// Syscalls, crash handlers, xHCI, LAPIC timers.
-// Cool.
+
 using namespace HAL::IDT;
 volatile bool exception_in_progress{};
 extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
+    if (frame->ss & 0x3) {
+        asm volatile("swapgs");
+        auto *x = HAL::CORE::get_core_data();
+        auto *task = x->current_task;
+        uint64_t cr2_val;
+        asm volatile("mov %%cr2, %0" : "=r"(cr2_val));
+        Debug::krnl_print(
+            "IDT", 
+            Debug::LOG_INFO, 
+            "%s died: RIP: %x | RSP: %x | CR2: %x | Err: %x | Vector: %x", 
+            task->task_name.c_str(),
+            frame->rip,
+            *(uint64_t*)frame->rsp,
+            cr2_val,
+            frame->int_number,
+            frame->error_code
+        );
+
+        task->suicide();
+        for (;;);
+    }
+
     if (exception_in_progress) {
         Debug::krnl_print("IDT", Debug::LOG_INFO, "Core %i entering nmi spinloop (fault active)", HAL::CORE::get_core_data()->core_id);
         asm volatile("cli");
@@ -27,6 +47,7 @@ extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
     HAL::CORE::broadcast_nmi();
 
     Debug::krnl_print("IDT", Debug::LOG_ERROR, "Broadcasted error via NMIs");
+    panic(PanicReasons::UNKNOWN_ERROR_CODE, frame);
 
     switch (static_cast<ISR_CODES>(frame->int_number)) {
         case ISR_CODES::DIV_ZERO:
@@ -85,10 +106,10 @@ namespace HAL::IDT {
 
         set_gate(KEYBOARD_VECTOR, (void *)PS2Keyboard, GATE_INTERRUPT);
         set_gate(ISR_CODES::DIV_ZERO, (void *)isr0, GATE_INTERRUPT);
-        set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void *)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI);
-        set_gate(ISR_CODES::DOUBLE_FAULT, (void *)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT);
-        set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void *)isr13, GATE_INTERRUPT);
-        set_gate(ISR_CODES::PAGE_FAULT, (void *)isr14, GATE_INTERRUPT);
+        set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void *)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI + 1);
+        set_gate(ISR_CODES::DOUBLE_FAULT, (void *)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT + 1);
+        set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void *)isr13, GATE_INTERRUPT, HAL::GDT::TSS_IST_REGULAR_FAULT + 1);
+        set_gate(ISR_CODES::PAGE_FAULT, (void *)isr14, GATE_INTERRUPT, HAL::GDT::TSS_IST_REGULAR_FAULT + 1);
 
         set_gate(LAPIC_VECTOR, (void *)SchedulerHandler, GATE_INTERRUPT);
         set_gate(YIELD_VECTOR, (void *)QuietSwitch, GATE_INTERRUPT);

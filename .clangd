@@ -11,7 +11,7 @@ CompileFlags:
     "-mno-mmx",
     "-mno-sse",
     "-mno-sse2",
-
+    "-xc++",
     "-Wall",
     "-Wextra",
     "-Wpedantic"

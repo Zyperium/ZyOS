@@ -1,18 +1,32 @@
-extern "C" void tester_func();
-extern "C" void fork_test();
+#include <string.h>
+#include <kalloc.h>
+#include <klibkrnl.h>
+#include "stb_impl.hpp"
 
-int main() {
-    // loaded! Yay. Can't really do anything though.
+struct WinControl {
+    int32_t x, y;
+    uint32_t width, height;
+    uint32_t z_index;
+    uint32_t flags;
+    uint32_t *usr_pix_buf;
+    uint8_t reserved[4060];
+    bool read;
+};
 
-    fork_test();
+extern "C" int main() {
+    klog("Starting window program");
 
-    return 0;
-}
+    WinControl *ptr = (WinControl *)ioctl("R0UI/", 1); // Open window
 
 
-extern "C" int _start() {
-    main();
+    klog("Window is x: %d, y: %d, w: %d, h: %d", ptr->x, ptr->y, ptr->width, ptr->height);
 
-    for (;;);
+    int w, h;
+    uint32_t *ptrx = load_png("A:/stupid~1.png", &w, &h);
+
+    memcpy(ptr->usr_pix_buf, ptrx, ptr->width * ptr->height);
+
+    ioctl("R0UI/", 0); // redraw
+
     return 0;
 }

@@ -1,42 +1,75 @@
-global tester_func
-
 section .data
-    sys_msg db "/A/HELLOW~1.TXT", 0
-    msg_len equ $ - sys_msg
-    ioctl_ptr db "R0UI/"
-    ioctl_len equ $ - ioctl_ptr
+    hlw_text db "Hello, world!", 0
+    hlw_len equ $ - hlw_text
+
+    orig_text db "I am original", 0
+    orig_len equ $ - orig_text
+
+    fork_text db "I am forkd", 0
+    fork_len equ $ - fork_text
 
 section .text
-tester_func:
-    sub rsp, 80
-    mov eax, 0
-    lea rdi, [rel sys_msg]
-    mov rsi, msg_len
+global asm_main
+global asm_fork
+
+asm_main:
+    sub rsp, 8
+
+    mov rax, 5
+    lea rdi, [hlw_text]
+    mov rsi, hlw_len
     syscall
 
-    ; Now we should have the text file, lets read it!
-    mov rdi, rax
-    mov eax, 1
-    lea r10, [rsp]
-    mov rsi, 0
-    mov rdx, 64
-    ; NOTE: This is a temporary test
-    syscall
-    mov r9, rax
-
-    mov rax, 4 ; Now we can open an IOCTL with the R0UI
-    lea rdi, [rel ioctl_ptr]
-    mov rsi, 1 ; Open window
-    mov rdx, ioctl_len
+    mov rax, 19
     syscall
 
-    mov rax, 5 ; log some stuff
-    lea rdi, [rsp]
-    mov rsi, r9
+    push rax
+    mov rax, 11
+    syscall
+
+    pop rbx
+
+    cmp rax, rbx
+    je .original
+
+    mov rax, 5
+    lea rdi, [fork_text]
+    mov rsi, fork_len
     syscall
 
     mov rax, 9
     syscall
 
-    add rsp, 80
+    add rsp, 8
+    jmp $
+
+    ret
+
+.original:
+    mov rax, 5
+    lea rdi, [orig_text]
+    mov rsi, orig_len
+    syscall
+
+    mov rax, 9
+    syscall
+
+    add rsp, 8
+    jmp $
+
+    ret
+
+asm_fork:
+    sub rsp, 8
+    mov rax, 11
+    syscall
+    push rax
+
+    mov rax, 5
+    lea rdi, [orig_text]
+    mov rsi, orig_len
+
+    pop rax
+    add rsp, 8
+
     ret

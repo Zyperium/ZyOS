@@ -3,6 +3,7 @@
 
 #include <Services/Scheduler/Scheduler.hpp>
 #include <Services/ELF/ELF.hpp>
+#include <Services/ELF/User.hpp>
 
 #include <Library/regs.h>
 #include <Library/string.h>
@@ -12,6 +13,7 @@
 
 #include <HAL/CORE/Core.hpp>
 #include <HAL/MEM/PMEM.hpp>
+#include <HAL/MEM/PMM.hpp>
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/IDT/Panic.hpp>
 #include <HAL/ACPI/ACPI.hpp>
@@ -49,6 +51,16 @@ namespace Scheduler {
     void PollBlockedTasks() {
 
     }
+
+    struct TrapFrame {
+        uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
+        uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
+        uint64_t rip;
+        uint64_t cs;
+        uint64_t rflags;
+        uint64_t rsp;
+        uint64_t ss;
+    };
 
     Task *frkr_task;
     void ForkerTask() {
@@ -92,6 +104,37 @@ namespace Scheduler {
             fork->niceness = to_fork->niceness;
             fork->syscalls_allowed = to_fork->syscalls_allowed;
 
+            auto active_pml4{(uint64_t *)(fork->cr3 + PMM::hhdm_offset)};
+            for (auto offset{0uz}; offset < ELF::USER::STACK_SIZE; offset += PAGE_SIZE) {
+                auto ppage = PMM::alloc_page();
+                if (!ppage) {
+                    panic(PanicReasons::GENERAL_FAULT_KMODE);
+                }
+
+                auto virt_view{(uint64_t)ppage + PMM::hhdm_offset};
+                memset((void *)virt_view, 0, PAGE_SIZE);
+
+                VMM::map_page(active_pml4, ELF::USER::STACK_BASE + offset, (uint64_t)ppage, ELF::USER::STACK_FLAGS);
+            }
+
+            fork->usr_stack_top = reinterpret_cast<ZyOS::QWORD *>(ELF::USER::STACK_BASE + ELF::USER::STACK_SIZE);
+            fork->usr_stack_save = to_fork->usr_stack_save;
+
+            uintptr_t top_addr = reinterpret_cast<uintptr_t>(to_fork->usr_stack_top);
+
+            for (size_t offset = 0; offset < ELF::USER::STACK_SIZE; offset += PAGE_SIZE) {
+                uintptr_t page_vaddr = top_addr - PAGE_SIZE - offset;
+
+                uint64_t src_phys = VMM::GetPhysicalAddress(to_fork->cr3, page_vaddr);
+                uint64_t dst_phys = VMM::GetPhysicalAddress(fork->cr3, page_vaddr);
+
+                if (src_phys && dst_phys) {
+                    auto *src_ptr = reinterpret_cast<void *>(src_phys + PMM::hhdm_offset);
+                    auto *dst_ptr = reinterpret_cast<void *>(dst_phys + PMM::hhdm_offset);
+                    memcpy(dst_ptr, src_ptr, PAGE_SIZE);
+                }
+            }
+
             memcpy(fork->fx_state, to_fork->fx_state, FX_STATE_SIZE);
 
             memcpy(fork->krnl_stack_btm, to_fork->krnl_stack_btm, PAGE_SIZE * TASK_STACK_PAGES);
@@ -103,6 +146,10 @@ namespace Scheduler {
             to_fork->unblock(BlockReasons::FORK);
             fork->unblock(BlockReasons::FORKD);
 
+            TrapFrame *child_frame = reinterpret_cast<TrapFrame *>(fork->rsp);
+            Debug::krnl_print("FRKR", Debug::LOG_INFO, 
+    "Child Kernel RSP: %x | Trapped RIP: %x | Trapped RSP: %x", 
+    fork->rsp, child_frame->rip, child_frame->rsp);
 
             asm volatile("sti");
 

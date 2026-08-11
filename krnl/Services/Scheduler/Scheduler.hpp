@@ -36,6 +36,7 @@ namespace Scheduler {
     constexpr uint8_t MAX_USR_FD = 16;
     constexpr size_t USR_MMAP_BEGIN = 0x0000'7000'0000'0000;
     struct UserTask {
+        uint64_t rip;
         VFS::VNode *descriptors[MAX_USR_FD]{nullptr};
         size_t permissions{0};
         size_t next_free_ds{0};
@@ -69,7 +70,7 @@ namespace Scheduler {
         ZyOS::QWORD *krnl_stack_btm;
         ZyOS::QWORD usr_stack_save; /* This is used by SysEntry.asm. If you mess with the offsets
         make sure to adjust sysentry too. */
-        UserTask *utask;
+        UserTask *utask; // Accessed by SysEntry.asm
 
         alignas(16) uint8_t *fx_state;
         uint8_t *malignedfx;

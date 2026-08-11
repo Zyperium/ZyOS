@@ -53,15 +53,15 @@ namespace R0UI::Composer {
         memset32(ttybuffer, 0xFF1F1F1F, x * y);
         HAL::SCREEN::add_damage(0, 0, x * 4, y);
         HAL::SCREEN::repaint();
-        append_queue(CMPSTR_STATE::RUNNING);
     }
 
-    void do_run_through(uint32_t *ttybuf) {
+    uint32_t *tty_buf{nullptr};
+    void do_run_through() {
         if (!linked_io) return;
         lib::ScopedLock n(linklock);
         volatile winpair *first = linked_io;
         do {
-            first->ref->paint(ttybuf);
+            first->ref->paint(tty_buf);
             first = first->next;
         } while (first != linked_io);
 
@@ -83,6 +83,7 @@ namespace R0UI::Composer {
         height = b.height;
         pitch = b.pitch;
         width = b.width;
+        tty_buf = tty_bbuf;
 
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "Running with visual address @ %x", tty_bbuf);
 
@@ -91,6 +92,8 @@ namespace R0UI::Composer {
             case CMPSTR_STATE::INIT: {
                 Debug::krnl_print("R0UI", Debug::LOG_INFO, "Performed a paint");
                 paint_init(tty_bbuf, height, width);
+
+                append_queue(CMPSTR_STATE::RUNNING);
                 break;
             }
             case CMPSTR_STATE::HANDLE_KB: {
@@ -100,7 +103,7 @@ namespace R0UI::Composer {
                 break;
             }
             case CMPSTR_STATE::RUNNING: {
-                do_run_through(tty_bbuf);
+                do_run_through();
                 append_queue(CMPSTR_STATE::RUNNING);
                 break;
             }

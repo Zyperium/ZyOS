@@ -6,6 +6,7 @@ namespace HAL::GDT {
     TSS tss;
     GDT gdt_table;
     static uint8_t double_fault_stack[8192] __attribute__((aligned(16)));
+    static uint8_t regular_fault_stack[8192] __attribute__((aligned(16)));
     static uint8_t timer_stack[8192] __attribute__((aligned(16)));
     static uint8_t nmi_stack[8192] __attribute__((aligned(16)));
 
@@ -43,6 +44,7 @@ namespace HAL::GDT {
         tss.ist[TSS_IST_DOUBLE_FAULT] = (uint64_t)double_fault_stack + sizeof(double_fault_stack);
         tss.ist[TSS_IST_TIMER] = (uint64_t)timer_stack + sizeof(timer_stack);
         tss.ist[TSS_IST_NMI] = (uint64_t)nmi_stack + sizeof(nmi_stack);
+        tss.ist[TSS_IST_REGULAR_FAULT] = (uint64_t)regular_fault_stack + sizeof(regular_fault_stack);
 
         SetEntry(&gdt_table.null, 0, 0, 0, 0);
 

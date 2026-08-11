@@ -1,14 +1,19 @@
 # ZyOS program makefile
-PROGRAM_DIRS := $(sort $(dir $(wildcard */Makefile)))
-GLOBAL_INCLUDE_DIR := $(abspath ./cstdlib)
-GLOBAL_LINK_DIR := $(abspath ./linker.ld)
+PROGRAM_DIRS       := $(sort $(dir $(wildcard */Makefile)))
+GLOBAL_INCLUDE_DIR := $(abspath ./lib/include)
+GLOBAL_LINK_DIR    := $(abspath ./linker.ld)
+GLOBAL_LIB_FILE    := $(abspath ./build/libzyos.a)
 
 CFLAGS   += -I$(GLOBAL_INCLUDE_DIR)
 CXXFLAGS += -I$(GLOBAL_INCLUDE_DIR)
-LDFLAGS += -T $(GLOBAL_LINK_DIR)
 
 export CFLAGS
 export CXXFLAGS
+export GLOBAL_LINK_DIR
+export GLOBAL_LIB_FILE
+
+LIB_DIR := lib/
+OTHER_DIRS := $(filter-out $(LIB_DIR), $(PROGRAM_DIRS))
 
 .PHONY: all clean $(PROGRAM_DIRS)
 
@@ -23,6 +28,10 @@ endif
 $(PROGRAM_DIRS):
 	@echo "[Module Target] Entering: $@"
 	@$(MAKE) -C $@
+
+ifneq ($(filter $(LIB_DIR), $(PROGRAM_DIRS)),)
+$(OTHER_DIRS): $(LIB_DIR)
+endif
 
 clean:
 ifeq ($(PROGRAM_DIRS),)

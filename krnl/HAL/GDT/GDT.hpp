@@ -57,6 +57,7 @@ namespace HAL::GDT {
     constexpr uint8_t TSS_IST_DOUBLE_FAULT = 0;
     constexpr uint8_t TSS_IST_TIMER = 1;
     constexpr uint8_t TSS_IST_NMI = 2;
+    constexpr uint8_t TSS_IST_REGULAR_FAULT = 3;
 
 
     namespace Access {

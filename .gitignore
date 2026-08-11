@@ -11,3 +11,5 @@ bochsout.txt
 *.o
 *.zyx
 *.elf
+*.d
+*.a

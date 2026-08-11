@@ -1,5 +1,6 @@
 #include "Composer.hpp"
 #include "Members.hpp"
+#include "lib/locks.hpp"
 
 #include <TTY.hpp>
 #include <LOG.hpp>
@@ -50,17 +51,31 @@ namespace R0UI::Composer {
     }
 
     void paint_init(uint32_t *ttybuffer, size_t x, size_t y) {
-        memset32(ttybuffer, 0xFF1F1F1F, x * y);
+        HAL::MEM::FMEM::FastFill32(ttybuffer, 0xFF1F1F1F, x * y);
         HAL::SCREEN::add_damage(0, 0, x * 4, y);
         HAL::SCREEN::repaint();
     }
 
+    size_t height, pitch, width;
     uint32_t *tty_buf{nullptr};
     void do_run_through() {
-        if (!linked_io) return;
-        lib::ScopedLock n(linklock);
+        static size_t do_redraw{0};
+
+        asm volatile("mfence" ::: "memory");
+        if (!linked_io) {
+            if (++do_redraw > 20) {
+                paint_init(tty_buf, height, width);
+            }
+            return;
+        }
+        
         volatile winpair *first = linked_io;
+
         do {
+            lib::ScopedLock a(linklock);
+
+            if (!first) // why lock here? Well for some reason, it crashes otherwise. Yeah.
+                break; // And, it seems this works unreasonably well. The null check also happens to catch deletes? Not the above...
             first->ref->paint(tty_buf);
             first = first->next;
         } while (first != linked_io);
@@ -69,7 +84,6 @@ namespace R0UI::Composer {
     }
 
 
-    size_t height, pitch, width;
     void worker1(uint32_t *tty_bbuf) {
         next_free = 0;
         cmpqueue[0] = CMPSTR_STATE::NONE;

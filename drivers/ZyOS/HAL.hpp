@@ -49,6 +49,12 @@ namespace HAL {
             void free_pages(void *page_start, size_t count);
         }
 
+        namespace FMEM {
+            void FastFill8(uint8_t* dest, uint8_t val, size_t count);
+            void FastFill32(uint32_t* dest, uint32_t color, size_t count);
+            void FastCopy(void* dest, const void* src, size_t bytes);
+        }
+
         namespace KMEM {
             void* malloc(size_t size);
             void free(void* address);

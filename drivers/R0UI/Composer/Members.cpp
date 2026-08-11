@@ -109,10 +109,36 @@ namespace R0UI {
             return;
         }
 
+        lib::Spinlock x(linklock);
+        (void)x;
+
         uint32_t total_bytes = factposn.width * factposn.height * sizeof(uint32_t);
         uint32_t total_pages = (total_bytes + VMM::SIZE_OF_PAGE - 1) / VMM::SIZE_OF_PAGE;
 
         PMEM::free_pages(buffer, total_pages);
+
+        volatile winpair *tmp_io = linked_io;
+
+        do {
+            if (tmp_io->ref == this)
+                break;
+
+            tmp_io = tmp_io->next;
+        } while (tmp_io != linked_io);
+
+        if (tmp_io->ref != this) {
+            Debug::krnl_print("R0UI", Debug::LOG_INFO, "Unable to find self in list.");
+            return;
+        }
+
+        if (tmp_io == linked_io) {
+            linked_io = nullptr;
+            Debug::krnl_print("R0UI", Debug::LOG_INFO, "Linked IO is now nullptr!");
+        }
+
+        tmp_io->prev->next = tmp_io->next;
+        tmp_io->next->prev = tmp_io->prev;
+        delete tmp_io;
     }
 
     void Window::paint(uint32_t *screen) {

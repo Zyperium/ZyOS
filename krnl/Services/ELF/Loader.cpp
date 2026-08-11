@@ -193,7 +193,7 @@ namespace ELF {
                     auto page_idx  = (page_vaddr - page_start) / PAGE_SIZE;
                     auto *page_hhdm = (uint8_t *)(phys_pages[page_idx] + PMM::hhdm_offset);
 
-                    FMEM::FastCopy(page_hhdm + in_page_off, stage + stage_off, copy_len);
+                    HAL::MEM::FMEM::FastCopy(page_hhdm + in_page_off, stage + stage_off, copy_len);
 
                     dest_vaddr += copy_len;
                     stage_off  += copy_len;

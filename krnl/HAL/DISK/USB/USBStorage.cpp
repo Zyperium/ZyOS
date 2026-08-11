@@ -125,7 +125,6 @@ namespace HAL::DISK::USB {
         const uint16_t MAX_SECTORS_PER_CHUNK = TOTAL_BOUNCE_PAGES * PAGE_SIZE / SECTOR_SIZE; 
 
         while (sectors_left > 0) {
-            size_t elapsed = ACPI::get_sys_time();
             uint16_t chunk_sectors = (sectors_left > MAX_SECTORS_PER_CHUNK) ? MAX_SECTORS_PER_CHUNK : sectors_left;
             uint32_t chunk_bytes = chunk_sectors * SECTOR_SIZE;
             Debug::krnl_print("xHCI", Debug::LOG_INFO, "Writing sector %x, (%i remaining)", lba, count - total_sectors_written);
@@ -168,7 +167,6 @@ namespace HAL::DISK::USB {
             current_lba += chunk_sectors;
             sectors_left -= chunk_sectors;
             total_sectors_written += chunk_sectors;
-            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Writing %i sectors took %ims", chunk_sectors, ACPI::get_sys_time() - elapsed);
         }
 
         return total_sectors_written;
@@ -183,7 +181,6 @@ namespace HAL::DISK::USB {
         const uint16_t MAX_SECTORS_PER_CHUNK = TOTAL_BOUNCE_PAGES * PAGE_SIZE / SECTOR_SIZE; 
 
         while (sectors_left > 0) {
-            size_t elapsed = ACPI::get_sys_time();
             uint16_t chunk_sectors = (sectors_left > MAX_SECTORS_PER_CHUNK) ? MAX_SECTORS_PER_CHUNK : sectors_left;
             uint32_t chunk_bytes = chunk_sectors * 512;
 
@@ -219,13 +216,12 @@ namespace HAL::DISK::USB {
                 asm volatile("pause");
             }
 
-            FMEM::FastCopy(dest, bounce_virt, chunk_bytes);
+            HAL::MEM::FMEM::FastCopy(dest, bounce_virt, chunk_bytes);
 
             dest += chunk_bytes;
             current_lba += chunk_sectors;
             sectors_left -= chunk_sectors;
             total_sectors_read += chunk_sectors;
-            Debug::krnl_print("xHCI", Debug::LOG_INFO, "Reading %i sectors took %ims", chunk_sectors, ACPI::get_sys_time() - elapsed);
         }
 
         return total_sectors_read;

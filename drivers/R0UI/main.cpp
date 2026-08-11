@@ -1,5 +1,5 @@
 /**
-    This is a ring 0 GUI driver because I want to make a UI. This is fun. Lumina is the "proper" display ~~driver~~ server
+    This is a ring 0 GUI driver because I want to make a UI. This is fun. Lumina is the "proper" windowing server
 */
 #include <DRIVER.hpp>
 #include <SERVICES.hpp>
@@ -7,20 +7,43 @@
 #include <LOG.hpp>
 #include <HAL.hpp>
 #include <lib/regs.h>
+#include <lib/umap.hpp>
 
 #include "Composer/Composer.hpp"
 #include "Composer/Members.hpp"
+#include "lib/vec.hpp"
 
 namespace R0UI {
+    lib::umap<Scheduler::Task *, lib::vec<Window *>> owned_resources;
+
     uint64_t on_enter(Scheduler::Task *nt) {
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "%s is trying to open a link with me!", nt->task_name.c_str());
-
+        (void)owned_resources[nt].reserve(1);
+        
         return 0;
     }
 
     uint64_t on_exit(Scheduler::Task *nt) {
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "%s is shutting down the link!", nt->task_name.c_str());
+        
+        lib::vec<Window *> *owr = owned_resources.find(nt);
 
+
+        if (!owr) {
+            Debug::krnl_print("R0UI", Debug::LOG_WARN, "Unable to find registered owned resources?");
+            Debug::krnl_print("R0UI", Debug::LOG_INFO, "Did the deleted task actually use this service?");
+            return 1;
+        }
+
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Cleaning up registered task. (%x)", owr);
+
+        for (auto i{0uz}; i < owr->size(); ++i) {
+            delete owr->data()[i];
+        }
+
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Task cleaned.");
+
+        owned_resources.remove(nt);
         return 0;
     }
 
@@ -36,9 +59,13 @@ namespace R0UI {
         if (data == 0) {
             Composer::do_run_through();
         }
-        if (data == 1) {
+        else if (data == 1) {
             Window *nwin = new Window({{10, 10}, 200, 200});
+            (void)owned_resources[from].push_back(nwin);
             return (uint64_t)nwin->map_to(from);
+        }
+        else if (data == 2) {
+            lib::vec<Window *> *owr = owned_resources.find(from);
         }
 
         return 0;

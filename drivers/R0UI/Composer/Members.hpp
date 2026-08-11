@@ -24,9 +24,8 @@ namespace R0UI {
         uint32_t z_index;
         uint32_t flags;
         uint32_t *usr_pix_buf;
-        uint8_t reserved[4060];
-        bool read;
-    };
+        uint8_t reserved[4064];
+    } __attribute__((packed));
 
     static_assert(sizeof(WinControl) == 4096, "WinControl MUST be 4096 bytes");
 
@@ -45,7 +44,7 @@ namespace R0UI {
         /**
             This one is a little weird, so quick explanar:
             once you setup a window, you use this function
-            (which returns a VIRTUAL address to the memory)
+            (which returns a VIRTUAL userspace address to the memory)
             to map the buffer to whatever task is passed here.
         */
         uint32_t *map_to(Scheduler::Task *pass_to);
@@ -62,7 +61,7 @@ namespace R0UI {
 
     struct winpair {
         Window *ref;
-        volatile winpair*next;
+        volatile winpair *next;
         volatile winpair *prev;
     };
 

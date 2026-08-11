@@ -34,13 +34,12 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     }
 
     kread(fd, 0, charbuf, file_size);
-    kclose(fd); // Done reading the file
+    kclose(fd);
 
     int width = 0;
     int height = 0;
     int channels_in_file = 0;
 
-    // 4 forces RGBA output (8 bits per channel = 32-bit pixel)
     uint32_t *pixels = (uint32_t *)stbi_load_from_memory(
         charbuf, 
         (int)file_size, 
@@ -50,7 +49,6 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
         4
     );
 
-    // Free the raw encoded PNG buffer
     free(charbuf);
 
     if (!pixels) {

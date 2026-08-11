@@ -1,3 +1,4 @@
+#include "Services/IPC/drvio.hpp"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -88,6 +89,7 @@ namespace Scheduler {
 
             fork->utask = new UserTask();
             memcpy(fork->utask, to_fork->utask, sizeof(UserTask));
+            fork->utask->task_owner = fork;
 
             for (auto i{0uz}; i < MAX_USR_FD; ++i) {
                 if (!fork->utask->descriptors[i])
@@ -193,12 +195,26 @@ namespace Scheduler {
     }
 
     UserTask::~UserTask() {
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Running utask destructor");
         for (auto i{0uz}; i < Scheduler::MAX_USR_FD; ++i) {
             if (!descriptors[i])
                 continue;
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "releasing desc. %i", i);
             descriptors[i]->release();
+        }
+
+        for (auto i{0uz}; i < opened_drvrs.size(); ++i) {
+            IPC::drvio *dvio = *IPC::regdrvrs.find(opened_drvrs[i]);
+
+            if (!dvio) {
+                Debug::krnl_print(
+                    "SCHD", 
+                    Debug::LOG_INFO, 
+                    "Unable to find drvrio %s", 
+                    opened_drvrs[i].c_str()
+                );
+                continue;
+            }
+
+            dvio->remove_relier(task_owner);
         }
 
         return;
@@ -282,7 +298,7 @@ namespace Scheduler {
         *(--ktop) = 0x10; // Stack Segment. RPL 0
         *(--ktop) = reinterpret_cast<uint64_t>(krnl_stack_top) - sizeof(uint64_t);
         *(--ktop) = 0x202;
-        *(--ktop) = 0x08;
+        *(--ktop) = 0x08; // Code Segment, also RPL 0. Crazy.
         *(--ktop) = reinterpret_cast<uint64_t>(entry);
 
         for (auto i{0uz}; i < 15; ++i) *(--ktop) = 0; // zero out the 15 registers.

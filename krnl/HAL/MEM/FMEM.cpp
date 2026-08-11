@@ -1,8 +1,8 @@
 #include <HAL/MEM/FMEM.hpp>
 
-namespace FMEM {
+namespace HAL::MEM::FMEM {
     __attribute__((target("sse")))
-    void FastFill32(uint32_t* dest, uint32_t color, size_t count) {
+    void FastFill32(uint32_t *dest, uint32_t color, size_t count) {
         if (count < 8) {
             while (count--) *dest++ = color;
             return;
@@ -34,7 +34,7 @@ namespace FMEM {
             : "xmm0", "memory", "cc"
         );
 
-        dest += chunks * 16;
+        dest += chunks  *16;
         count %= 16;
 
         while (count--) {
@@ -43,8 +43,8 @@ namespace FMEM {
     }
 
     __attribute__((target("sse")))
-    void FastFill8(uint8_t* dest, uint8_t val, size_t count) {
-        uint32_t v32 = (uint32_t)val * 0x01010101;
+    void FastFill8(uint8_t *dest, uint8_t val, size_t count) {
+        uint32_t v32 = (uint32_t)val  *0x01010101;
 
         while (((uintptr_t)dest & 0xF) && count > 0) {
             *dest++ = val;
@@ -73,7 +73,7 @@ namespace FMEM {
                 : "xmm0", "memory", "cc"
             );
 
-            dest += chunks * 64;
+            dest += chunks  *64;
             count %= 64;
         }
 
@@ -89,11 +89,11 @@ namespace FMEM {
     }
 
     __attribute__((target("sse")))
-    void FastCopy(void* d, const void* s, size_t count) {
+    void FastCopy(void *d, const void *s, size_t count) {
         bool intre = are_interrupts_enabled();
         asm volatile("cli");
-        uint8_t* dest = (uint8_t*)d;
-        const uint8_t* src = (const uint8_t*)s;
+        uint8_t *dest = (uint8_t*)d;
+        const uint8_t *src = (const uint8_t*)s;
 
         size_t chunks = count / 16;
 

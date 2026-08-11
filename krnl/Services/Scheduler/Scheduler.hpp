@@ -38,6 +38,7 @@ namespace Scheduler {
     struct UserTask {
         uint64_t rip;
         VFS::VNode *descriptors[MAX_USR_FD]{nullptr};
+        Task *task_owner{nullptr};
         size_t permissions{0};
         size_t next_free_ds{0};
         size_t usr_virt_mmap{USR_MMAP_BEGIN};

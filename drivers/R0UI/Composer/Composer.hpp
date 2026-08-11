@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include <lib/locks.hpp>
 
 namespace R0UI::Composer {
     extern size_t height, pitch, width;
@@ -10,6 +11,7 @@ namespace R0UI::Composer {
     void force_redraw();
     void handle_input(uint64_t k);
     void do_run_through();
+    extern lib::Spinlock cmp_lock;
 
     struct IUPDATE {
         char key;

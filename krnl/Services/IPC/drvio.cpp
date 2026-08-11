@@ -33,9 +33,9 @@ namespace IPC {
         Debug::snprintf(new_path, 128, "%s%i", exposee.c_str(), new_reliee->get_pid());
 
         Debug::krnl_print("IPC", Debug::LOG_INFO, "New device %s", new_path);
-        (void)new_reliee->utask->opened_drvrs.emplace_back(new_path);
+        (void)new_reliee->utask->opened_drvrs.emplace_back(exposee.c_str());
         reliees[new_reliee->get_pid()] = new_path; 
-        
+
         return on_entry(new_reliee);
     }
 

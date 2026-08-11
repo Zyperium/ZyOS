@@ -76,7 +76,7 @@ namespace HAL::SCREEN {
             uint32_t* src_row = backbuffer + (y * screen_w) + damage_x1;
             uint32_t* dest_row = screen_addr + (y * dest_pitch_pixels) + damage_x1;
 
-            FMEM::FastCopy(dest_row, src_row, copy_bytes);
+            HAL::MEM::FMEM::FastCopy(dest_row, src_row, copy_bytes);
         }
 
         has_damage = false;
@@ -90,7 +90,7 @@ namespace HAL::SCREEN {
 
             uint32_t* dest_row = screen_addr + (y * dest_pitch_pixels);
 
-            FMEM::FastCopy(dest_row, src_row, screen_w * sizeof(uint32_t));
+            HAL::MEM::FMEM::FastCopy(dest_row, src_row, screen_w * sizeof(uint32_t));
         }
 
         has_damage = false;
@@ -98,13 +98,13 @@ namespace HAL::SCREEN {
 
     void fill_screen(uint32_t col) {
         if (!backbuffer) return;
-        FMEM::FastFill32(backbuffer, col, screen_w * screen_h);
+        HAL::MEM::FMEM::FastFill32(backbuffer, col, screen_w * screen_h);
         add_damage(0, 0, screen_w, screen_h);
     }
 
     void fill_screen(COL col) {
         if (!backbuffer) return;
-        FMEM::FastFill32(backbuffer, static_cast<uint32_t>(col), screen_w * screen_h);
+        HAL::MEM::FMEM::FastFill32(backbuffer, static_cast<uint32_t>(col), screen_w * screen_h);
         add_damage(0, 0, screen_w, screen_h);
     }
 
@@ -170,28 +170,28 @@ namespace HAL::SCREEN {
         if (shift_x == 0 && shift_y == 0) return;
         if (shift_y != 0) {
             if (abs(shift_y) >= screen_h) {
-                FMEM::FastFill32(backbuffer, 0, screen_w * screen_h);
+                HAL::MEM::FMEM::FastFill32(backbuffer, 0, screen_w * screen_h);
             } else if (shift_y > 0) {
                 int rows_to_copy = screen_h - shift_y;
                 uint32_t* dest = backbuffer;
                 uint32_t* src = backbuffer + (shift_y * screen_w);
 
-                FMEM::FastCopy(dest, src, rows_to_copy * screen_w * sizeof(uint32_t));
+                HAL::MEM::FMEM::FastCopy(dest, src, rows_to_copy * screen_w * sizeof(uint32_t));
 
                 uint32_t* clear_start = backbuffer + (rows_to_copy * screen_w);
-                FMEM::FastFill32(clear_start, 0, shift_y * screen_w);
+                HAL::MEM::FMEM::FastFill32(clear_start, 0, shift_y * screen_w);
             } else {
                 int shift_abs = -shift_y;
                 int rows_to_copy = screen_h - shift_abs;
                 uint32_t* dest = backbuffer + (shift_abs * screen_w);
                 uint32_t* src = backbuffer;
-                FMEM::FastCopy(dest, src, rows_to_copy * screen_w * sizeof(uint32_t));
-                FMEM::FastFill32(backbuffer, 0, shift_abs * screen_w);
+                HAL::MEM::FMEM::FastCopy(dest, src, rows_to_copy * screen_w * sizeof(uint32_t));
+                HAL::MEM::FMEM::FastFill32(backbuffer, 0, shift_abs * screen_w);
             }
         }
         if (shift_x != 0) {
             if (abs(shift_x) >= screen_w) {
-                FMEM::FastFill32(backbuffer, 0, screen_w * screen_h);
+                HAL::MEM::FMEM::FastFill32(backbuffer, 0, screen_w * screen_h);
                 return;
             }
             for (int y = 0; y < screen_h; y++) {
@@ -199,15 +199,15 @@ namespace HAL::SCREEN {
 
                 if (shift_x > 0) {
                     int pixels_to_copy = screen_w - shift_x;
-                    FMEM::FastCopy(row_start, row_start + shift_x, pixels_to_copy * sizeof(uint32_t));
+                    HAL::MEM::FMEM::FastCopy(row_start, row_start + shift_x, pixels_to_copy * sizeof(uint32_t));
 
-                    FMEM::FastFill32(row_start + pixels_to_copy, 0, shift_x);
+                    HAL::MEM::FMEM::FastFill32(row_start + pixels_to_copy, 0, shift_x);
                 } else {
                     int shift_abs = -shift_x;
                     int pixels_to_copy = screen_w - shift_abs;
-                    FMEM::FastCopy(row_start + shift_abs, row_start, pixels_to_copy * sizeof(uint32_t));
+                    HAL::MEM::FMEM::FastCopy(row_start + shift_abs, row_start, pixels_to_copy * sizeof(uint32_t));
 
-                    FMEM::FastFill32(row_start, 0, shift_abs);
+                    HAL::MEM::FMEM::FastFill32(row_start, 0, shift_abs);
                 }
             }
         }

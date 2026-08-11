@@ -127,22 +127,22 @@ namespace VFS::FAT32 {
         }
 
         uint32_t cluster_size = m_fs->get_cluster_size();
-        uint32_t sectors_per_cluster = cluster_size / m_fs->get_bytes_per_sector();
+        uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
         const uint8_t *source_buffer = static_cast<const uint8_t *>(buffer);
         uint32_t total_bytes_written = 0;
 
         if (m_first_cluster == 0) {
             uint32_t free_cluster = 0;
             
-            for (uint32_t c = 2; c < 0x0FFFFFFF; ++c) { 
-                if (m_fs->read_FAT_entry(c) == 0) {
+            for (uint32_t c = 2; c < VFS::FAT32::CLUSTER_MAX; ++c) { 
+                if (m_fs->read_FAT_entry(c) == VFS::FAT32::CLUSTER_FREE) {
                     free_cluster = c;
                     break;
                 }
             }
             if (free_cluster == 0) return -1;
 
-            m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF); 
+            m_fs->write_FAT_entry(free_cluster, VFS::FAT32::CLUSTER_EOF_MAX); 
             m_first_cluster = free_cluster;
             m_is_dirty = true;
         }
@@ -153,10 +153,10 @@ namespace VFS::FAT32 {
         for (uint32_t i = 0; i < clusters_to_skip; ++i) {
             uint32_t next_cluster = m_fs->read_FAT_entry(current_cluster);
             
-            if (next_cluster >= 0x0FFFFFF8) { 
+            if (next_cluster >= VFS::FAT32::CLUSTER_EOF_MIN) { 
                 uint32_t free_cluster = 0;
-                for (uint32_t c = 2; c < 0x0FFFFFFF; ++c) {
-                    if (m_fs->read_FAT_entry(c) == 0) {
+                for (uint32_t c = 2; c < VFS::FAT32::CLUSTER_MAX; ++c) {
+                    if (m_fs->read_FAT_entry(c) == VFS::FAT32::CLUSTER_FREE) {
                         free_cluster = c;
                         break;
                     }
@@ -164,45 +164,32 @@ namespace VFS::FAT32 {
                 if (free_cluster == 0) return total_bytes_written;
 
                 m_fs->write_FAT_entry(current_cluster, free_cluster);
-                m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF);
+                m_fs->write_FAT_entry(free_cluster, VFS::FAT32::CLUSTER_EOF_MAX);
                 current_cluster = free_cluster;
             } else {
                 current_cluster = next_cluster;
             }
         }
 
-        size_t pages_needed = (cluster_size + PAGE_SIZE - 1) / PAGE_SIZE;
-        uint8_t *cluster_bounce_buffer = static_cast<uint8_t *>(
-            PMEM::alloc_pages(pages_needed, VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
+        uint8_t *sector_buffer = static_cast<uint8_t *>(
+            PMEM::alloc_page(VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
         );
 
-        while (total_bytes_written < size) {
-            uint32_t absolute_file_position = offset + total_bytes_written;
-            uint32_t offset_within_cluster = absolute_file_position % cluster_size;
+        while (total_bytes_written < size && current_cluster < VFS::FAT32::CLUSTER_EOF_MIN) {
+            uint32_t bytes_needed = size - total_bytes_written;
+            uint32_t start_cluster_offset = (offset + total_bytes_written) % cluster_size;
+            uint32_t current_run_bytes = cluster_size - start_cluster_offset;
 
-            uint32_t physical_sector_lba = m_fs->cluster_to_sector(current_cluster);
-            uint32_t bytes_left_in_cluster = cluster_size - offset_within_cluster;
-            uint32_t bytes_left_to_write = size - total_bytes_written;
-            uint32_t chunk_size = (bytes_left_to_write < bytes_left_in_cluster) ? bytes_left_to_write : bytes_left_in_cluster;
+            uint32_t start_cluster = current_cluster;
+            uint32_t last_cluster_in_run = current_cluster;
 
-            if (offset_within_cluster != 0 || chunk_size < cluster_size) {
-                m_fs->read_sectors(physical_sector_lba, cluster_bounce_buffer, sectors_per_cluster);
-            }
-
-            memcpy(cluster_bounce_buffer + offset_within_cluster, source_buffer + total_bytes_written, chunk_size);
-
-            if (m_fs->write_sectors(physical_sector_lba, cluster_bounce_buffer, sectors_per_cluster) < (int)sectors_per_cluster) {
-                break;
-            }
-
-            total_bytes_written += chunk_size;
-
-            if (total_bytes_written < size && (offset_within_cluster + chunk_size >= cluster_size)) {
-                uint32_t next_cluster = m_fs->read_FAT_entry(current_cluster);
-                if (next_cluster >= 0x0FFFFFF8) {
+            while (current_run_bytes < bytes_needed) {
+                uint32_t next_cluster = m_fs->read_FAT_entry(last_cluster_in_run);
+                
+                if (next_cluster >= VFS::FAT32::CLUSTER_EOF_MIN) {
                     uint32_t free_cluster = 0;
-                    for (uint32_t c = 2; c < 0x0FFFFFFF; ++c) {
-                        if (m_fs->read_FAT_entry(c) == 0) {
+                    for (uint32_t c = 2; c < VFS::FAT32::CLUSTER_MAX; ++c) {
+                        if (m_fs->read_FAT_entry(c) == VFS::FAT32::CLUSTER_FREE) {
                             free_cluster = c;
                             break;
                         }
@@ -210,16 +197,77 @@ namespace VFS::FAT32 {
                     if (free_cluster == 0) {
                         break;
                     }
-                    m_fs->write_FAT_entry(current_cluster, free_cluster);
-                    m_fs->write_FAT_entry(free_cluster, 0x0FFFFFFF);
-                    current_cluster = free_cluster;
+
+                    m_fs->write_FAT_entry(last_cluster_in_run, free_cluster);
+                    m_fs->write_FAT_entry(free_cluster, VFS::FAT32::CLUSTER_EOF_MAX);
+                    next_cluster = free_cluster;
+                }
+
+                if (next_cluster != last_cluster_in_run + 1) {
+                    break;
+                }
+
+                last_cluster_in_run = next_cluster;
+                current_run_bytes += cluster_size;
+            }
+
+            uint32_t run_total_bytes = (bytes_needed < current_run_bytes) ? bytes_needed : current_run_bytes;
+            uint32_t run_start_lba = m_fs->cluster_to_sector(start_cluster);
+            uint32_t run_start_byte = start_cluster_offset;
+
+            uint32_t run_bytes_written = 0;
+            while (run_bytes_written < run_total_bytes) {
+                uint32_t bytes_remaining = run_total_bytes - run_bytes_written;
+                uint32_t current_byte_pos = run_start_byte + run_bytes_written;
+                uint32_t current_sector_lba = run_start_lba + (current_byte_pos / bytes_per_sector);
+                uint32_t sector_offset = current_byte_pos % bytes_per_sector;
+
+                if (sector_offset != 0) {
+                    uint32_t head_chunk = bytes_per_sector - sector_offset;
+                    if (head_chunk > bytes_remaining) {
+                        head_chunk = bytes_remaining;
+                    }
+
+                    m_fs->read_sectors(current_sector_lba, sector_buffer, 1);
+                    memcpy(sector_buffer + sector_offset, source_buffer + total_bytes_written, head_chunk);
+
+                    if (m_fs->write_sectors(current_sector_lba, sector_buffer, 1) < 1) {
+                        break;
+                    }
+
+                    total_bytes_written += head_chunk;
+                    run_bytes_written += head_chunk;
+                } else if (bytes_remaining >= bytes_per_sector) {
+                    uint32_t full_sectors = bytes_remaining / bytes_per_sector;
+                    int written_count = m_fs->write_sectors(current_sector_lba, source_buffer + total_bytes_written, full_sectors);
+                    if (written_count <= 0) {
+                        break;
+                    }
+
+                    uint32_t written_bytes = static_cast<uint32_t>(written_count) * bytes_per_sector;
+                    total_bytes_written += written_bytes;
+                    run_bytes_written += written_bytes;
                 } else {
-                    current_cluster = next_cluster;
+                    m_fs->read_sectors(current_sector_lba, sector_buffer, 1);
+                    memcpy(sector_buffer, source_buffer + total_bytes_written, bytes_remaining);
+
+                    if (m_fs->write_sectors(current_sector_lba, sector_buffer, 1) < 1) {
+                        break;
+                    }
+
+                    total_bytes_written += bytes_remaining;
+                    run_bytes_written += bytes_remaining;
                 }
             }
+
+            if (run_bytes_written == 0) {
+                break;
+            }
+
+            current_cluster = m_fs->read_FAT_entry(last_cluster_in_run);
         }
 
-        PMEM::free_pages(cluster_bounce_buffer, pages_needed);
+        PMEM::free_page(sector_buffer);
 
         if (offset + total_bytes_written > m_size) {
             m_size = offset + total_bytes_written;
@@ -227,7 +275,6 @@ namespace VFS::FAT32 {
         }
 
         if (m_is_dirty && m_dir_cluster != 0) {
-            uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
             uint8_t *dir_sector_buffer = static_cast<uint8_t *>(
                 PMEM::alloc_page(VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
             );
@@ -239,7 +286,6 @@ namespace VFS::FAT32 {
                 DirectoryEntry *entry = reinterpret_cast<DirectoryEntry *>(&dir_sector_buffer[entry_offset_in_sector]);
                 
                 entry->file_size = static_cast<uint32_t>(m_size);
-                
                 entry->cluster_high = static_cast<uint16_t>((m_first_cluster >> 16) & 0xFFFF); 
                 entry->cluster_low = static_cast<uint16_t>(m_first_cluster & 0xFFFF);        
 
@@ -402,50 +448,104 @@ namespace VFS::FAT32 {
             }
         }
 
-        uint32_t cluster_size = m_fs->get_cluster_size(); 
+        if (safe_read_size == 0) {
+            return 0;
+        }
+
+        uint32_t cluster_size = m_fs->get_cluster_size();
+        uint32_t bytes_per_sector = m_fs->get_bytes_per_sector();
+
         uint32_t current_cluster = m_first_cluster;
         uint32_t clusters_to_skip = offset / cluster_size;
 
         for (uint32_t i = 0; i < clusters_to_skip; ++i) {
-            current_cluster = m_fs->read_FAT_entry(current_cluster);
             if (current_cluster >= VFS::FAT32::CLUSTER_EOF_MIN) {
-                return 0; 
+                return 0;
             }
+            current_cluster = m_fs->read_FAT_entry(current_cluster);
+        }
+
+        if (current_cluster >= VFS::FAT32::CLUSTER_EOF_MIN) {
+            return 0;
         }
 
         uint8_t *destination_buffer = static_cast<uint8_t *>(buffer);
         uint32_t total_bytes_read = 0;
 
-        uint32_t sectors_per_cluster = cluster_size / m_fs->get_bytes_per_sector(); 
-        size_t pages_needed = (cluster_size + PAGE_SIZE - 1) / PAGE_SIZE;
-
-        uint8_t *cluster_bounce_buffer = static_cast<uint8_t *>(
-            PMEM::alloc_pages(pages_needed, VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
+        uint8_t *sector_buffer = static_cast<uint8_t *>(
+            PMEM::alloc_page(VMM::PTE_PRESENT | VMM::PTE_WRITABLE)
         );
 
         while (total_bytes_read < safe_read_size && current_cluster < VFS::FAT32::CLUSTER_EOF_MIN) {
-            uint32_t absolute_file_position = offset + total_bytes_read;
-            uint32_t offset_within_cluster = absolute_file_position % cluster_size;
-            
-            uint32_t physical_sector_lba = m_fs->cluster_to_sector(current_cluster);
-            uint32_t bytes_left_in_cluster = cluster_size - offset_within_cluster;
-            uint32_t bytes_left_to_read = safe_read_size - total_bytes_read;
-            uint32_t chunk_size = (bytes_left_to_read < bytes_left_in_cluster) ? bytes_left_to_read : bytes_left_in_cluster;
-            
-            if (m_fs->read_sectors(physical_sector_lba, cluster_bounce_buffer, sectors_per_cluster) < (int)sectors_per_cluster) {
+            uint32_t bytes_needed = safe_read_size - total_bytes_read;
+            uint32_t start_cluster_offset = (offset + total_bytes_read) % cluster_size;
+            uint32_t current_run_bytes = cluster_size - start_cluster_offset;
+
+            uint32_t start_cluster = current_cluster;
+            uint32_t last_cluster_in_run = current_cluster;
+
+            while (current_run_bytes < bytes_needed) {
+                uint32_t next_cluster = m_fs->read_FAT_entry(last_cluster_in_run);
+                if (next_cluster != last_cluster_in_run + 1 || next_cluster >= VFS::FAT32::CLUSTER_EOF_MIN) {
+                    break;
+                }
+                last_cluster_in_run = next_cluster;
+                current_run_bytes += cluster_size;
+            }
+
+            uint32_t run_total_bytes = (bytes_needed < current_run_bytes) ? bytes_needed : current_run_bytes;
+            uint32_t run_start_lba = m_fs->cluster_to_sector(start_cluster);
+            uint32_t run_start_byte = start_cluster_offset;
+
+            uint32_t run_bytes_read = 0;
+            while (run_bytes_read < run_total_bytes) {
+                uint32_t bytes_remaining = run_total_bytes - run_bytes_read;
+                uint32_t current_byte_pos = run_start_byte + run_bytes_read;
+                uint32_t current_sector_lba = run_start_lba + (current_byte_pos / bytes_per_sector);
+                uint32_t sector_offset = current_byte_pos % bytes_per_sector;
+
+                if (sector_offset != 0) {
+                    uint32_t head_chunk = bytes_per_sector - sector_offset;
+                    if (head_chunk > bytes_remaining) {
+                        head_chunk = bytes_remaining;
+                    }
+
+                    if (m_fs->read_sectors(current_sector_lba, sector_buffer, 1) < 1) {
+                        break;
+                    }
+
+                    memcpy(destination_buffer + total_bytes_read, sector_buffer + sector_offset, head_chunk);
+                    total_bytes_read += head_chunk;
+                    run_bytes_read += head_chunk;
+                } else if (bytes_remaining >= bytes_per_sector) {
+                    uint32_t full_sectors = bytes_remaining / bytes_per_sector;
+                    int read_count = m_fs->read_sectors(current_sector_lba, destination_buffer + total_bytes_read, full_sectors);
+                    if (read_count <= 0) {
+                        break;
+                    }
+
+                    uint32_t read_bytes = static_cast<uint32_t>(read_count) * bytes_per_sector;
+                    total_bytes_read += read_bytes;
+                    run_bytes_read += read_bytes;
+                } else {
+                    if (m_fs->read_sectors(current_sector_lba, sector_buffer, 1) < 1) {
+                        break;
+                    }
+
+                    memcpy(destination_buffer + total_bytes_read, sector_buffer, bytes_remaining);
+                    total_bytes_read += bytes_remaining;
+                    run_bytes_read += bytes_remaining;
+                }
+            }
+
+            if (run_bytes_read == 0) {
                 break;
             }
 
-            memcpy(destination_buffer + total_bytes_read, cluster_bounce_buffer + offset_within_cluster, chunk_size);
-
-            total_bytes_read += chunk_size;
-
-            if (offset_within_cluster + chunk_size >= cluster_size) {
-                current_cluster = m_fs->read_FAT_entry(current_cluster);
-            }
+            current_cluster = m_fs->read_FAT_entry(last_cluster_in_run);
         }
 
-        PMEM::free_pages(cluster_bounce_buffer, pages_needed);
+        PMEM::free_page(sector_buffer);
         return total_bytes_read;
     }
 

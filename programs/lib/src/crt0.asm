@@ -10,7 +10,7 @@ _start:
 
     add rsp, 8
     
-    mov rax, 9
+    mov rax, 10
     syscall ; terminate
 
     jmp $

@@ -72,6 +72,27 @@ inline static uint64_t align_down(uint64_t adder, uint64_t alignment) {
     return adder & ~(alignment - 1);
 }
 
+inline static void *memmove(void *dest, const void *src, size_t count) {
+    unsigned char *d = (unsigned char *)dest;
+    const unsigned char *s = (const unsigned char *)src;
+
+    if (d == s || count == 0) {
+        return dest;
+    }
+
+    if (d < s) {
+        for (size_t i = 0; i < count; ++i) {
+            d[i] = s[i];
+        }
+    } else {
+        for (size_t i = count; i > 0; --i) {
+            d[i - 1] = s[i - 1];
+        }
+    }
+
+    return dest;
+}
+
 inline static bool strcmp(const char *strA, const char *strB) {
     while (*strA == *strB) {
         if (*strA == '\0')

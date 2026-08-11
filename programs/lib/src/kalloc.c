@@ -25,17 +25,13 @@ void *malloc(size_t size) {
     if (size == 0) {
         return NULL;
     }
-    klog("ENTER MALLOC");
 
     size_t actual_size = ALIGN(size);
 
     block_header_t *curr = g_heap_head;
     block_header_t *last = NULL;
 
-    klog("[MALLOC] Traversing list...");
     while (curr) {
-        klog("[MALLOC] Header at %p: size=%zu free=%d next=%p", 
-             curr, curr->size, curr->is_free, curr->next);
         if (curr->is_free && curr->size >= actual_size) {
             if (curr->size >= actual_size + sizeof(block_header_t) + ALIGNMENT) {
                 block_header_t *new_block = (block_header_t *)((uint8_t *)(curr + 1) + actual_size);
@@ -53,12 +49,10 @@ void *malloc(size_t size) {
         last = curr;
         curr = curr->next;
     }
-    klog("[MALLOC] Loop complete, expanding heap...");
 
     size_t total_needed = actual_size + sizeof(block_header_t);
     size_t mmap_size = (total_needed + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1); 
 
-    klog("About to call syscall 6 with size: %zu", mmap_size);
     uint64_t mmap_res = syscall(7, 0, mmap_size, PROT_READ_WRITE, 0, 0, 0);
     if (mmap_res == 0 || mmap_res == (uint64_t)-1) {
         return NULL;

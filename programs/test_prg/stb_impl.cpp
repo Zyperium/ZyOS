@@ -1,23 +1,22 @@
 #include <string.h>
 #include <klibkrnl.h>
 #include <kalloc.h>
-#define INT_MAX 2147483647
-#define INT_MIN -2147483648
-#define SHRT_MAX 32767
-#define SHRT_MIN -32768
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_NO_STDIO
-#define STBI_MALLOC(sz)        malloc(sz)
-#define STBI_FREE(p)           free(p)
-#define STBI_REALLOC(p, newsz) realloc(p, newsz)
-#define STBI_MEMSET(dst, val, sz)      memset(dst, val, sz)
-#define STBI_MEMMOVE(dst, src, sz)     memcpy(dst, src, sz)
-#define STBI_ABS(x)                    abs(x)
-#define STBI_ASSERT(x)                 ((void)0)
-#define STBI_NO_HDR
-#define STBI_NO_LINEAR
-#define STBI_NO_SIMD
 
+#define STBI_NO_STDIO
+#define STBI_NO_FAILURE_STRINGS
+#define STBI_NO_LINEAR
+#define STBI_NO_HDR
+#define _MM_MALLOC_H_INCLUDED
+
+#define STBI_MALLOC(sz)        malloc(sz)
+#define STBI_REALLOC(p, newsz) realloc(p, newsz)
+#define STBI_FREE(p)           free(p)
+
+#define STBI_ABS(x)            abs(x)
+
+#define STBI_ASSERT(x)         ((void)0)
+
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_img.h"
 
 uint32_t *load_png(const char *path, int *out_width, int *out_height) {

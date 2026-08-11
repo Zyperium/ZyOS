@@ -53,7 +53,7 @@ define DEPLOY_CONTENT
 	@if [ -f krnl/build/khash.map ]; then mcopy -i $(1)@@1M krnl/build/khash.map ::/SYSTEM/KHASH.MAP; fi
 endef
 
-$(DISK_BIOS):
+$(DISK_BIOS): $(SUBDIRS)
 	@echo "Creating BIOS Disk Image..."
 	dd if=/dev/zero of=$(DISK_BIOS) bs=1M count=64
 	sgdisk $(DISK_BIOS) -n 1:2048:0 -t 1:ef00 -n 2:34:2047 -t 2:ef02
@@ -65,7 +65,7 @@ $(DISK_BIOS):
 	$(LIMINE_DIR)/limine bios-install $(DISK_BIOS)
 	@echo "Legacy BIOS Image Built: $(DISK_BIOS)"
 
-$(DISK_UEFI):
+$(DISK_UEFI): $(SUBDIRS)
 	@echo "Creating UEFI Disk Image..."
 	dd if=/dev/zero of=$(DISK_UEFI) bs=1M count=64
 	sgdisk $(DISK_UEFI) -n 1:2048:0 -t 1:ef00

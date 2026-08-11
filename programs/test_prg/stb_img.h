@@ -366,8 +366,9 @@ RECENT REVISION HISTORY:
 //    huge block of memory and spend disproportionate time decoding it. By
 //    default this is set to (1 << 24), which is 16777216, but that's still
 //    very big.
-#define STBI_NO_STDIO
+
 #ifndef STBI_NO_STDIO
+#include <stdio.h>
 #endif // STBI_NO_STDIO
 
 #define STBI_VERSION 1
@@ -592,6 +593,7 @@ STBIDEF int   stbi_zlib_decode_noheader_buffer(char *obuffer, int olen, const ch
 #endif
 
 #ifndef STBI_NO_STDIO
+#include <stdio.h>
 #endif
 
 #ifndef STBI_ASSERT
@@ -640,7 +642,7 @@ typedef   signed short stbi__int16;
 typedef unsigned int   stbi__uint32;
 typedef   signed int   stbi__int32;
 #else
-
+#include <stdint.h>
 typedef uint16_t stbi__uint16;
 typedef int16_t  stbi__int16;
 typedef uint32_t stbi__uint32;
@@ -1452,7 +1454,6 @@ STBIDEF stbi_uc *stbi_load_gif_from_memory(stbi_uc const *buffer, int len, int *
 }
 #endif
 
-#define STBI_NO_LINEAR
 #ifndef STBI_NO_LINEAR
 static float *stbi__loadf_main(stbi__context *s, int *x, int *y, int *comp, int req_comp)
 {
@@ -1566,7 +1567,6 @@ STBIDEF int      stbi_is_hdr_from_callbacks(stbi_io_callbacks const *clbk, void 
    #endif
 }
 
-#define STBI_NO_LINEAR
 #ifndef STBI_NO_LINEAR
 static float stbi__l2h_gamma=2.2f, stbi__l2h_scale=1.0f;
 

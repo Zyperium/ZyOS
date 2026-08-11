@@ -246,7 +246,6 @@ namespace Syscalls {
     }
 
     uint64_t SYS_MMAP(uint64_t addr, uint64_t len, int prot, int flags, int fd, uint64_t off) {
-        Debug::krnl_print("SYS", Debug::LOG_INFO, "MMAP with %x, %x, %x", addr, len, prot);
         if (len == 0) return -EINVAL;
         (void)fd;
         (void)off;

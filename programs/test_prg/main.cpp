@@ -22,9 +22,9 @@ extern "C" int main() {
     klog("Window is x: %d, y: %d, w: %d, h: %d", ptr->x, ptr->y, ptr->width, ptr->height);
 
     int w, h;
-    uint32_t *ptrx = load_png("A:/stupid~1.png", &w, &h);
+    uint32_t *ptrx = load_png("A:/square.png", &w, &h);
 
-    memcpy(ptr->usr_pix_buf, ptrx, ptr->width * ptr->height);
+    memcpy(ptr->usr_pix_buf, ptrx, ptr->width * ptr->height * 4);
 
     ioctl("R0UI/", 0); // redraw
 

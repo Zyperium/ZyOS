@@ -25,6 +25,7 @@ using namespace HAL::MEM;
 namespace Scheduler {
     bool active{false};
     bool event_occured{};
+    uint32_t xsave_pages{0};
 
     lib::RB_Tree *task_tree;
     lib::Spinlock Task::lock{};
@@ -220,6 +221,16 @@ namespace Scheduler {
         return;
     }
 
+    static inline uint32_t get_xsave_size() {
+        uint32_t eax, ebx, ecx, edx;
+        
+        asm volatile("cpuid"
+            : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+            : "a"(0xD), "c"(0x0));
+
+        return ebx; 
+    }
+
     Task::Task() : vruntime(0), utask(nullptr), niceness(1), core_pinned(false), syscalls_allowed(false) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Beginning primitive task setup");
         static size_t next_pid = 0;
@@ -254,15 +265,22 @@ namespace Scheduler {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "ints are %s", (is_interrupt_enabled()) ? "on" : "off");
         current_queue = 0;
         running = false;
-        malignedfx = new uint8_t[FX_STATE_SIZE];
-        memset(malignedfx, 0, FX_STATE_SIZE);
+        if (!xsave_pages) {
+            uint32_t xsve = get_xsave_size();
+
+            xsave_pages = (xsve + (PAGE_SIZE - 1))  / PAGE_SIZE;
+        }
+
+        fx_state = (uint8_t *)PMEM::alloc_pages(
+            xsave_pages,
+            VMM::PTE_PRESENT |
+            VMM::PTE_WRITABLE |
+            VMM::PTE_NX
+        );
+    
+        memset(fx_state, 0, FX_STATE_SIZE);
         vruntime = global_min_vruntime;
 
-        auto addr = reinterpret_cast<uint64_t>(malignedfx);
-        if (addr % 0x10 != 0) {
-            addr = (addr + 0x10) & ~0xF;
-        }
-        fx_state = reinterpret_cast<uint8_t *>(addr);
         uint32_t *mxcsr = reinterpret_cast<uint32_t *>(&fx_state[24]);
         *mxcsr = 0x1F80;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
@@ -519,6 +537,25 @@ namespace Scheduler {
         } while (current != head);
     }
 }
+static inline void xsave_state(void *buffer) {
+    uint32_t low = 0xFFFFFFFF;
+    uint32_t high = 0xFFFFFFFF;
+    
+    asm volatile("xsave64 %0"
+        : "=m" (*(uint8_t *)buffer)
+        : "a" (low), "d" (high)
+        : "memory");
+}
+
+static inline void xrstor_state(const void *buffer) {
+    uint32_t low = 0xFFFFFFFF;
+    uint32_t high = 0xFFFFFFFF;
+
+    asm volatile("xrstor64 %0"
+        :
+        : "m" (*(uint8_t *)buffer), "a" (low), "d" (high)
+        : "memory");
+}
 
 volatile bool log_switches = false;
 uint64_t last_ram_prnt{0};
@@ -529,7 +566,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     HAL::CORE::CoreLocal *thread_data = HAL::CORE::get_core_data();
     uint64_t curr_sys_time = ACPI::get_sys_time();
-    if (curr_sys_time - last_ram_prnt > 1000) {
+    if (curr_sys_time - last_ram_prnt > 30000) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "RAM: %i/%i", PMM::used_memory, PMM::total_memory);
         last_ram_prnt = curr_sys_time;
     }
@@ -570,11 +607,11 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
                 asm volatile("mov %0, %%cr3" :: "r"(next_task->cr3) : "memory");
             }
             if (prev_task->fx_state) {
-                asm volatile("fxsave %0" : "=m"(*prev_task->fx_state));
+                xsave_state(prev_task->fx_state);
             }
         }
         if (next_task->fx_state) {
-            asm volatile("fxrstor %0" : : "m"(*next_task->fx_state));
+            xrstor_state(next_task->fx_state);
         }
     }
 

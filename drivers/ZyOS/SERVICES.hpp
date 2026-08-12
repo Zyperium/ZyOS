@@ -194,3 +194,9 @@ namespace IPC {
 
     extern lib::umap<lib::string, drvio *> regdrvrs;
 }
+
+namespace TTY::BOOT {
+    void disable();
+    bool is_active();
+    void show_log(const char *lclass, const char *level, const char *log);
+}

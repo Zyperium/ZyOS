@@ -9,11 +9,11 @@
 #include <HAL/PS2/PS2KB.hpp>
 #include <HAL/IDT/IOAPIC/IOAPIC.hpp>
 
-#include <Services/TTY/TTY.hpp>
 #include <Services/ELF/KModule/KModule.hpp>
 #include <Services/Scheduler/Scheduler.hpp>
 #include <Services/Syscalls/Syscalls.hpp>
 #include <Services/Code/Decomp.hpp>
+#include <Services/SysInitA/SysInitA.hpp>
 
 #include <Library/debug.hpp>
 #include <Library/regs.h>
@@ -34,10 +34,6 @@ void SysIdleTask() {
     for (;;) {
         asm volatile("sti; hlt");
     }
-}
-
-void TTY_Task(void *tty_cast) {
-    static_cast<TTY::ConHost *>(tty_cast)->worker();
 }
 
 void Reaper() {
@@ -78,10 +74,6 @@ extern "C" void krnlmain() {
     }
 
     HAL::PCI::MSIX::xHCI::create_xhci_worker();
-
-    TTY::ConHost *default_host = new TTY::ConHost;
-    default_host->contask = new Scheduler::Task((Scheduler::Task::EntryPoint)TTY_Task, "TTY0", true, default_host);
-    default_host->contask->core_pinned = true;
 
     new Scheduler::Task(
         (Scheduler::Task::EntryPoint)ELF::KModule::initialize, 

@@ -169,9 +169,7 @@ namespace Syscalls {
             return 0;
         }
 
-        auto *virt_buf = (uint8_t *)(buf_phys + PMM::hhdm_offset);
-
-        target->read(read_offset, virt_buf, read_amount);
+        target->read(read_offset, (void *)buffer, read_amount);
 
         Debug::krnl_print("SYS", Debug::LOG_INFO, "Read %i bytes", read_amount);
 
@@ -200,9 +198,8 @@ namespace Syscalls {
             return 0;
         }
         
-        auto *virt_buf = (uint8_t *)(buf_phys + PMM::hhdm_offset);
 
-        target->write(write_offset, virt_buf, write_amount);
+        target->write(write_offset, (void *)buffer, write_amount);
 
         return write_amount;
     }

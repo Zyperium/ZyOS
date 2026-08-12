@@ -135,7 +135,7 @@ namespace HAL::SCREEN {
         add_damage(x, y, Font::WIDTH, Font::HEIGHT);
     }
 
-    uint32_t *get_buffer() {
+    uint32_t *fetch_buffer() {
         return backbuffer;
     }
 
@@ -156,9 +156,9 @@ namespace HAL::SCREEN {
         add_damage(x, y, Font::WIDTH, Font::HEIGHT);
     }
 
-    screen_dim get_dim() {
+    SCRN get_scrdata() {
         if (!backbuffer) return {};
-        screen_dim s;
+        SCRN s;
         s.height = screen_h;
         s.width = screen_w;
         s.pitch = screen_p;

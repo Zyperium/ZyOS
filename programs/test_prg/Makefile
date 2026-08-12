@@ -20,11 +20,12 @@ OBJS := $(CPPSRC:%.cpp=$(OBJ_DIR)/%.o) \
 
 DEPS := $(OBJS:.o=.d)
 
-COMMON_FLAGS := -O0 -m64 -ffreestanding -fno-pie -mcmodel=small \
+COMMON_FLAGS := -O2 -m64 -ffreestanding -fno-pie -mcmodel=small \
+                -march=x86-64-v3 \
                 -Wall -Wextra -Iinclude
 
-CFLAGS   += $(COMMON_FLAGS) -std=c11
-CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics
+CFLAGS   += $(COMMON_FLAGS) -std=c11 -mstackrealign
+CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics -mstackrealign
 
 ASMFLAGS := -f elf64
 

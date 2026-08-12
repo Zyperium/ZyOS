@@ -20,7 +20,7 @@ void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
             break;
         case PanicReasons::GENERAL_FAULT_KMODE: {
             Debug::krnl_print("IDT", Debug::LOG_INFO, "General protection fault!");
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "IRETQ was popping:");
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Top stack:");
             uint64_t *stack = (uint64_t *)iframe->rsp;
             for (auto i{0uz}; i < 5; i++)
                 Debug::krnl_print("SCHD", Debug::LOG_INFO, "%x", stack[i]);

@@ -201,3 +201,61 @@ inline void stoi(int_least64_t n, char* buffer) {
         end--;
     }
 }
+
+static inline size_t strcspn(const char *s, const char *reject) {
+    size_t count = 0;
+    
+    while (s[count] != '\0') {
+        for (size_t i = 0; reject[i] != '\0'; i++) {
+            if (s[count] == reject[i]) {
+                return count;
+            }
+        }
+        count++;
+    }
+    
+    return count;
+}
+
+static inline size_t strspn(const char *s, const char *accept) {
+    auto count{0uz};
+    while (s[count] != '\0') {
+        auto i{0uz};
+        for (; accept[i] != '\0'; ++i) {
+            if (s[count] == accept[i]) {
+                break;
+            }
+        }
+        if (accept[i] == '\0') {
+            return count;
+        }
+        ++count;
+    }
+    return count;
+}
+
+static inline char *strtok_r(char *str, const char *delim, char **saveptr) {
+    char *token;
+
+    if (str == nullptr) {
+        str = *saveptr;
+    }
+
+    str += strspn(str, delim);
+    if (*str == '\0') {
+        *saveptr = str;
+        return nullptr;
+    }
+
+    token = str;
+
+    str += strcspn(str, delim);
+    if (*str != '\0') {
+        *str = '\0';
+        *saveptr = str + 1;
+    } else {
+        *saveptr = str;
+    }
+
+    return token;
+}

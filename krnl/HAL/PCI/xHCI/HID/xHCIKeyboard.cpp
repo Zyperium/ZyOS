@@ -8,8 +8,6 @@
 #include <Library/string.h>
 #include <Library/regs.h>
 
-#include <Services/TTY/TTY.hpp>
-
 using namespace HAL::MEM;
 
 namespace HAL::PCI::HID {
@@ -93,9 +91,7 @@ namespace HAL::PCI::HID {
                     full_convert = USBKeymap::Get(code).shifted;
                 }
 
-                if (TTY::conhosts[TTY::active_host]) {
-                    TTY::conhosts[TTY::active_host]->send_input(full_convert);
-                }
+                (void)full_convert;
             }
         }
 

@@ -19,8 +19,9 @@ namespace HAL::SCREEN {
         int height;
     };
 
-    struct screen_dim {
-        uint32_t width, height;
+    struct SCRN {
+        uint16_t width;
+        uint16_t height;
         uint32_t pitch;
     };
 
@@ -35,6 +36,6 @@ namespace HAL::SCREEN {
     void add_damage(int x, int y, int w, int h);
     void add_damage(rect r);
     void repaint();
-    screen_dim get_dim();
-    uint32_t *get_buffer();
+    SCRN get_scrdata();
+    uint32_t *fetch_buffer();
 }

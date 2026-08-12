@@ -1,3 +1,4 @@
+#include "Services/SysInitA/SysInitA.hpp"
 #include <Library/string.h>
 #include <Library/debug.hpp>
 #include <Library/krnlptr.hpp>
@@ -35,13 +36,14 @@ namespace ELF::KModule {
         lib::sptr<VFS::VNode> kmap_node = root_disk->rootnode->resolve_path_to_vnode(parsed_path.path);
         kernel_symbols = new HashTableHeader;
         kmap_node->read(0, kernel_symbols, sizeof(uint64_t));
-        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Reading %i symbols", kernel_symbols->symbol_count);
+        // Debug::krnl_print("KMOD", Debug::LOG_INFO, "Reading %i symbols", kernel_symbols->symbol_count);
 
         kernel_symbols->elements = new HashedElement[kernel_symbols->symbol_count];
         kmap_node->read(sizeof(uint64_t), kernel_symbols->elements, kernel_symbols->symbol_count  *sizeof(HashedElement));
 
-        // Debug::krnl_print("KMOD", Debug::LOG_INFO, "Read %i symbols.", kernel_symbols->symbol_count);
-
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Read %i symbols.", kernel_symbols->symbol_count);
+        
+        SysInitA::SpawnTasks(nullptr);
         Scheduler::Suicide();
         for (;;);
     }

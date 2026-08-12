@@ -3,7 +3,6 @@
 */
 #include <DRIVER.hpp>
 #include <SERVICES.hpp>
-#include <TTY.hpp>
 #include <LOG.hpp>
 #include <HAL.hpp>
 #include <lib/regs.h>
@@ -58,7 +57,7 @@ namespace R0UI {
             Composer::do_run_through();
         }
         else if (data == 1) {
-            Window *nwin = new Window({{10, 10}, 200, 200});
+            Window *nwin = new Window({20, 20, 200, 200});
             (void)owned_resources[from].push_back(nwin);
             return (uint64_t)nwin->map_to(from);
         }
@@ -80,8 +79,8 @@ namespace R0UI {
 
     int main() {
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "Yes i run!");
-        TTY::possess_host(0);
-        TTY::hook_callback(0, TTY::Callback::KEYBOARD_INPUT, Composer::handle_input);
+
+        TTY::BOOT::disable();
 
         Scheduler::Task *self_task = (Scheduler::Task *)HAL::CORE::get_core_data()->current_task;
         self_task->task_name = "R0UI_W1";
@@ -94,13 +93,13 @@ namespace R0UI {
 
         Scheduler::Yield();
 
-        Debug::krnl_print("R0UI", Debug::LOG_INFO, "ints are %s", (is_interrupt_enabled()) ? "on" : "off");
-        new Scheduler::Task([](void *x) {
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "well this worked?");
-            ELF::Runway((const char *)x);
-        }, "Test Program", true, (void *)"A:/USER/TEST_PRG.ZYX");
+        // Debug::krnl_print("R0UI", Debug::LOG_INFO, "ints are %s", (is_interrupt_enabled()) ? "on" : "off");
+        // new Scheduler::Task([](void *x) {
+        //     Debug::krnl_print("SCHD", Debug::LOG_INFO, "well this worked?");
+        //     ELF::Runway((const char *)x);
+        // }, "Test Program", true, (void *)"A:/USER/TEST_PRG.ZYX");
 
-        Composer::worker1(TTY::get_tty_bbuffer());
+        Composer::worker1(HAL::SCREEN::fetch_buffer());
         Scheduler::Suicide();
         for (;;);
 

@@ -1,7 +1,8 @@
 #include <HAL/PS2/PS2KB.hpp>
 #include <Library/io.hpp>
 #include <Library/debug.hpp>
-#include <Services/TTY/TTY.hpp>
+
+#include <Services/Input/Input.hpp>
 /**
 This is a really fast PS2 driver to test the xHCI driver in more depth.
 Please, please ignore the magic numbers. I'll either remove this driver later,
@@ -58,7 +59,7 @@ namespace PS2 {
         char ascii = TranslateScancode(scancode);
 
         if (ascii != 0) {
-            TTY::conhosts[TTY::active_host]->send_input(ascii);
+            Input::add_kb(ascii);
         }
     }
 

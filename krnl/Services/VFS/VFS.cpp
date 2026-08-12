@@ -21,7 +21,7 @@ namespace VFS {
     }
 
     uint64_t VNode::get_size() const { 
-        return m_size; 
+        return m_size;
     }
 
     VNode::VNode(FileType type, uint64_t size) : m_type(type), m_size(size) {}

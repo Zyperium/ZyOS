@@ -73,8 +73,7 @@ namespace Scheduler {
         make sure to adjust sysentry too. */
         UserTask *utask; // Accessed by SysEntry.asm
 
-        alignas(16) uint8_t *fx_state;
-        uint8_t *malignedfx;
+        uint8_t *fx_state;
         ZyOS::QWORD last_ran_time;
         ZyOS::DWORD niceness;
         ZyOS::WORD current_core;

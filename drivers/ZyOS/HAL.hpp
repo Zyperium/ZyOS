@@ -83,6 +83,14 @@ namespace HAL {
     }
 
     namespace SCREEN {
+        struct SCRN {
+            uint16_t width;
+            uint16_t height;
+            uint32_t pitch;
+        };
+
+        SCRN get_scrdata();
+        uint32_t *fetch_buffer();
         void repaint();
         void add_damage(int x, int y, int w, int h);
     }

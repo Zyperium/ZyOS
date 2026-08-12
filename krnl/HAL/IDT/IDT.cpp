@@ -47,7 +47,6 @@ extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
     HAL::CORE::broadcast_nmi();
 
     Debug::krnl_print("IDT", Debug::LOG_ERROR, "Broadcasted error via NMIs");
-    panic(PanicReasons::UNKNOWN_ERROR_CODE, frame);
 
     switch (static_cast<ISR_CODES>(frame->int_number)) {
         case ISR_CODES::DIV_ZERO:

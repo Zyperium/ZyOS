@@ -1,4 +1,6 @@
+#include "Library/debug.hpp"
 #include <HAL/MEM/FMEM.hpp>
+#include <Library/osconfig.hpp>
 
 namespace HAL::MEM::FMEM {
     __attribute__((target("sse")))
@@ -117,19 +119,35 @@ namespace HAL::MEM::FMEM {
             asm volatile("sti");
     }
 
+    static inline void write_xcr0(uint32_t reg, uint64_t val) {
+        uint32_t eax = (uint32_t)val;
+        uint32_t edx = (uint32_t)(val >> 32);
+        asm volatile("xsetbv" : : "a"(eax), "d"(edx), "c"(reg));
+    }
+
     __attribute__((target("sse")))
     void enable_sse() {
+        Debug::krnl_print("FMEM", Debug::LOG_INFO, "Initialize");
         uint64_t cr0;
         uint64_t cr4;
 
         asm volatile("mov %%cr0, %0" : "=r"(cr0));
-        cr0 &= ~(1 << 2);  // Clear EM (Emulation)
-        cr0 |= (1 << 1);   // Set MP (Monitor Coprocessor)
+        cr0 &= ~(1 << 2);
+        cr0 |= (1 << 1);
         asm volatile("mov %0, %%cr0" :: "r"(cr0));
 
         asm volatile("mov %%cr4, %0" : "=r"(cr4));
-        cr4 |= (1 << 9);   // Set OSFXSR (FXSAVE/FXRSTOR)
-        cr4 |= (1 << 10);  // Set OSXMMEXCPT (SIMD exceptions)
+        cr4 |= CR4_OSFXSR;
+        cr4 |= CR4_OSXMMEXCPT;
+        cr4 |= CR4_OSXSAVE;
         asm volatile("mov %0, %%cr4" :: "r"(cr4));
+
+        uint64_t xcr0 = XCR0_X87 | XCR0_SSE | XCR0_AVX;
+
+        if (OSCONF_ENABLE_AVX512) {
+            xcr0 |= XCR0_OPMASK | XCR0_ZMM_HI256 | XCR0_HI16_ZMM;
+        }
+
+        write_xcr0(0, xcr0);
     }
 }

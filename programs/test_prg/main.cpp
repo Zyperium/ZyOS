@@ -1,48 +1,80 @@
-#include <string.h>
+#include "stb_impl.hpp"
+#include "r0ui_protocol.hpp"
 #include <kalloc.h>
 #include <klibkrnl.h>
-#include "stb_impl.hpp"
+#include <string.h>
 
-struct WinControl {
-    int32_t x, y;
-    uint32_t width, height;
-    uint32_t z_index;
-    uint32_t flags;
-    uint32_t *usr_pix_buf;
-    uint32_t scrnw, scrnh;
-    uint8_t reserved[4056];
-} __attribute__((packed));
+using R0UI::Event;
+using R0UI::EventType;
+using R0UI::WinControl;
+using R0UI::R0UICall;
+
+static inline uint64_t r0ui_call(R0UICall id) {
+    return ioctl("R0UI/", (uint64_t)id);
+}
 
 extern "C" int main() {
     klog("Starting window program");
 
-    volatile WinControl *ptr = (WinControl *)ioctl("R0UI/", 1); // Open window
+    WinControl *ptr = (WinControl *)r0ui_call(R0UICall::OpenWindow);
 
     klog("Screen dims are %ix%i", ptr->scrnw, ptr->scrnh);
 
     int w, h;
     uint32_t *ptrx = load_png("A:/WALLPA~1.PNG", &w, &h);
     klog("Loaded image");
-    uint32_t *nbuf = resize_image(ptrx, w, h, 1280, 800);
+    uint32_t *nbuf = resize_image(ptrx, w, h, ptr->scrnw, ptr->scrnh);
     klog("Resized image");
     free(ptrx);
 
-    ioctl("R0UI/", 0); // redraw
-
-    #define TSK_BR_WDTH 50
     ptr->x = 0;
     ptr->y = 0;
     ptr->width = ptr->scrnw;
     ptr->height = ptr->scrnh;
 
-    ioctl("R0UI/", 2);
+    r0ui_call(R0UICall::PushRef);
 
     asm volatile("" ::: "memory");
-
-    memcpy(ptr->usr_pix_buf, nbuf, 1280 * 720 * 4);
+    memcpy((void *)ptr->usr_pix_buf, nbuf, ptr->scrnw * ptr->scrnh * 4);
+    klog("Curr. values are: %ux%u", ptr->width, ptr->height);
     free(nbuf);
-    
-    for (;;);
+
+    r0ui_call(R0UICall::Redraw);
+
+    for (;;) {
+        uint32_t h_idx = ptr->events.head;
+        uint32_t t_idx = ptr->events.tail;
+
+        while (t_idx != h_idx) {
+            Event ev = ptr->events.ring[t_idx];
+            asm volatile("" ::: "memory");
+
+            switch (ev.type) {
+                case EventType::MouseMove:
+                    klog("mouse move -> %d,%d", ptr->mouse_pos.x, ptr->mouse_pos.y);
+                    break;
+                case EventType::MouseDown:
+                    klog("mouse down (buttons=%x)", ev.data.mouse.buttons);
+                    break;
+                case EventType::MouseUp:
+                    klog("mouse up (buttons=%x)", ev.data.mouse.buttons);
+                    break;
+                case EventType::KeyDown:
+                    klog("key down: %x", ev.data.key.keycode);
+                    break;
+                case EventType::KeyUp:
+                    klog("key up: %x", ev.data.key.keycode);
+                    break;
+                default:
+                    break;
+            }
+
+            t_idx = (t_idx + 1) % R0UI::EVENT_QUEUE_CAPACITY;
+        }
+        ptr->events.tail = t_idx;
+        
+        yield();
+    }
 
     return 0;
 }

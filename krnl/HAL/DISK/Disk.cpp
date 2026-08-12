@@ -6,7 +6,7 @@
 #include <Library/debug.hpp>
 #include <Library/regs.h>
 #include <Services/VFS/FAT32/FAT32.hpp>
-#include <Services/TTY/TTY.hpp>
+#include <Services/SysInitA/SysInitA.hpp>
 #include <limine.h>
 
 static constinit volatile limine_executable_file_request exec_file_request = {
@@ -76,10 +76,6 @@ namespace HAL::DISK {
         }
 
         Debug::krnl_print("DISK", Debug::LOG_INFO, "Succesfully initialized FS");
-        
-        if (TTY::conhosts[TTY::active_host]->_ltrdrive == '?') {
-            TTY::conhosts[TTY::active_host]->early_drive_swap(drv_ltr);
-        }
 
         rootnode = fs->get_root_node();
 
@@ -210,7 +206,7 @@ namespace HAL::DISK {
 
         bool is_gpt = false;
 
-        for (int i = 0; i < 4; i++) {
+        for (auto i{0}; i < 4; ++i) {
             if (mbr_entries[i].type == 0x0B || mbr_entries[i].type == 0x0C) {
                 Debug::krnl_print("PART", Debug::LOG_INFO, "Found MBR FAT32 Partition at LBA %x", mbr_entries[i].lba_start);
                 release_lock();
@@ -245,7 +241,7 @@ namespace HAL::DISK {
                 auto* entry = reinterpret_cast<GPTPartitionEntry*>(sector_buffer + (i * entry_size));
 
                 bool is_empty = true;
-                for(int j=0; j<16; j++) if(entry->partition_type_guid[j] != 0) is_empty = false;
+                for(auto j{0}; j < 16; ++j) if(entry->partition_type_guid[j] != 0) is_empty = false;
                 if (is_empty) continue;
 
                 Debug::krnl_print("PART", Debug::LOG_INFO, "Found GPT Partition at LBA %x", entry->starting_lba);

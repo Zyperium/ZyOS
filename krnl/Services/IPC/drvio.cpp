@@ -29,12 +29,14 @@ namespace IPC {
         if (!new_reliee->utask)
             return -1;
 
+        Debug::krnl_print("IPC", Debug::LOG_INFO, "%s is a reliee of %s", new_reliee->task_name.c_str(), exposee.c_str());
+        (void)new_reliee->utask->opened_drvrs.emplace_back(exposee.c_str());
         char new_path[128];
         Debug::snprintf(new_path, 128, "%s%i", exposee.c_str(), new_reliee->get_pid());
 
         Debug::krnl_print("IPC", Debug::LOG_INFO, "New device %s", new_path);
-        (void)new_reliee->utask->opened_drvrs.emplace_back(exposee.c_str());
-        reliees[new_reliee->get_pid()] = new_path; 
+        Debug::krnl_print("IPC", Debug::LOG_INFO, "Exposee addr: %x", &exposee);
+        reliees[new_reliee->get_pid()] = new_path;
 
         return on_entry(new_reliee);
     }

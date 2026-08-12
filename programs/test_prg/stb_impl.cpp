@@ -34,6 +34,14 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     uint8_t *charbuf = (uint8_t *)malloc(alloc_size);
     klog("2. After malloc: charbuf = %p", charbuf);
 
+    klog("Testing page presence across allocation...");
+    volatile uint8_t *ptr = (volatile uint8_t *)charbuf;
+    for (size_t i = 0; i < file_size; i += 4096) {
+        uint8_t dummy = ptr[i]; 
+        (void)dummy;
+    }
+    klog("All pages intact!");
+
     if (!charbuf) {
         kclose(fd);
         return nullptr;
@@ -43,8 +51,16 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     memset(charbuf, 0, alloc_size);
     klog("4. After memset");
 
+    klog("Testing page presence across allocation...");
+    ptr = (volatile uint8_t *)charbuf;
+    for (size_t i = 0; i < file_size; i += 4096) {
+        uint8_t dummy = ptr[i]; 
+        (void)dummy;
+    }
+    klog("All pages intact!");
     size_t bytes_read = kread(fd, 0, charbuf, file_size);
     klog("5. After kread: read %zu bytes", bytes_read);
+    
     kclose(fd);
 
     if (bytes_read < file_size) {
@@ -58,9 +74,8 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     int channels_in_file = 0;
 
     klog("Testing page presence across allocation...");
-    volatile uint8_t *ptr = (volatile uint8_t *)charbuf;
+    ptr = (volatile uint8_t *)charbuf;
     for (size_t i = 0; i < file_size; i += 4096) {
-        klog("Touching %i", i);
         uint8_t dummy = ptr[i]; 
         (void)dummy;
     }
@@ -83,7 +98,6 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
         return nullptr;
     }
 
-    // Swapping pixels RGBA -> BGRA/ARGB for GOP
     size_t total_pixels = (size_t)width * (size_t)height;
     for (size_t i = 0; i < total_pixels; i++) {
         uint32_t p = pixels[i];

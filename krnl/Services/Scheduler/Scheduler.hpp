@@ -129,7 +129,7 @@ namespace Scheduler {
     void RegisterSystemIdleTask(Task *task);
     Task *StealCoCoreTask();
 
-    constexpr uint8_t TASK_STACK_PAGES = 8; // 8 * 4096 = 32KB of ram. Plenty.
+    constexpr uint8_t TASK_STACK_PAGES = 4; // stingy? yes.
     constexpr uint8_t TOTAL_SCHD_QUEUES = 32;
     constexpr uint16_t MIN_VRUNTIME_OFFSET = 128;
     constexpr uint8_t DEFAULT_SCHD_QUEUE = 0;

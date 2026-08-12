@@ -521,6 +521,7 @@ namespace Scheduler {
 }
 
 volatile bool log_switches = false;
+uint64_t last_ram_prnt{0};
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (!Scheduler::active) {
         return current_rsp;
@@ -528,6 +529,11 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     HAL::CORE::CoreLocal *thread_data = HAL::CORE::get_core_data();
     uint64_t curr_sys_time = ACPI::get_sys_time();
+    if (curr_sys_time - last_ram_prnt > 1000) {
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "RAM: %i/%i", PMM::used_memory, PMM::total_memory);
+        last_ram_prnt = curr_sys_time;
+    }
+
     auto prev_task = thread_data->current_task;
 
     if (prev_task && prev_task != thread_data->system_idle_task) {

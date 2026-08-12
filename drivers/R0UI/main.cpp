@@ -27,8 +27,6 @@ namespace R0UI {
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "%s is shutting down the link!", nt->task_name.c_str());
         
         lib::vec<Window *> *owr = owned_resources.find(nt);
-
-
         if (!owr) {
             Debug::krnl_print("R0UI", Debug::LOG_WARN, "Unable to find registered owned resources?");
             Debug::krnl_print("R0UI", Debug::LOG_INFO, "Did the deleted task actually use this service?");
@@ -66,6 +64,15 @@ namespace R0UI {
         }
         else if (data == 2) {
             lib::vec<Window *> *owr = owned_resources.find(from);
+            if (!owr) {
+                Debug::krnl_print("R0UI", Debug::LOG_WARN, "Unable to find registered owned resources?");
+                Debug::krnl_print("R0UI", Debug::LOG_INFO, "Did the deleted task actually use this service?");
+                return 1;
+            }
+
+            for (auto i{0uz}; i < owr->size(); ++i) {
+                owr->data()[i]->readref(from);
+            }
         }
 
         return 0;

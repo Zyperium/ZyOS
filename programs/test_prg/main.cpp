@@ -9,26 +9,39 @@ struct WinControl {
     uint32_t z_index;
     uint32_t flags;
     uint32_t *usr_pix_buf;
-    uint8_t reserved[4064];
+    uint32_t scrnw, scrnh;
+    uint8_t reserved[4056];
 } __attribute__((packed));
 
 extern "C" int main() {
     klog("Starting window program");
 
-    WinControl *ptr = (WinControl *)ioctl("R0UI/", 1); // Open window
+    volatile WinControl *ptr = (WinControl *)ioctl("R0UI/", 1); // Open window
 
-    klog("Window is x: %d, y: %d, w: %d, h: %d", ptr->x, ptr->y, ptr->width, ptr->height);
+    klog("Screen dims are %ix%i", ptr->scrnw, ptr->scrnh);
 
     int w, h;
-    uint32_t *ptrx = load_png("A:/square.png", &w, &h);
-
-    memcpy(ptr->usr_pix_buf, ptrx, ptr->width * ptr->height * 4);
+    uint32_t *ptrx = load_png("A:/WALLPA~1.PNG", &w, &h);
+    klog("Loaded image");
+    uint32_t *nbuf = resize_image(ptrx, w, h, 1280, 800);
+    klog("Resized image");
+    free(ptrx);
 
     ioctl("R0UI/", 0); // redraw
 
-    ptr->width = 500;
-    ptr->height = 500;
+    #define TSK_BR_WDTH 50
+    ptr->x = 0;
+    ptr->y = 0;
+    ptr->width = ptr->scrnw;
+    ptr->height = ptr->scrnh;
 
+    ioctl("R0UI/", 2);
+
+    asm volatile("" ::: "memory");
+
+    memcpy(ptr->usr_pix_buf, nbuf, 1280 * 720 * 4);
+    free(nbuf);
+    
     for (;;);
 
     return 0;

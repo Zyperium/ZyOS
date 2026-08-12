@@ -40,6 +40,8 @@ namespace R0UI {
         winref->width = factposn.width;
         winref->x = factposn.x;
         winref->y = factposn.y;
+        winref->scrnh = Composer::height;
+        winref->scrnw = Composer::width;
 
         lib::ScopedLock n(linklock);
         if (!linked_io) {
@@ -83,6 +85,7 @@ namespace R0UI {
         }
 
         winref->usr_pix_buf = (uint32_t *)write_at;
+        usr_pix = write_at;
 
         write_at = pass_to->utask->usr_virt_mmap;
         pass_to->utask->usr_virt_mmap += VMM::SIZE_OF_PAGE;
@@ -139,6 +142,118 @@ namespace R0UI {
         tmp_io->prev->next = tmp_io->next;
         tmp_io->next->prev = tmp_io->prev;
         delete tmp_io;
+    }
+
+    void Window::readref(Scheduler::Task *ref) {
+        int32_t proposed_x{winref->x}, proposed_y{winref->y};
+        uint32_t proposed_w{winref->width}, proposed_h{winref->height};
+
+        Debug::krnl_print(
+            "R0UI", 
+            Debug::LOG_INFO, 
+            "Testing bounds to: {X%i Y%i} x {W%i H%i}",
+            proposed_x,
+            proposed_y,
+            proposed_w,
+            proposed_h
+        );
+
+        bool size_changed{false};
+        size_t og_buf_w = factposn.width;
+        size_t og_buf_h = factposn.height;
+        size_t og_buf_sz = factposn.height * factposn.width * sizeof(uint32_t);
+        size_t og_pages = (og_buf_sz + VMM::SIZE_OF_PAGE - 1) / VMM::SIZE_OF_PAGE;
+
+        if ((uint32_t)proposed_x <= Composer::width)
+            factposn.x = proposed_x;
+        if ((uint32_t)proposed_y <= Composer::height)
+            factposn.y = proposed_y;
+
+        if ((uint32_t)proposed_w <= Composer::width && proposed_w != (uint32_t)factposn.width) {
+            size_changed = true;
+            factposn.width = proposed_w;
+        }
+        if ((uint32_t)proposed_h <= Composer::height && proposed_h != (uint32_t)factposn.height) {
+            size_changed = true;
+            factposn.height = proposed_h;
+        }
+
+        winref->x = factposn.x;
+        winref->y = factposn.y;
+        winref->width = factposn.width;
+        winref->height = factposn.height;
+
+        Debug::krnl_print(
+            "R0UI", 
+            Debug::LOG_INFO, 
+            "Updating bounds to: {X%i Y%i} x {W%i H%i}",
+            factposn.x,
+            factposn.y,
+            factposn.width,
+            factposn.height
+        );
+
+        if (size_changed) {
+            uint32_t total_bytes = factposn.width * factposn.height * sizeof(uint32_t);
+            uint32_t total_pages = (total_bytes + VMM::SIZE_OF_PAGE - 1) / VMM::SIZE_OF_PAGE;
+
+            uint64_t og_usr_pix = usr_pix;
+            usr_pix = ref->utask->usr_virt_mmap;
+            winref->usr_pix_buf = (uint32_t *)usr_pix;
+            ref->utask->usr_virt_mmap += total_pages * VMM::SIZE_OF_PAGE;
+
+            uint32_t *og_buf = buffer;
+            buffer = (uint32_t *)PMEM::alloc_pages(
+                total_pages,
+                VMM::PTE_PRESENT | 
+                VMM::PTE_WRITABLE | 
+                VMM::PTE_WRITEBACK | 
+                VMM::PTE_NX
+            );
+
+            uint64_t cast_buf = (uint64_t)buffer;
+            for (auto i{0uz}; i < total_pages; ++i) {
+                uint64_t phys_addr = VMM::GetPhysicalAddress(
+                    ref->cr3,
+                    (uint64_t)(cast_buf + (i * VMM::SIZE_OF_PAGE))
+                );
+                
+                VMM::map_page(
+                    (uint64_t *)(ref->cr3 + PMM::hhdm_offset),
+                    usr_pix + (i * VMM::SIZE_OF_PAGE),
+                    phys_addr,
+                    VMM::PTE_PRESENT |
+                    VMM::PTE_WRITABLE |
+                    VMM::PTE_WRITEBACK |
+                    VMM::PTE_NX |
+                    VMM::PTE_USER
+                );
+            }
+
+            uint32_t smaller_w = (proposed_w < og_buf_w) ? proposed_w : og_buf_w;
+            uint32_t smaller_h = (proposed_h < og_buf_h) ? proposed_h : og_buf_h;
+
+            Debug::krnl_print("R0UI", Debug::LOG_INFO, "Performing fCopy");
+
+            for (auto i{0uz}; i < smaller_h; ++i) {
+                FMEM::FastCopy(
+                    &buffer[i * factposn.width], 
+                    &og_buf[i * og_buf_w], 
+                    smaller_w * sizeof(uint32_t)
+                );
+            }
+
+            PMEM::free_pages(og_buf, og_pages);
+            
+            for (auto i{0uz}; i < og_pages; ++i) {
+                VMM::unmap_page(
+                    (uint64_t *)(ref->cr3 + PMM::hhdm_offset),
+                    og_usr_pix + (i * VMM::SIZE_OF_PAGE)
+                );
+            }
+        }
+
+        return;
     }
 
     void Window::paint(uint32_t *screen) {

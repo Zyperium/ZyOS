@@ -24,7 +24,8 @@ namespace R0UI {
         uint32_t z_index;
         uint32_t flags;
         uint32_t *usr_pix_buf;
-        uint8_t reserved[4064];
+        uint32_t scrnw, scrnh;
+        uint8_t reserved[4056];
     } __attribute__((packed));
 
     static_assert(sizeof(WinControl) == 4096, "WinControl MUST be 4096 bytes");
@@ -35,12 +36,14 @@ namespace R0UI {
         ~Window();
 
         WinControl *winref;
+        uint64_t usr_pix;
         P2D factposn;
         uint64_t owner; // PID owner
 
         void move(int nx, int ny);
         void resize(int nwidth,  int nheight);
         void paint(uint32_t *screen);
+        void readref(Scheduler::Task *ref);
         /**
             This one is a little weird, so quick explanar:
             once you setup a window, you use this function

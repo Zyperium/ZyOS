@@ -54,7 +54,7 @@ namespace R0UI::Composer {
     void add_damage(int32_t x, int32_t y, uint32_t w, uint32_t h) {
         if (w == 0 || h == 0) return;
 
-        lib::ScopedLock lock(cmp_lock);
+        // lib::ScopedLock lock(cmp_lock);
 
         if (current_damage.width == 0 || current_damage.height == 0) {
             current_damage = {x, y, w, h};

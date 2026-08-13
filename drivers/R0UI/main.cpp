@@ -54,11 +54,14 @@ namespace R0UI {
         );
 
         if (data == 0) {
+            Composer::force_redraw();
             Composer::do_run_through();
+            return 0;
         }
         else if (data == 1) {
             Window *nwin = new Window({20, 20, 200, 200});
             (void)owned_resources[from].push_back(nwin);
+            Debug::krnl_print("R0UI", Debug::LOG_INFO, "Mapping new window to %s", from->task_name.c_str());
             return (uint64_t)nwin->map_to(from);
         }
         else if (data == 2) {

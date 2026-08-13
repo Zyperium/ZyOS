@@ -3,7 +3,7 @@
 
 namespace Input {
     void add_kb(char nc);
-    char pop_kb();
+    void reg_kb_cb(void (*callback)(char c));
 
     // later!
     struct MousePos {

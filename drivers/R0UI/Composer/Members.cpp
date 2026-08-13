@@ -43,7 +43,8 @@ namespace R0UI {
         winref->scrnw = Composer::width;
 
         {
-            lib::ScopedLock n(linklock);
+            Debug::krnl_print("R0UI", Debug::LOG_INFO, "Linking window");
+            // lib::ScopedLock n(linklock);
             if (!linked_io) {
                 linked_io = new winpair;
                 linked_io->ref = this;
@@ -61,6 +62,7 @@ namespace R0UI {
             }
         }
         
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Damaging UI");
         Composer::add_damage(factposn.x, factposn.y, factposn.width, factposn.height);
     }
 
@@ -115,7 +117,7 @@ namespace R0UI {
         PMEM::free_pages(buffer, total_pages);
         PMEM::free_page(winref);
 
-        lib::ScopedLock x(linklock);
+        // lib::ScopedLock x(linklock);
         
         if (!linked_io) return;
 

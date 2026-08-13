@@ -63,11 +63,13 @@ namespace Syscalls {
 
         SYS_GET_TIME, // functional
         SYS_GET_PID, // functional
+        SYS_EXEC_APP,
 
         MAX_ID
     };
 
     void initialize();
+    char *usr_to_string(uint64_t usr_ptr, uint64_t max_value);
 
     constexpr uint64_t MSR_STAR_VAL = 0x00130008ULL << 32;
     constexpr uint64_t MSR_FSTAR_VAL = 0x202; // clean RFLAGS

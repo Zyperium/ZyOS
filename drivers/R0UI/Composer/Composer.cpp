@@ -236,8 +236,6 @@ namespace R0UI::Composer {
         width = b.width;
         tty_buf = tty_bbuf;
 
-        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Composer running with visual address @ %x", tty_bbuf);
-
         paint_init(tty_buf, width, height);
 
         for (;;) {

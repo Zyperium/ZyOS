@@ -172,7 +172,7 @@ namespace Scheduler {
 
 namespace IPC {
     using DrvioCB = uint64_t (*)(Scheduler::Task *);
-    using DrvioIR = uint64_t (*)(Scheduler::Task *, uint64_t details);
+    using DrvioIR = uint64_t (*)(Scheduler::Task *, uint64_t details, uint64_t extra);
 
     class drvio {
     public:
@@ -199,4 +199,9 @@ namespace TTY::BOOT {
     void disable();
     bool is_active();
     void show_log(const char *lclass, const char *level, const char *log);
+}
+
+namespace Syscalls {
+    // Not actually a syscall, but part of the syscall system.
+    char *usr_to_string(uint64_t usr_ptr, uint64_t max_value);
 }

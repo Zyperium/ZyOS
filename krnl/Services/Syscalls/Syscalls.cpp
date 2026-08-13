@@ -219,7 +219,7 @@ namespace Syscalls {
         return 0;
     }
 
-    uint64_t SYS_KRNL_IO(uint64_t path, uint64_t data, uint64_t path_len) {
+    uint64_t SYS_KRNL_IO(uint64_t path, uint64_t data, uint64_t path_len, uint64_t extra) {
         if (path_len > 32) path_len = 32;
         auto *val = usr_to_string(path, path_len);
         auto path_str = lib::string(val);
@@ -238,7 +238,7 @@ namespace Syscalls {
 
         delete[] val;
 
-        uint64_t mem_val = regdrvr->on_call(HAL::CORE::get_core_data()->current_task, data);
+        uint64_t mem_val = regdrvr->on_call(HAL::CORE::get_core_data()->current_task, data, extra);
         return mem_val;
     }
 
@@ -342,7 +342,7 @@ namespace Syscalls {
                 return SYS_CLOSE_FILE(regs.A1);
             }
             case SYSCALL_ID::SYS_IOCTL: {
-                return SYS_KRNL_IO(regs.A1, regs.A2, regs.A3);
+                return SYS_KRNL_IO(regs.A1, regs.A2, regs.A3, regs.A4);
             }
             case SYSCALL_ID::SYS_LOUT: {
                 char *x = usr_to_string(regs.A1, regs.A2);
@@ -417,7 +417,7 @@ namespace Syscalls {
                 return pid;
             }
             default:
-                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unknown syscall ID!");
+                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unknown syscall ID! (%i)", id);
                 break;
         }
 

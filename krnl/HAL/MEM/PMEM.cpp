@@ -7,34 +7,11 @@
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <Library/regs.h>
+#include <Library/locks.hpp>
 
 namespace HAL::MEM::PMEM {
     uint64_t next_virt_addr = PMEM_START_ADDR;
-
-    bool a_pmem_lock = false;
-    uint64_t cur_rflags = 0;
-
-    void acquire_lock() {
-        uint64_t rflags = 0;
-        asm volatile("pushfq; pop %0" : "=r"(rflags));
-        asm volatile("cli");
-        while (__atomic_test_and_set(&a_pmem_lock, __ATOMIC_ACQUIRE)) {
-            Debug::krnl_print("PMEM", Debug::LOG_INFO, "Locked!");
-            asm volatile("pause");
-        }
-
-        cur_rflags = rflags;
-
-        return;
-    }
-
-    void release_lock() {
-        restore_rflags(cur_rflags);
-        cur_rflags = 0;
-
-        __atomic_clear(&a_pmem_lock, __ATOMIC_RELEASE);
-        return;
-    }
+    lib::Spinlock pmem_lock;
 
     void initialize() {
         uint16_t pml4_idx = (PMEM_START_ADDR >> 39) & 0x1FF;
@@ -46,14 +23,13 @@ namespace HAL::MEM::PMEM {
     }
 
     void *alloc_page(uint64_t flags) {
-        acquire_lock();
+        lib::ScopedLock x(pmem_lock);
         uint64_t virt_start = next_virt_addr;
         next_virt_addr += PAGE_SIZE;
 
         void* phys_addr = PMM::alloc_page();
         
         if (!phys_addr) {
-            release_lock();
             return nullptr;
         }
 
@@ -64,13 +40,12 @@ namespace HAL::MEM::PMEM {
             flags
         );
 
-        release_lock();
 
         return (void*)virt_start;
     }
 
     void *alloc_pages(size_t count, uint64_t flags) {
-        acquire_lock();
+        lib::ScopedLock x(pmem_lock);
         uint64_t virt_start = next_virt_addr;
 
         for (auto i{0uz}; i < count; ++i) {
@@ -79,7 +54,6 @@ namespace HAL::MEM::PMEM {
         
             if (!phys_addr) {
                 Debug::krnl_print("PMEM", Debug::LOG_WARN, "Null physical address during memory allocation!");
-                release_lock();
                 panic(PanicReasons::OUT_OF_MEMORY);
                 return nullptr;
             }
@@ -92,52 +66,48 @@ namespace HAL::MEM::PMEM {
             );
         }
 
-        release_lock();
         return (void*)virt_start;
     }
 
     void free_page(void *page) {
-        acquire_lock();
+        lib::ScopedLock x(pmem_lock);
         uint64_t virt_start = (uint64_t)page;
         uint64_t kernel_pml4_phys = (uint64_t)KMEM::pml4_root - PMM::hhdm_offset;
-
-        uint64_t curr_virt = virt_start + PAGE_SIZE;
+        
         uint64_t phys_addr = VMM::GetPhysicalAddress(
             kernel_pml4_phys, 
-            curr_virt
+            virt_start
         );
-
+    
         if (phys_addr) {
             PMM::free_page((void*)phys_addr);
         }
-
-        VMM::unmap_page(KMEM::pml4_root, curr_virt);
-        release_lock();
+    
+        VMM::unmap_page(KMEM::pml4_root, virt_start);
     }
-
+    
     void free_pages(void *page_start, size_t count) {
-        acquire_lock();
+        lib::ScopedLock x(pmem_lock);
         uint64_t virt_start = (uint64_t)page_start;
         uint64_t kernel_pml4_phys = (uint64_t)KMEM::pml4_root - PMM::hhdm_offset;
-
-        for (auto i{0uz}; i < count; i++) {
-            uint64_t curr_virt = virt_start + PAGE_SIZE;
+    
+        for (size_t i = 0; i < count; i++) {
+            uint64_t curr_virt = virt_start + (i * PAGE_SIZE);
             uint64_t phys_addr = VMM::GetPhysicalAddress(
                 kernel_pml4_phys, 
                 curr_virt
             );
-
+        
             if (phys_addr) {
                 PMM::free_page((void*)phys_addr);
             }
-
+        
             VMM::unmap_page(KMEM::pml4_root, curr_virt);
         }
-        release_lock();
     }
 
     void *map_mmio(uint64_t phys_addr, size_t num_pages) {
-        acquire_lock();
+        lib::ScopedLock x(pmem_lock);
         uint64_t virt_start = next_virt_addr;
         next_virt_addr += (num_pages * PAGE_SIZE);
 
@@ -150,7 +120,6 @@ namespace HAL::MEM::PMEM {
             );
         }
 
-        release_lock();
         return (void*)virt_start;
     }
 }

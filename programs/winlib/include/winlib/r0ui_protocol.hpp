@@ -1,5 +1,6 @@
 #pragma once
 
+#include <klibkrnl.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -89,9 +90,24 @@ namespace R0UI {
     };
     static_assert(sizeof(WinControl) == 0x1000, "WinControl MUST be exactly 4096 bytes");
 
-    enum class R0UICall : uint64_t {
-        Redraw     = 0,
-        OpenWindow = 1,
-        PushRef    = 2,
+    struct alignas(4096) WindowView {
+        volatile uint32_t generation;
+        volatile uint32_t valid;
+        uint32_t *pix_buf;
+        uint32_t width, height;
+        int32_t x, y;
+        uint32_t scrnw, scrnh;
     };
+    static_assert(sizeof(WindowView) <= 4096, "WindowView must fit in a single page");
+
+    enum class R0UICall : uint64_t {
+        Redraw      = 0,
+        OpenWindow  = 1,
+        PushRef     = 2,
+        WatchWindow = 3,
+    };
+}
+
+static inline uint64_t r0ui_call(R0UI::R0UICall id, uint64_t extra) {
+    return ioctl("R0UI/", (uint64_t)id, extra);
 }

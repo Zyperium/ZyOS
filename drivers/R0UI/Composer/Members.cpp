@@ -13,6 +13,7 @@ using namespace HAL::MEM;
 namespace R0UI {
     winpair *linked_io{nullptr};
     lib::Spinlock linklock{};
+    lib::umap<Scheduler::Task *, lib::vec<Window *>> watched_resources;
 
     Window::Window(Rect def) : factposn(def) {
         auto maxn = HAL::SCREEN::get_scrdata();
@@ -104,8 +105,209 @@ namespace R0UI {
         return (uint32_t *)write_at;
     }
 
+    WindowView *Window::watch(Scheduler::Task *watcher_task) {
+        if (!watcher_task || watcher_task == (Scheduler::Task *)owner) {
+            return nullptr;
+        }
+
+        for (auto i{0uz}; i < watchers.size(); ++i) {
+            if (watchers.data()[i].task == watcher_task) {
+                return (WindowView *)watchers.data()[i].view_va;
+            }
+        }
+
+        Watcher *slot{nullptr};
+        for (auto i{0uz}; i < watchers.size(); ++i) {
+            if (watchers.data()[i].task == nullptr) {
+                slot = &watchers.data()[i];
+                break;
+            }
+        }
+
+        if (!slot) {
+            Watcher fresh{};
+            (void)watchers.push_back(fresh);
+            slot = &watchers.data()[watchers.size() - 1];
+        }
+
+        WindowView *view = (WindowView *)PMEM::alloc_page(VMM::PTE_PRESENT | VMM::PTE_WRITABLE);
+        memset(view, 0, sizeof(WindowView));
+
+        uint64_t view_va = watcher_task->utask->usr_virt_mmap;
+        watcher_task->utask->usr_virt_mmap += VMM::SIZE_OF_PAGE;
+
+        uint64_t view_phys = VMM::GetPhysicalAddress(read_cr3(), (uintptr_t)view);
+        VMM::map_page(
+            (uint64_t *)(watcher_task->cr3 + PMM::hhdm_offset),
+            view_va,
+            view_phys,
+            VMM::PTE_PRESENT | VMM::PTE_WRITEBACK | VMM::PTE_NX | VMM::PTE_USER
+        );
+
+        slot->task = watcher_task;
+        slot->view = view;
+        slot->view_va = view_va;
+        slot->pix_va = 0;
+        slot->mapped_pages = 0;
+
+        map_watcher_pixels(*slot, watcher_task);
+
+        view->pix_buf = (uint32_t *)slot->pix_va;
+        view->width = factposn.width;
+        view->height = factposn.height;
+        view->x = factposn.x;
+        view->y = factposn.y;
+        view->scrnw = Composer::width;
+        view->scrnh = Composer::height;
+        view->valid = 1;
+        view->generation = 1;
+
+        (void)watched_resources[watcher_task].push_back(this);
+
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "%s is now watching window %s",
+                           watcher_task->task_name.c_str(), classname.c_str());
+
+        return (WindowView *)view_va;
+    }
+
+    void Window::remove_watcher(Scheduler::Task *watcher_task) {
+        for (auto i{0uz}; i < watchers.size(); ++i) {
+            Watcher &w = watchers.data()[i];
+            if (w.task != watcher_task) continue;
+
+            if (w.view) {
+                PMEM::free_page(w.view);
+            }
+
+            w = Watcher{};
+            return;
+        }
+    }
+
+    void Window::map_watcher_pixels(Watcher &w, Scheduler::Task *task) {
+        uint32_t total_bytes = factposn.width * factposn.height * sizeof(uint32_t);
+        uint32_t total_pages = (total_bytes + VMM::SIZE_OF_PAGE - 1) / VMM::SIZE_OF_PAGE;
+
+        uint64_t old_va = w.pix_va;
+        uint32_t old_pages = w.mapped_pages;
+
+        uint64_t new_va;
+        if (old_va && total_pages <= old_pages) {
+            new_va = old_va;
+        } else {
+            new_va = task->utask->usr_virt_mmap;
+            task->utask->usr_virt_mmap += total_pages * VMM::SIZE_OF_PAGE;
+        }
+
+        uint64_t cast_buf = (uint64_t)buffer;
+        for (auto i{0uz}; i < total_pages; ++i) {
+            uint64_t phys_addr = VMM::GetPhysicalAddress(read_cr3(), cast_buf + (i * VMM::SIZE_OF_PAGE));
+            VMM::map_page(
+                (uint64_t *)(task->cr3 + PMM::hhdm_offset),
+                new_va + (i * VMM::SIZE_OF_PAGE),
+                phys_addr,
+                // No PTE_WRITABLE: this is a read-only view of someone else's window.
+                VMM::PTE_PRESENT | VMM::PTE_WRITEBACK | VMM::PTE_NX | VMM::PTE_USER
+            );
+        }
+
+        if (new_va != old_va && old_va) {
+            // Grew into a fresh range - drop the old one entirely.
+            for (auto i{0uz}; i < old_pages; ++i) {
+                VMM::unmap_page(
+                    (uint64_t *)(task->cr3 + PMM::hhdm_offset),
+                    old_va + (i * VMM::SIZE_OF_PAGE)
+                );
+            }
+        } else if (new_va == old_va && total_pages < old_pages) {
+            // Reused the same VA but shrank - the tail pages now point at physical frames the
+            // buffer no longer owns (they get freed right after this runs). Unmap them, or the
+            // watcher keeps a live read-only window into whatever ends up reusing that memory.
+            for (auto i{total_pages}; i < old_pages; ++i) {
+                VMM::unmap_page(
+                    (uint64_t *)(task->cr3 + PMM::hhdm_offset),
+                    old_va + (i * VMM::SIZE_OF_PAGE)
+                );
+            }
+        }
+
+        w.pix_va = new_va;
+        w.mapped_pages = total_pages;
+    }
+
+    void Window::unmap_watcher(Watcher &w) {
+        if (!w.task || !w.pix_va) return;
+
+        for (auto i{0uz}; i < w.mapped_pages; ++i) {
+            VMM::unmap_page(
+                (uint64_t *)(w.task->cr3 + PMM::hhdm_offset),
+                w.pix_va + (i * VMM::SIZE_OF_PAGE)
+            );
+        }
+
+        w.pix_va = 0;
+        w.mapped_pages = 0;
+    }
+
+    void Window::remap_watchers() {
+        for (auto i{0uz}; i < watchers.size(); ++i) {
+            Watcher &w = watchers.data()[i];
+            if (!w.task) continue;
+
+            map_watcher_pixels(w, w.task);
+
+            if (w.view) {
+                w.view->pix_buf = (uint32_t *)w.pix_va;
+                w.view->width = factposn.width;
+                w.view->height = factposn.height;
+                w.view->x = factposn.x;
+                w.view->y = factposn.y;
+                __builtin_ia32_sfence();
+                w.view->generation++;
+            }
+        }
+    }
+
+    void Window::update_watcher_geometry() {
+        for (auto i{0uz}; i < watchers.size(); ++i) {
+            Watcher &w = watchers.data()[i];
+            if (!w.task || !w.view) continue;
+
+            w.view->x = factposn.x;
+            w.view->y = factposn.y;
+            __builtin_ia32_sfence();
+            w.view->generation++;
+        }
+    }
+
     Window::~Window() {
         Composer::notify_window_destroyed(this);
+
+        // Tear down anyone watching us first: unmap their RO pixel mapping, mark their handle
+        // invalid so they stop dereferencing pix_buf, and drop ourselves out of their
+        // watched_resources entry so their eventual task exit doesn't touch a dangling Window*.
+        for (auto i{0uz}; i < watchers.size(); ++i) {
+            Watcher &w = watchers.data()[i];
+            if (!w.task) continue;
+
+            if (w.view) {
+                w.view->valid = 0;
+                __builtin_ia32_sfence();
+            }
+
+            unmap_watcher(w);
+
+            lib::vec<Window *> *watching = watched_resources.find(w.task);
+            if (watching) {
+                for (auto j{0uz}; j < watching->size(); ++j) {
+                    if (watching->data()[j] == this) {
+                        watching->data()[j] = nullptr;
+                    }
+                }
+            }
+
+            w.task = nullptr;
+        }
 
         if (!buffer) {
             Debug::krnl_print("R0UI", Debug::LOG_WARN, "Bad window destruction?");
@@ -165,6 +367,8 @@ namespace R0UI {
 
         Composer::add_damage(old_x, old_y, factposn.width, factposn.height);
         Composer::add_damage(nx, ny, factposn.width, factposn.height);
+
+        update_watcher_geometry();
     }
 
     void Window::resize(uint32_t nwidth, uint32_t nheight) {
@@ -189,6 +393,7 @@ namespace R0UI {
         winref->height = nheight;
 
         realloc_pixel_buffer(ref, og_w, og_h);
+        remap_watchers();
 
         uint32_t damage_w = (nwidth > og_w) ? nwidth : og_w;
         uint32_t damage_h = (nheight > og_h) ? nheight : og_h;
@@ -249,6 +454,19 @@ namespace R0UI {
                     og_usr_pix + (i * VMM::SIZE_OF_PAGE)
                 );
             }
+        } else if (total_pages < og_pages) {
+            // Same VA range reused (shrink-or-equal case) - the tail pages beyond the new page
+            // count are still mapped but now point at freed physical frames that PMEM is free
+            // to hand out elsewhere. Unmap them, or the owner keeps a live, writable window
+            // into whatever ends up reusing that memory. (Pre-existing bug, unrelated to
+            // watchers - fixed here because watchers make the blast radius worse: a watcher
+            // could end up passively reading another window's pixel data through a reused frame.)
+            for (auto i{total_pages}; i < og_pages; ++i) {
+                VMM::unmap_page(
+                    (uint64_t *)(ref->cr3 + PMM::hhdm_offset),
+                    usr_pix + (i * VMM::SIZE_OF_PAGE)
+                );
+            }
         }
     }
 
@@ -283,6 +501,9 @@ namespace R0UI {
 
         if (size_changed) {
             realloc_pixel_buffer(ref, og_w, og_h);
+            remap_watchers();
+        } else if (changed) {
+            update_watcher_geometry();
         }
 
         if (changed) {

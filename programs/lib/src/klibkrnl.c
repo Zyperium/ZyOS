@@ -25,9 +25,9 @@ void kclose(size_t file_d) {
     syscall(4, file_d);
 }
 
-size_t ioctl(const char *drvr, size_t data) {
+size_t ioctl(const char *drvr, size_t data, size_t ex) {
     size_t sz = strlen(drvr);
-    return syscall(5, drvr, data, sz);
+    return syscall(5, drvr, data, sz, ex);
 }
 
 void klog(const char *fmt, ...) {

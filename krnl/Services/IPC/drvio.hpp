@@ -7,7 +7,7 @@
 
 namespace IPC {
     using DrvioCB = uint64_t (*)(Scheduler::Task *);
-    using DrvioIR = uint64_t (*)(Scheduler::Task *, uint64_t details);
+    using DrvioIR = uint64_t (*)(Scheduler::Task *, uint64_t details, uint64_t extra);
 
     class drvio {
     public:

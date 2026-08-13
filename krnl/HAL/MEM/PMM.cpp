@@ -2,6 +2,7 @@
 #include <Library/regs.h>
 #include <Library/string.h>
 #include <Library/debug.hpp>
+#include <Library/locks.hpp>
 
 namespace HAL::MEM::PMM {
     uint8_t* bitmap = nullptr;
@@ -11,22 +12,7 @@ namespace HAL::MEM::PMM {
     uint64_t total_memory = 0;
     uint64_t used_memory = 0;
     uint64_t hhdm_offset = 0;
-
-    bool a_pmm_lock = false;
-    uint64_t cur_rflags = 0;
-    void acquire_lock() {
-        uint64_t rflags = 0;
-        asm volatile("pushfq; pop %0" : "=r"(rflags));
-        asm volatile("cli");
-        while (__atomic_test_and_set(&a_pmm_lock, __ATOMIC_ACQUIRE)) {
-            Debug::krnl_print("PMM", Debug::LOG_INFO, "Locked!");
-            asm volatile("pause");
-        }
-
-        cur_rflags = rflags;
-
-        return;
-    }
+    lib::Spinlock pmm_lock;
 
     bool is_page_used(uint64_t page_index) {
         uint8_t bytr = bitmap[page_index / 8];
@@ -45,14 +31,6 @@ namespace HAL::MEM::PMM {
             bitmap[page_index / 8] &= ~(1 << (page_index  % 8));
             used_memory -= PAGE_SIZE;
         }
-    }
-
-    void release_lock() {
-        restore_rflags(cur_rflags);
-        cur_rflags = 0;
-
-        __atomic_clear(&a_pmm_lock, __ATOMIC_RELEASE);
-        return;
     }
 
     void initialize(volatile struct limine_memmap_response *memmap_resp, volatile limine_hhdm_request *hhdm_resp) {
@@ -121,19 +99,19 @@ namespace HAL::MEM::PMM {
     }
 
     void *alloc_page() {
-        acquire_lock();
+        lib::ScopedLock x(pmm_lock);
         uint64_t total_pages = total_memory / PAGE_SIZE;
 
         for (uint64_t i = 0; i < total_pages; i++) {
             if (!is_page_used(i)) {
                 lock_page(i);
                 ref_counts[i] = 1;
-                release_lock();
+                
                 return (void*)(i * PAGE_SIZE);
             }
         }
 
-        release_lock();
+        
         return nullptr;
     }
 
@@ -142,11 +120,10 @@ namespace HAL::MEM::PMM {
             return nullptr;
         }
     
-        acquire_lock();
+        lib::ScopedLock x(pmm_lock);
         uint64_t total_pages = total_memory / PAGE_SIZE;
     
         if (count > total_pages) {
-            release_lock();
             return nullptr;
         }
     
@@ -166,14 +143,12 @@ namespace HAL::MEM::PMM {
                     lock_page(i + k);
                     ref_counts[i + k] = 1;
                 }
-                release_lock();
                 return (void *)(i * PAGE_SIZE);
             }
 
             i += j;
         }
 
-        release_lock();
         return nullptr;
     }
 
@@ -181,8 +156,7 @@ namespace HAL::MEM::PMM {
         if ((uint64_t)free_addr > total_memory) {
             return;
         }
-
-        acquire_lock();
+        lib::ScopedLock x(pmm_lock);
 
         uint64_t ui_addr = (uint64_t)free_addr;
         uint64_t page_index = ui_addr / PAGE_SIZE;
@@ -195,17 +169,15 @@ namespace HAL::MEM::PMM {
             free_page_index(page_index);
         }
 
-        release_lock();
         return;
     }
 
     void reference_page(void *page) {
-        acquire_lock();
+        lib::ScopedLock x(pmm_lock);
         uint64_t ui_addr = (uint64_t)page;
         uint64_t page_index = ui_addr / PAGE_SIZE;
         
         ref_counts[page_index]++;
-        release_lock();
         return;
     }
 }

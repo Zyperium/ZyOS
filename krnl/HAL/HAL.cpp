@@ -11,6 +11,7 @@
 
 #include <Library/debug.hpp>
 #include <Library/string.h>
+#include <Library/regs.h>
 
 #include <Services/TTY/BootTTY.hpp>
 
@@ -67,6 +68,7 @@ namespace HAL {
         data->kernel_stack = 0;
         data->self = data;
         data->lapic_ticks_per_ms = 0;
+        data->root_cr3 = read_cr3();
         
         CORE::init_core(data);
 

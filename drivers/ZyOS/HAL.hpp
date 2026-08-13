@@ -75,6 +75,7 @@ namespace HAL {
             int core_id;
             uint32_t lapic_ticks_per_ms;
             Scheduler::Task *system_idle_task;
+            uint64_t root_cr3;
         };
 
         CoreLocal *get_core_data();

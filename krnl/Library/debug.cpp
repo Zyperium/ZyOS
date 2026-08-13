@@ -4,6 +4,7 @@
 #include <Library/debug.hpp>
 #include <Library/io.hpp>
 #include <Library/regs.h>
+#include <Library/locks.hpp>
 #include <HAL/CORE/Core.hpp>
 #include <Services/TTY/BootTTY.hpp>
 
@@ -209,13 +210,12 @@ namespace Debug {
         }
     }
     
-    // why do this weird "lock" thing? Because regular locks deadlock here,
-    // and this doesn't, plus this also works? idk.
-    volatile size_t current_access{0};
+    lib::Spinlock log_lock;
     void krnl_print(const char* class_name,
            LogLevel level,
            const char* fmt, ...)
     {
+        lib::ScopedLock x(log_lock);
         bool da = HAL::CORE::validate_gs_reg();
 
         // if (da && !current_access) {
@@ -262,7 +262,6 @@ namespace Debug {
     
         if (!TTY::BOOT::is_active()) {
             va_end(args_copy);
-            current_access = 0;
             return;
         }
     
@@ -271,6 +270,5 @@ namespace Debug {
         va_end(args_copy);
         
         TTY::BOOT::show_log(class_name, level_name(level), tbuf);
-        current_access = 0;
     }
 }

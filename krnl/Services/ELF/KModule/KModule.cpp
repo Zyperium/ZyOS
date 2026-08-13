@@ -156,14 +156,16 @@ namespace ELF::KModule {
                     auto *sym = &global_symtab[sym_idx];
                     auto sym_addr{0uz};
 
+                    char *msym = global_strtab + sym->name;
+
                     if (sym->shndx != 0 && sym->shndx < hdr.sh_count) {
                         sym_addr = section_addrs[sym->shndx] + sym->value;
                     } 
-                    else if (sym->shndx == 0) {
-                        sym_addr = resolve_symbol(global_strtab + sym->name);
+                    else if (sym->shndx == 0 && msym[0]) {
+                        sym_addr = resolve_symbol(msym);
 
                         if (!sym_addr) {
-                            Debug::krnl_print("KMOD", Debug::LOG_WARN, "Unable to resolve symbol");
+                            Debug::krnl_print("KMOD", Debug::LOG_WARN, "Unable to resolve symbol", global_strtab + sym->name);
                             delete[] global_symtab;
                             delete[] global_strtab;
                             delete[] sections;
@@ -241,7 +243,7 @@ namespace ELF::KModule {
             uint32_t mid_hash = kernel_symbols->elements[mid].hash;
 
             if (mid_hash == target_hash) {
-                Debug::krnl_print("KMOD", Debug::LOG_INFO, "Resolved symbol %s", symbol);
+                Debug::krnl_print("KMOD", Debug::LOG_INFO, "Resolved symbol [%s] (%x)", symbol, kernel_symbols->elements[mid].address);
                 return kernel_symbols->elements[mid].address;
             }
             if (mid_hash < target_hash) {
@@ -252,7 +254,7 @@ namespace ELF::KModule {
             }
         }
 
-        Debug::krnl_print("KMOD", Debug::LOG_WARN, "Unable to resolve symbol %s", symbol);
+        Debug::krnl_print("KMOD", Debug::LOG_WARN, "Unable to resolve symbol [%s]", symbol);
         return 0;
     }
 

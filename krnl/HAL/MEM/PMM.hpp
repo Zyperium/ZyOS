@@ -12,9 +12,6 @@ namespace HAL::MEM::PMM {
     extern uint64_t used_memory;
     extern uint64_t hhdm_offset;
 
-    void acquire_lock();
-    void release_lock();
-
     void initialize(volatile limine_memmap_response *memmap_resp, volatile struct limine_hhdm_request *hhdm_resp);
     void *alloc_page();
     void *alloc_contig(size_t count);

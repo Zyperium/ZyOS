@@ -265,24 +265,25 @@ namespace Scheduler {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "ints are %s", (is_interrupt_enabled()) ? "on" : "off");
         current_queue = 0;
         running = false;
+
         if (!xsave_pages) {
             uint32_t xsve = get_xsave_size();
 
             xsave_pages = (xsve + (PAGE_SIZE - 1))  / PAGE_SIZE;
         }
 
+        uint64_t flags = VMM::PTE_PRESENT |
+            VMM::PTE_WRITABLE;
+
         fx_state = (uint8_t *)PMEM::alloc_pages(
             xsave_pages,
-            VMM::PTE_PRESENT |
-            VMM::PTE_WRITABLE |
-            VMM::PTE_NX
+            flags
         );
-    
-        memset(fx_state, 0, FX_STATE_SIZE);
+
+        if (pid != 9)
+            memset(fx_state, 0, FX_STATE_SIZE);
         vruntime = global_min_vruntime;
 
-        uint32_t *mxcsr = reinterpret_cast<uint32_t *>(&fx_state[24]);
-        *mxcsr = 0x1F80;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished primitive task setup");
@@ -332,7 +333,6 @@ namespace Scheduler {
             enqueue();
         }
 
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler has initialized task %s", task_name.c_str());
         return;
     }
 
@@ -356,6 +356,7 @@ namespace Scheduler {
     }
 
     void Task::suicide() {
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Task %s is exiting.", task_name.c_str());
         reaper_task->unblock(BlockReasons::SLEEP);
         block(BlockReasons::GARBAGE);
         for (;;) asm volatile("hlt");
@@ -488,7 +489,9 @@ namespace Scheduler {
         HAL::CORE::get_core_data()->current_task->suicide();
     }
     
+    lib::Spinlock garbage_lock;
     void ClearGarbage() {
+        lib::ScopedLock x(garbage_lock);
         TaskBlock *head = blocked_queue[(size_t)BlockReasons::GARBAGE];
         if (!head) {
             return;
@@ -523,6 +526,11 @@ namespace Scheduler {
                 if (t->cr3 != krnl_cr3) {
                     VMM::FreeProcessPages(t->cr3);
                 }
+
+                if (t->fx_state) {
+                    PMEM::free_pages(t->fx_state, xsave_pages);
+                    t->fx_state = nullptr; // THIS WAS MISSING!
+                }
             
                 if (t->krnl_stack_btm) {
                     uintptr_t original_alloc_ptr = reinterpret_cast<uintptr_t>(t->krnl_stack_btm) - PAGE_SIZE;
@@ -537,6 +545,7 @@ namespace Scheduler {
         } while (current != head);
     }
 }
+
 static inline void xsave_state(void *buffer) {
     uint32_t low = 0xFFFFFFFF;
     uint32_t high = 0xFFFFFFFF;
@@ -564,6 +573,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         return current_rsp;
     }
 
+    lib::ScopedLock x(Scheduler::garbage_lock);
     HAL::CORE::CoreLocal *thread_data = HAL::CORE::get_core_data();
     uint64_t curr_sys_time = ACPI::get_sys_time();
     if (curr_sys_time - last_ram_prnt > 30000) {
@@ -603,18 +613,17 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     if (next_task != prev_task) {
         if (prev_task) {
-            if (prev_task->cr3 != next_task->cr3) {
-                asm volatile("mov %0, %%cr3" :: "r"(next_task->cr3) : "memory");
-            }
             if (prev_task->fx_state) {
                 xsave_state(prev_task->fx_state);
+            }
+            if (prev_task->cr3 != next_task->cr3) {
+                asm volatile("mov %0, %%cr3" :: "r"(next_task->cr3) : "memory");
             }
         }
         if (next_task->fx_state) {
             xrstor_state(next_task->fx_state);
         }
     }
-
 
     if (log_switches)
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swap to %s", next_task->task_name.c_str());

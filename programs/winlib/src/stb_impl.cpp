@@ -12,11 +12,8 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     size_t file_size = ksize(fd);
     
     size_t alloc_size = file_size + 32;
-    klog("1. Before malloc");
     uint8_t *charbuf = (uint8_t *)malloc(alloc_size);
-    klog("2. After malloc: charbuf = %p", charbuf);
 
-    klog("Testing page presence across allocation...");
     volatile uint8_t *ptr = (volatile uint8_t *)charbuf;
     for (size_t i = 0; i < file_size; i += 4096) {
         uint8_t dummy = ptr[i]; 
@@ -29,24 +26,18 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
         return nullptr;
     }
 
-    klog("3. Before memset");
     memset(charbuf, 0, alloc_size);
-    klog("4. After memset");
 
-    klog("Testing page presence across allocation...");
     ptr = (volatile uint8_t *)charbuf;
     for (size_t i = 0; i < file_size; i += 4096) {
         uint8_t dummy = ptr[i]; 
         (void)dummy;
     }
-    klog("All pages intact!");
     size_t bytes_read = kread(fd, 0, charbuf, file_size);
-    klog("5. After kread: read %zu bytes", bytes_read);
     
     kclose(fd);
 
     if (bytes_read < file_size) {
-        klog("Short read: expected %zu bytes, got %zu", file_size, bytes_read);
         free(charbuf);
         return nullptr;
     }
@@ -55,15 +46,12 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     int height = 0;
     int channels_in_file = 0;
 
-    klog("Testing page presence across allocation...");
     ptr = (volatile uint8_t *)charbuf;
     for (size_t i = 0; i < file_size; i += 4096) {
         uint8_t dummy = ptr[i]; 
         (void)dummy;
     }
-    klog("All pages intact!");
 
-    klog("Got exactly as expected, passing to stbi");
     uint32_t *pixels = (uint32_t *)stbi_load_from_memory(
         charbuf, 
         (int)file_size, 
@@ -80,16 +68,19 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
         return nullptr;
     }
 
-    size_t total_pixels = (size_t)width * (size_t)height;
-    for (size_t i = 0; i < total_pixels; i++) {
-        uint32_t p = pixels[i];
+    for (int y = 0; y < height; y++) {
+        uint32_t *row = (uint32_t *)((uint8_t *)pixels + (y * width * 4));
         
-        uint32_t r = (p >> 0)  & 0xFF;
-        uint32_t g = (p >> 8)  & 0xFF;
-        uint32_t b = (p >> 16) & 0xFF;
-        uint32_t a = (p >> 24) & 0xFF;
+        for (int x = 0; x < width; x++) {
+            uint32_t p = row[x];
 
-        pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+            uint32_t r = (p >> 0)  & 0xFF;
+            uint32_t g = (p >> 8)  & 0xFF;
+            uint32_t b = (p >> 16) & 0xFF;
+            uint32_t a = (p >> 24) & 0xFF;
+
+            row[x] = (a << 24) | (r << 16) | (g << 8) | b;
+        }
     }
 
     if (out_width) *out_width = width;

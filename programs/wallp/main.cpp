@@ -59,8 +59,17 @@ extern "C" int main() {
     taskbar->height = 48;
     r0ui_call(R0UICall::PushRef, 0);
     memcpy(taskbar->usr_pix_buf, &ptr->usr_pix_buf[ptr->scrnw * ptr->scrnh - (ptr->scrnw * 48)], ptr->scrnw * 48);
-    apply_blur(taskbar->usr_pix_buf, taskbar->scrnw, 48, 8, 2);
+    apply_blur(taskbar->usr_pix_buf, taskbar->scrnw, 48, 16, 3);
     apply_acrylic_finish(taskbar->usr_pix_buf, taskbar->scrnw, 48, 1);
+    uint32_t *logobtn = load_png("A:/SYSTEM/MAIN.PNG", &w, &h);
+
+    const int offset = (48 - w) / 2;
+
+    klog("Image dimensions are %ix%i", w, h);
+    for (auto i{0}; i < h; ++i) {
+        memcpy32_alpha(&taskbar->usr_pix_buf[offset + ((offset + i) * taskbar->width)], &logobtn[i * w], w);
+    }
+
 
     r0ui_call(R0UICall::SetPinned, (uint64_t)"Taskbar");
     r0ui_call(R0UICall::Redraw, 0);

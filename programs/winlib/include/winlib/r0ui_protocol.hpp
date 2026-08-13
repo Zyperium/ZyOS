@@ -1,5 +1,4 @@
 #pragma once
-
 #include <klibkrnl.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -91,7 +90,7 @@ namespace R0UI {
     static_assert(sizeof(WinControl) == 0x1000, "WinControl MUST be exactly 4096 bytes");
 
     struct alignas(4096) WindowView {
-        volatile uint32_t generation;
+        volatile uint32_t generation; 
         volatile uint32_t valid;
         uint32_t *pix_buf;
         uint32_t width, height;
@@ -105,6 +104,7 @@ namespace R0UI {
         OpenWindow  = 1,
         PushRef     = 2,
         WatchWindow = 3,
+        SetPinned   = 4,
     };
 }
 

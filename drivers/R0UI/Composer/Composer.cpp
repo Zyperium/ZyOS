@@ -98,6 +98,18 @@ namespace R0UI::Composer {
         HAL::SCREEN::repaint();
     }
 
+    static void paint_list(winpair *head, uint32_t *ttybuffer) {
+        if (!head) return;
+
+        winpair *node = head->prev;
+        do {
+            if (node->ref) {
+                node->ref->paint(ttybuffer);
+            }
+            node = node->prev;
+        } while (node != head->prev && node != nullptr);
+    }
+
     void do_run_through() {
         if (!requires_redraw) return;
 
@@ -105,7 +117,7 @@ namespace R0UI::Composer {
 
         lib::ScopedLock lock(linklock);
 
-        if (!linked_io) {
+        if (!linked_io && !pinned_io) {
             paint_init(tty_buf, width, height);
             requires_redraw = false;
             current_damage = {0, 0, 0, 0};
@@ -114,15 +126,8 @@ namespace R0UI::Composer {
 
         HAL::MEM::FMEM::FastFill32(tty_buf, 0xFF1F1F1F, width * height);
 
-        winpair *node = linked_io->prev; 
-        if (node) {
-            do {
-                if (node->ref) {
-                    node->ref->paint(tty_buf);
-                }
-                node = node->prev;
-            } while (node != linked_io->prev && node != nullptr);
-        }
+        paint_list(linked_io, tty_buf);
+        paint_list(pinned_io, tty_buf);
 
         requires_redraw = false;
 
@@ -130,19 +135,25 @@ namespace R0UI::Composer {
         current_damage = {0, 0, 0, 0};
     }
 
-    static Window *hit_test(int32_t x, int32_t y) {
-        lib::ScopedLock lock(linklock);
-        if (!linked_io) return nullptr;
+    static Window *hit_test_list(winpair *head, int32_t x, int32_t y, Window *hit) {
+        if (!head) return hit;
 
-        Window *hit{nullptr};
-        winpair *node = linked_io->prev;
+        winpair *node = head->prev;
         do {
             if (node->ref && node->ref->factposn.contains({x, y})) {
                 hit = node->ref;
             }
             node = node->prev;
-        } while (node != linked_io->prev && node != nullptr);
+        } while (node != head->prev && node != nullptr);
 
+        return hit;
+    }
+
+    static Window *hit_test(int32_t x, int32_t y) {
+        lib::ScopedLock lock(linklock);
+
+        Window *hit = hit_test_list(linked_io, x, y, nullptr);
+        hit = hit_test_list(pinned_io, x, y, hit);
         return hit;
     }
 
@@ -152,7 +163,7 @@ namespace R0UI::Composer {
         Event out{};
         out.type = ev.data.kb.pressed ? EventType::KeyDown : EventType::KeyUp;
         out.data.key.keycode = (uint32_t)ev.data.kb.keycode;
-        out.data.key.modifiers = 0; // TODO: track shift/ctrl/alt once a keymap layer exists
+        out.data.key.modifiers = 0;
         out.data.key.pressed = ev.data.kb.pressed ? 1 : 0;
 
         focused_window->push_event(out);
@@ -174,10 +185,9 @@ namespace R0UI::Composer {
 
         Window *target = hit_test(cursor_pos.x, cursor_pos.y);
 
-        // Click-to-focus: only steal focus on a fresh press, never mid-drag.
         if (m1_edge_down && target != focused_window) {
             focused_window = target;
-            force_redraw(); // so focus decor/highlight can update later
+            force_redraw();
         }
 
         if (!focused_window) return;
@@ -235,6 +245,8 @@ namespace R0UI::Composer {
         pitch = b.pitch;
         width = b.width;
         tty_buf = tty_bbuf;
+
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Composer running with visual address @ %x", tty_bbuf);
 
         paint_init(tty_buf, width, height);
 

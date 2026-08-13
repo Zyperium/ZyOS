@@ -12,6 +12,7 @@ using namespace HAL::MEM;
 
 namespace R0UI {
     winpair *linked_io{nullptr};
+    winpair *pinned_io{nullptr};
     lib::Spinlock linklock{};
     lib::umap<Scheduler::Task *, lib::vec<Window *>> watched_resources;
 
@@ -105,6 +106,59 @@ namespace R0UI {
         return (uint32_t *)write_at;
     }
 
+    void Window::set_pinned(bool pin) {
+        if (pin == pinned) return;
+
+        // lib::ScopedLock lock(linklock);
+
+        winpair *&src = pinned ? pinned_io : linked_io;
+
+        winpair *tmp_io = src;
+        if (tmp_io) {
+            do {
+                if (tmp_io->ref == this) break;
+                tmp_io = tmp_io->next;
+            } while (tmp_io != src);
+        }
+
+        if (!tmp_io || tmp_io->ref != this) {
+            Debug::krnl_print("R0UI", Debug::LOG_WARN, "Window::set_pinned() couldn't find self in its own list?");
+            return;
+        }
+
+        if (tmp_io->next == tmp_io) {
+            src = nullptr;
+        } else {
+            if (tmp_io == src) {
+                src = tmp_io->next;
+            }
+            tmp_io->prev->next = tmp_io->next;
+            tmp_io->next->prev = tmp_io->prev;
+        }
+
+        pinned = pin;
+
+        winpair *&dst = pinned ? pinned_io : linked_io;
+        if (!dst) {
+            tmp_io->next = tmp_io;
+            tmp_io->prev = tmp_io;
+            dst = tmp_io;
+        } else {
+            winpair *last = dst->prev;
+            tmp_io->next = dst;
+            tmp_io->prev = last;
+            last->next = tmp_io;
+            dst->prev = tmp_io;
+        }
+
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "%s window %s",
+                           pinned ? "Pinned" : "Unpinned", classname.c_str());
+
+        Composer::add_damage(factposn.x, factposn.y, factposn.width, factposn.height);
+        Composer::force_redraw();
+    }
+
+
     WindowView *Window::watch(Scheduler::Task *watcher_task) {
         if (!watcher_task || watcher_task == (Scheduler::Task *)owner) {
             return nullptr;
@@ -183,7 +237,7 @@ namespace R0UI {
             return;
         }
     }
-
+    
     void Window::map_watcher_pixels(Watcher &w, Scheduler::Task *task) {
         uint32_t total_bytes = factposn.width * factposn.height * sizeof(uint32_t);
         uint32_t total_pages = (total_bytes + VMM::SIZE_OF_PAGE - 1) / VMM::SIZE_OF_PAGE;
@@ -206,13 +260,11 @@ namespace R0UI {
                 (uint64_t *)(task->cr3 + PMM::hhdm_offset),
                 new_va + (i * VMM::SIZE_OF_PAGE),
                 phys_addr,
-                // No PTE_WRITABLE: this is a read-only view of someone else's window.
                 VMM::PTE_PRESENT | VMM::PTE_WRITEBACK | VMM::PTE_NX | VMM::PTE_USER
             );
         }
 
         if (new_va != old_va && old_va) {
-            // Grew into a fresh range - drop the old one entirely.
             for (auto i{0uz}; i < old_pages; ++i) {
                 VMM::unmap_page(
                     (uint64_t *)(task->cr3 + PMM::hhdm_offset),
@@ -220,9 +272,6 @@ namespace R0UI {
                 );
             }
         } else if (new_va == old_va && total_pages < old_pages) {
-            // Reused the same VA but shrank - the tail pages now point at physical frames the
-            // buffer no longer owns (they get freed right after this runs). Unmap them, or the
-            // watcher keeps a live read-only window into whatever ends up reusing that memory.
             for (auto i{total_pages}; i < old_pages; ++i) {
                 VMM::unmap_page(
                     (uint64_t *)(task->cr3 + PMM::hhdm_offset),
@@ -282,10 +331,6 @@ namespace R0UI {
 
     Window::~Window() {
         Composer::notify_window_destroyed(this);
-
-        // Tear down anyone watching us first: unmap their RO pixel mapping, mark their handle
-        // invalid so they stop dereferencing pix_buf, and drop ourselves out of their
-        // watched_resources entry so their eventual task exit doesn't touch a dangling Window*.
         for (auto i{0uz}; i < watchers.size(); ++i) {
             Watcher &w = watchers.data()[i];
             if (!w.task) continue;
@@ -320,14 +365,16 @@ namespace R0UI {
         PMEM::free_page(winref);
 
         // lib::ScopedLock x(linklock);
-        
-        if (!linked_io) return;
 
-        winpair *tmp_io = linked_io;
+        winpair *&home = pinned ? pinned_io : linked_io;
+
+        if (!home) return;
+
+        winpair *tmp_io = home;
         do {
             if (tmp_io->ref == this) break;
             tmp_io = tmp_io->next;
-        } while (tmp_io != linked_io);
+        } while (tmp_io != home);
 
         if (tmp_io->ref != this) {
             Debug::krnl_print("R0UI", Debug::LOG_INFO, "Unable to find self in list.");
@@ -335,10 +382,10 @@ namespace R0UI {
         }
 
         if (tmp_io->next == tmp_io) {
-            linked_io = nullptr;
+            home = nullptr;
         } else {
-            if (tmp_io == linked_io) {
-                linked_io = tmp_io->next;
+            if (tmp_io == home) {
+                home = tmp_io->next;
             }
             tmp_io->prev->next = tmp_io->next;
             tmp_io->next->prev = tmp_io->prev;
@@ -455,12 +502,6 @@ namespace R0UI {
                 );
             }
         } else if (total_pages < og_pages) {
-            // Same VA range reused (shrink-or-equal case) - the tail pages beyond the new page
-            // count are still mapped but now point at freed physical frames that PMEM is free
-            // to hand out elsewhere. Unmap them, or the owner keeps a live, writable window
-            // into whatever ends up reusing that memory. (Pre-existing bug, unrelated to
-            // watchers - fixed here because watchers make the blast radius worse: a watcher
-            // could end up passively reading another window's pixel data through a reused frame.)
             for (auto i{total_pages}; i < og_pages; ++i) {
                 VMM::unmap_page(
                     (uint64_t *)(ref->cr3 + PMM::hhdm_offset),

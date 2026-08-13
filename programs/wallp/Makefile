@@ -22,10 +22,10 @@ DEPS := $(OBJS:.o=.d)
 
 COMMON_FLAGS := -O3 -m64 -ffreestanding -fno-pie -mcmodel=small \
                 -march=x86-64-v3 \
-                -Wall -Wextra -Iinclude
+                -Wall -Wextra -Iinclude -mstackrealign
 
-CFLAGS   += $(COMMON_FLAGS) -std=c11 -mstackrealign
-CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics -mstackrealign -I$(abspath ../winlib/include)
+CFLAGS   += $(COMMON_FLAGS) -std=c11
+CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics -I$(abspath ../winlib/include)
 
 ASMFLAGS := -f elf64
 
@@ -42,7 +42,7 @@ all: $(OUTPUT_DIR)/$(PROGRAM_NAME)
 $(OUTPUT_DIR)/$(PROGRAM_NAME): $(OBJS)
 	@mkdir -p $(@D)
 	@echo "[LD] $@"
-	$(LD) $(BASE_LDFLAGS) -o $@ $(OBJS) $(GLOBAL_LIB_FILE) $(abspath ../build/winlib.a)
+	$(LD) $(BASE_LDFLAGS) -o $@ $(OBJS) $(abspath ../build/winlib.a) $(GLOBAL_LIB_FILE)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)

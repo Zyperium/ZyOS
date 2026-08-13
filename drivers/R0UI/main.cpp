@@ -128,6 +128,25 @@ namespace R0UI {
 
             return (uint64_t)view;
         }
+        else if (data == 4) {
+            char *res = Syscalls::usr_to_string(extra, 22); // 22 for SSO
+
+            if (res[0] == 0) {
+                delete[] res;
+                return 0;
+            }
+
+            Window **target = class_mapping.find(res);
+            delete[] res;
+
+            if (!target)
+                return 0;
+
+            Window *nwin = *target;
+            nwin->set_pinned(true);
+
+            return 0;
+        }
 
         return 0;
     }
@@ -140,7 +159,6 @@ namespace R0UI {
         Scheduler::Task *self_task = (Scheduler::Task *)HAL::CORE::get_core_data()->current_task;
         self_task->task_name = "R0UI_W1";
 
-        // register an ioctl
         IPC::drvio *new_io = new IPC::drvio("R0UI/");
         new_io->on_entry = on_enter;
         new_io->on_call = on_call;

@@ -40,6 +40,17 @@ global ignore_handler
 %endmacro
 
 ignore_handler:
+    test qword [rsp + 8], 3
+    jz .krnl_exit
+
+    or qword [rsp + 32], 3
+    cmp qword [rsp + 32], 0x23
+    je .krnl_exit
+
+    mov qword [rsp + 8], 0x1B
+    mov qword [rsp + 32], 0x23
+
+.krnl_exit:
     iretq
 
 interrupt_common:

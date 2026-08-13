@@ -1,28 +1,10 @@
 #include <string.h>
 #include <klibkrnl.h>
 #include <kalloc.h>
-
-#define STBI_NO_STDIO
-#define STBI_NO_FAILURE_STRINGS
-#define STBI_NO_LINEAR
-#define STBI_NO_HDR
 #define _MM_MALLOC_H_INCLUDED
-
-#define STBI_MALLOC(sz)        malloc(sz)
-#define STBI_REALLOC(p, newsz) realloc(p, newsz)
-#define STBI_FREE(p)           free(p)
-#define STBI_ABS(x)            abs(x)
-#define STBI_ASSERT(x)         ((void)0)
-
-#define STB_IMAGE_IMPLEMENTATION
+#define STBI_NO_STDIO
 #include <winlib/stb_img.h>
 
-#define STBIR_NO_STDIO
-#define STBIR_MALLOC(sz, c)    ((void)(c), malloc(sz))
-#define STBIR_FREE(p, c)       ((void)(c), free(p))
-#define STBIR_ASSERT(x)        ((void)0)
-
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <winlib/stb_image_resize2.h>
 
 uint32_t *load_png(const char *path, int *out_width, int *out_height) {
@@ -30,28 +12,36 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     size_t file_size = ksize(fd);
     
     size_t alloc_size = file_size + 32;
+    klog("1. Before malloc");
     uint8_t *charbuf = (uint8_t *)malloc(alloc_size);
+    klog("2. After malloc: charbuf = %p", charbuf);
 
+    klog("Testing page presence across allocation...");
     volatile uint8_t *ptr = (volatile uint8_t *)charbuf;
     for (size_t i = 0; i < file_size; i += 4096) {
         uint8_t dummy = ptr[i]; 
         (void)dummy;
     }
+    klog("All pages intact!");
 
     if (!charbuf) {
         kclose(fd);
         return nullptr;
     }
 
+    klog("3. Before memset");
     memset(charbuf, 0, alloc_size);
+    klog("4. After memset");
 
+    klog("Testing page presence across allocation...");
     ptr = (volatile uint8_t *)charbuf;
     for (size_t i = 0; i < file_size; i += 4096) {
         uint8_t dummy = ptr[i]; 
         (void)dummy;
     }
-    
+    klog("All pages intact!");
     size_t bytes_read = kread(fd, 0, charbuf, file_size);
+    klog("5. After kread: read %zu bytes", bytes_read);
     
     kclose(fd);
 
@@ -65,12 +55,15 @@ uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     int height = 0;
     int channels_in_file = 0;
 
+    klog("Testing page presence across allocation...");
     ptr = (volatile uint8_t *)charbuf;
     for (size_t i = 0; i < file_size; i += 4096) {
         uint8_t dummy = ptr[i]; 
         (void)dummy;
     }
+    klog("All pages intact!");
 
+    klog("Got exactly as expected, passing to stbi");
     uint32_t *pixels = (uint32_t *)stbi_load_from_memory(
         charbuf, 
         (int)file_size, 
@@ -115,7 +108,6 @@ uint32_t *resize_image(const uint32_t *src_pixels, int src_w, int src_h, int tar
         return nullptr;
     }
 
-    klog("Beginning stbir resize");
     unsigned char *result = stbir_resize_uint8_srgb(
         (const unsigned char *)src_pixels, src_w, src_h, 0,
         (unsigned char *)resized_pixels, target_w, target_h, 0,

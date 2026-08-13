@@ -52,7 +52,18 @@ extern "C" int main() {
 
     r0ui_call(R0UICall::Redraw, 0);
 
-    syscall(21, "A:/TASKBAR.ZYX");
+    WinControl *taskbar = (WinControl *)r0ui_call(R0UICall::OpenWindow, (uint64_t)"Taskbar");
+    taskbar->x = 0;
+    taskbar->y = taskbar->scrnh - 48;
+    taskbar->width = taskbar->scrnw;
+    taskbar->height = 48;
+    r0ui_call(R0UICall::PushRef, 0);
+    memcpy(taskbar->usr_pix_buf, &ptr->usr_pix_buf[ptr->scrnw * ptr->scrnh - (ptr->scrnw * 48)], ptr->scrnw * 48);
+    apply_blur(taskbar->usr_pix_buf, taskbar->scrnw, 48, 8, 2);
+    apply_acrylic_finish(taskbar->usr_pix_buf, taskbar->scrnw, 48, 1);
+
+    r0ui_call(R0UICall::SetPinned, (uint64_t)"Taskbar");
+    r0ui_call(R0UICall::Redraw, 0);
 
     for (;;) {
         uint32_t h_idx = ptr->events.head;

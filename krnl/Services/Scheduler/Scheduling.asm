@@ -67,8 +67,8 @@ SchedulerHandler:
     cmp qword [rsp + 32], 0x23
     je .krnl_exit
 
-    mov qword [rsp + 8], 0x1B
     mov qword [rsp + 32], 0x23
+    mov qword [rsp + 8], 0x1B
 
 .krnl_exit:
     iretq

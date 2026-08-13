@@ -15,7 +15,7 @@
 #define STBI_ASSERT(x)         ((void)0)
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_img.h"
+#include <winlib/stb_img.h>
 
 #define STBIR_NO_STDIO
 #define STBIR_MALLOC(sz, c)    ((void)(c), malloc(sz))
@@ -23,7 +23,7 @@
 #define STBIR_ASSERT(x)        ((void)0)
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include "stb_image_resize2.h"
+#include <winlib/stb_image_resize2.h>
 
 uint32_t *load_png(const char *path, int *out_width, int *out_height) {
     size_t fd = kopen(path);

@@ -1,5 +1,6 @@
 /**
     This is a ring 0 GUI driver because I want to make a UI. This is fun. Lumina is the "proper" windowing server
+    Though don't quote me on this lol. Maybe I'll just refactor this forever.
 */
 #include <DRIVER.hpp>
 #include <SERVICES.hpp>

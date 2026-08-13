@@ -1,4 +1,4 @@
-PROGRAM_NAME ?= test_prg.zyx
+PROGRAM_NAME ?= wallp.zyx
 OUTPUT_DIR   ?= ../build
 SRC_DIR      := .
 
@@ -20,19 +20,17 @@ OBJS := $(CPPSRC:%.cpp=$(OBJ_DIR)/%.o) \
 
 DEPS := $(OBJS:.o=.d)
 
-COMMON_FLAGS := -O2 -m64 -ffreestanding -fno-pie -mcmodel=small \
+COMMON_FLAGS := -O3 -m64 -ffreestanding -fno-pie -mcmodel=small \
                 -march=x86-64-v3 \
                 -Wall -Wextra -Iinclude
 
 CFLAGS   += $(COMMON_FLAGS) -std=c11 -mstackrealign
-CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics -mstackrealign
+CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics -mstackrealign -I$(abspath ../winlib/include)
 
 ASMFLAGS := -f elf64
 
-# Base Linker Flags
 BASE_LDFLAGS := -m elf_x86_64 -z max-page-size=0x1000
 
-# Linker script flag (if provided by parent makefile)
 ifneq ($(GLOBAL_LINK_DIR),)
     BASE_LDFLAGS += -T $(GLOBAL_LINK_DIR)
 endif
@@ -41,11 +39,10 @@ endif
 
 all: $(OUTPUT_DIR)/$(PROGRAM_NAME)
 
-# Link command: OBJS -> LINKER SCRIPT -> STATIC LIB
 $(OUTPUT_DIR)/$(PROGRAM_NAME): $(OBJS)
 	@mkdir -p $(@D)
 	@echo "[LD] $@"
-	$(LD) $(BASE_LDFLAGS) -o $@ $(OBJS) $(GLOBAL_LIB_FILE)
+	$(LD) $(BASE_LDFLAGS) -o $@ $(OBJS) $(GLOBAL_LIB_FILE) $(abspath ../build/winlib.a)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)

@@ -12,8 +12,10 @@ export CXXFLAGS
 export GLOBAL_LINK_DIR
 export GLOBAL_LIB_FILE
 
-LIB_DIR := lib/
-OTHER_DIRS := $(filter-out $(LIB_DIR), $(PROGRAM_DIRS))
+LIB_DIR    := lib/
+WINLIB_DIR := winlib/
+
+OTHER_DIRS := $(filter-out $(LIB_DIR) $(WINLIB_DIR), $(PROGRAM_DIRS))
 
 .PHONY: all clean $(PROGRAM_DIRS)
 
@@ -30,6 +32,14 @@ $(PROGRAM_DIRS):
 	@$(MAKE) -C $@
 
 ifneq ($(filter $(LIB_DIR), $(PROGRAM_DIRS)),)
+ifneq ($(filter $(WINLIB_DIR), $(PROGRAM_DIRS)),)
+$(WINLIB_DIR): $(LIB_DIR)
+endif
+endif
+
+ifneq ($(filter $(WINLIB_DIR), $(PROGRAM_DIRS)),)
+$(OTHER_DIRS): $(WINLIB_DIR)
+else ifneq ($(filter $(LIB_DIR), $(PROGRAM_DIRS)),)
 $(OTHER_DIRS): $(LIB_DIR)
 endif
 

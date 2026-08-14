@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <lib/locks.hpp>
+#include <SERVICES.hpp>
 
 namespace R0UI {
     class Window;
@@ -51,6 +52,9 @@ namespace R0UI::Composer {
     Window *get_focused_window();
 
     void notify_window_destroyed(Window *w);
+
+    uint32_t *request_wallpaper(Scheduler::Task *owner);
+    void release_wallpaper(Scheduler::Task *owner);
 
     static inline bool is_interrupt_enabled(void) {
         uint64_t rflags;

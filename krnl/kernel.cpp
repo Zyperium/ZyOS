@@ -1,3 +1,5 @@
+#include "HAL/MSR.hpp"
+#include "Services/Input/Input.hpp"
 #include <stdint.h>
 #include <limine.h>
 
@@ -32,6 +34,7 @@ using namespace HAL;
 void SysIdleTask() {
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Entering idle task...");
     for (;;) {
+        Debug::krnl_print("KRNL", Debug::LOG_INFO, "I am doing nothing!");
         asm volatile("sti; hlt");
     }
 }
@@ -86,6 +89,12 @@ extern "C" void krnlmain() {
         "Forker",
         true
     );
+
+    // new Scheduler::Task(
+    //     (Scheduler::Task::EntryPoint)Input::testing,
+    //     "KB&M IO",
+    //     true
+    // );
 
     PS2::Keyboard::Initialize();
 

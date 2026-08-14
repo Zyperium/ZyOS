@@ -1,3 +1,4 @@
+#include "HAL/MSR.hpp"
 #include <Services/Scheduler/Scheduler.hpp>
 #include <HAL/IDT/IDT.hpp>
 #include <HAL/IDT/Panic.hpp>
@@ -102,8 +103,7 @@ namespace HAL::IDT {
             set_gate(i, (void*)ignore_handler, GATE_INTERRUPT);
         }
 
-
-        set_gate(KEYBOARD_VECTOR, (void *)PS2Keyboard, GATE_INTERRUPT);
+        set_gate(DEFAULT_KB_VECTOR, (void *)PS2Keyboard, GATE_INTERRUPT);
         set_gate(ISR_CODES::DIV_ZERO, (void *)isr0, GATE_INTERRUPT);
         set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void *)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI + 1);
         set_gate(ISR_CODES::DOUBLE_FAULT, (void *)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT + 1);
@@ -116,12 +116,12 @@ namespace HAL::IDT {
         idtr.limit = (sizeof(IDTEntry) * MAX_VECTORS) - 1;
         idtr.base  = reinterpret_cast<uint64_t>(&idt[0]);
 
-        outb(PIC1_DATA, PIC_FULL_MASK);
-        outb(PIC2_DATA, PIC_FULL_MASK);
-
         IOAPIC::initialize();
 
         IOAPIC::set_redirect(DEFAULT_KB_VECTOR, KEYBOARD_VECTOR, 0);
+
+        outb(PIC1_DATA, PIC_FULL_MASK);
+        outb(PIC2_DATA, PIC_FULL_MASK);
 
         asm volatile("lidt %0" :: "m"(idtr));
     }

@@ -132,7 +132,6 @@ namespace SysInitA {
             delete[] drvrs[i];
         }
 
-
         for (auto i{0uz}; i < apps.size(); ++i) {
             if (DISK::IsValidDisk(apps[i][0]))
                 new Scheduler::Task([](void *path) {

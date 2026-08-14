@@ -70,10 +70,10 @@ namespace Scheduler {
 
         for (;;) {
             if (!blocked_queue[(int)BlockReasons::FORK]) {
-                Yield();
+                frkr_task->block(BlockReasons::SLEEP);
                 continue;
             }
-            
+
             asm volatile("cli");
 
             Task *to_fork = blocked_queue[(int)BlockReasons::FORK]->t_ptr;
@@ -151,8 +151,9 @@ namespace Scheduler {
 
             TrapFrame *child_frame = reinterpret_cast<TrapFrame *>(fork->rsp);
             Debug::krnl_print("FRKR", Debug::LOG_INFO, 
-    "Child Kernel RSP: %x | Trapped RIP: %x | Trapped RSP: %x", 
-    fork->rsp, child_frame->rip, child_frame->rsp);
+                "Child Kernel RSP: %x | Trapped RIP: %x | Trapped RSP: %x", 
+                fork->rsp, child_frame->rip, child_frame->rsp
+            );
 
             asm volatile("sti");
 
@@ -557,6 +558,7 @@ static inline void xrstor_state(const void *buffer) {
         : "memory");
 }
 
+lib::Spinlock swaplock;
 volatile bool log_switches = false;
 uint64_t last_ram_prnt{0};
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
@@ -570,6 +572,9 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "RAM: %i/%i", PMM::used_memory, PMM::total_memory);
         last_ram_prnt = curr_sys_time;
     }
+
+    if (thread_data->core_id != 0)
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Core %i is scheduling", thread_data->core_id);
 
     auto prev_task = thread_data->current_task;
 
@@ -589,6 +594,8 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     }
 
     Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
+    if (thread_data->core_id != 0)
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swap to %s", next_task->task_name.c_str());
     if (next_task && next_task != thread_data->system_idle_task) {
         next_task->dequeue();
     }
@@ -616,7 +623,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     }
 
 
-    if (log_switches)
+    if (log_switches || thread_data->core_id != 0)
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swap to %s", next_task->task_name.c_str());
 
     return next_task->rsp;

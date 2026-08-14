@@ -53,6 +53,8 @@ namespace R0UI {
             watched_resources.remove(nt);
         }
 
+        Composer::release_wallpaper(nt);
+
         return 0;
     }
 
@@ -71,7 +73,7 @@ namespace R0UI {
             return 0;
         }
         else if (data == 1) {
-            char *res = Syscalls::usr_to_string(extra, 22); // 22 for SSO
+            char *res = Syscalls::usr_to_string(extra, 22);
 
             if (res[0] == 0) {
                 delete[] res;
@@ -105,7 +107,7 @@ namespace R0UI {
             }
         }
         else if (data == 3) {
-            char *res = Syscalls::usr_to_string(extra, 22); // 22 for SSO
+            char *res = Syscalls::usr_to_string(extra, 22);
 
             if (res[0] == 0) {
                 delete[] res;
@@ -116,20 +118,18 @@ namespace R0UI {
             delete[] res;
 
             if (!target) {
-                Debug::krnl_print("R0UI", Debug::LOG_INFO, "WatchWindow: no such window class");
                 return 0;
             }
 
             WindowView *view = (*target)->watch(from);
             if (!view) {
-                Debug::krnl_print("R0UI", Debug::LOG_WARN, "WatchWindow: failed to map view for %s", from->task_name.c_str());
                 return 0;
             }
 
             return (uint64_t)view;
         }
         else if (data == 4) {
-            char *res = Syscalls::usr_to_string(extra, 22); // 22 for SSO
+            char *res = Syscalls::usr_to_string(extra, 22);
 
             if (res[0] == 0) {
                 delete[] res;
@@ -146,6 +146,28 @@ namespace R0UI {
             nwin->set_pinned(true);
 
             return 0;
+        }
+        else if (data == 5) {
+            char *res = Syscalls::usr_to_string(extra, 22);
+
+            if (res[0] == 0) {
+                delete[] res;
+                return 0;
+            }
+
+            Window **target = class_mapping.find(res);
+            delete[] res;
+
+            if (!target)
+                return 0;
+
+            Window *nwin = *target;
+            nwin->set_pinned(false);
+
+            return 0;
+        }
+        else if (data == 6) {
+            return (uint64_t)Composer::request_wallpaper(from);
         }
 
         return 0;

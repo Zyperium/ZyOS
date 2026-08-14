@@ -1,3 +1,5 @@
+#include <Services/Scheduler/Scheduler.hpp>
+#include <Library/io.hpp>
 #include <Services/Input/Input.hpp>
 #include <HAL/MEM/KMEM.hpp>
 
@@ -17,5 +19,17 @@ namespace Input {
     void reg_kb_cb(void (*xz)(char c)) {
         if (!callback)
         callback = xz;
+    }
+
+    void testing() {
+        for(;;) {
+            uint8_t ps2_status = inb(0x64); 
+            if (ps2_status & 0x01) {
+                asm volatile("int $0x21");
+            }
+            else {
+                Scheduler::Yield();
+            }
+        }
     }
 }

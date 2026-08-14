@@ -1,5 +1,6 @@
 #include <HAL/IDT/IDT.hpp>
 #include <Library/io.hpp>
+#include <Library/locks.hpp>
 #include <Library/debug.hpp>
 #include <Library/regs.h>
 #include <Services/Scheduler/Scheduler.hpp>
@@ -28,34 +29,14 @@ namespace HAL::CORE {
         init_lapic();
     }
 
-    bool a_core_lock = false;
-    uint64_t cur_rflags = 0;
-    void acquire_lock() {
-        uint64_t rflags = 0;
-        asm volatile("pushfq; pop %0" : "=r"(rflags));
-        asm volatile("cli");
-        while (__atomic_test_and_set(&a_core_lock, __ATOMIC_ACQUIRE)) {
-            asm volatile("pause");
-        }
-
-        cur_rflags = rflags;
-
-        return;
-    }
-
-    void release_lock() {
-        restore_rflags(cur_rflags);
-        cur_rflags = 0;
-        __atomic_clear(&a_core_lock, __ATOMIC_RELEASE);
-        return;
-    }
-
+    lib::Spinlock core_lock;
     volatile bool activate_cores;
     volatile uint16_t core_count{1};
     volatile uint16_t total_cores{1};
     void addi_core_EP() {
-        acquire_lock();
         Debug::krnl_print("CORE", Debug::LOG_INFO, "New core initializing. Core ID: %i", core_count);
+
+        lib::ScopedLock x(core_lock);
         HAL::GDT::initialize();
         HAL::IDT::reload_idt();
 
@@ -67,6 +48,7 @@ namespace HAL::CORE {
         data->lapic_ticks_per_ms = 0;
         data->current_task = nullptr;
         data->last_task_runtime = ACPI::get_sys_time();
+        data->root_cr3 = read_cr3();
         init_core(data);
 
         char task_name[24];
@@ -76,12 +58,8 @@ namespace HAL::CORE {
         idle_task->current_core = data->core_id;
         data->system_idle_task = idle_task;
 
-        release_lock();
-
         calibrate_lapic();
         set_lapic_shot(1);
-
-        while (!activate_cores) asm volatile("pause");
 
         asm volatile("sti");
 

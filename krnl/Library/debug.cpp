@@ -210,12 +210,12 @@ namespace Debug {
         }
     }
     
-    lib::Spinlock log_lock;
+    lib::Spinlock lock;
     void krnl_print(const char* class_name,
            LogLevel level,
            const char* fmt, ...)
     {
-        lib::ScopedLock x(log_lock);
+        lib::ScopedLock x(lock);
         bool da = HAL::CORE::validate_gs_reg();
 
         // if (da && !current_access) {

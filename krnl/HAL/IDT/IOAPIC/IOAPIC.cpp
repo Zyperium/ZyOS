@@ -23,7 +23,6 @@ namespace HAL::IDT::IOAPIC {
     }
 
     void debug_dump_keyboard_gsi() {
-        return;
         uint32_t low_bits = ioapic_read(0x12);
         
         bool masked = (low_bits & (1 << 16)) != 0;
@@ -38,24 +37,21 @@ namespace HAL::IDT::IOAPIC {
     }
 
     void set_redirect(uint8_t irq, uint8_t vector, uint8_t target_lapic_id, bool masked) {
-        uint8_t low_index  = IO_WIN_OFFSET + (irq * 2);
+        uint8_t low_index  = IOREDTBL_BASE + (irq * 2);
         uint8_t high_index = low_index + 1;
-        uint32_t low_bits = 0;
 
-        low_bits |= vector;
-
-        low_bits |= DELIVERY_MODE;
-        low_bits |= DESTINATION_MODE;
-        low_bits |= PIN_POLARITY;
-        low_bits |= TRIGGER_MODE;
-
+        uint32_t low_bits = vector;
+        low_bits |= DELIVERY_FIXED;
+        low_bits |= DEST_PHYSICAL;
+        low_bits |= POLARITY_LOW;
+        low_bits |= TRIGGER_EDGE;
+        
         if (masked) {
             low_bits |= MASKED_BIT;
         }
-
-        uint32_t high_bits = 0;
-        high_bits |= (static_cast<uint32_t>(target_lapic_id) << 24);
-
+    
+        uint32_t high_bits = (static_cast<uint32_t>(target_lapic_id) << 24);
+    
         ioapic_write(low_index, low_bits);
         ioapic_write(high_index, high_bits);
     }

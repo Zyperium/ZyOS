@@ -46,22 +46,26 @@ namespace R0UI {
 
         {
             Debug::krnl_print("R0UI", Debug::LOG_INFO, "Linking window");
-            // lib::ScopedLock n(linklock);
+
+            winpair *self_node{nullptr};
+
             if (!linked_io) {
-                linked_io = new winpair;
-                linked_io->ref = this;
-                linked_io->next = linked_io;
-                linked_io->prev = linked_io;
+                self_node = new winpair;
+                self_node->ref = this;
+                self_node->next = self_node;
+                self_node->prev = self_node;
             } else {
                 winpair *last = linked_io->prev;
-                winpair *new_node = new winpair;
+                self_node = new winpair;
 
-                new_node->ref = this;
-                new_node->next = linked_io;
-                new_node->prev = last;
-                last->next = new_node;
-                linked_io->prev = new_node;
+                self_node->ref = this;
+                self_node->next = linked_io;
+                self_node->prev = last;
+                last->next = self_node;
+                linked_io->prev = self_node;
             }
+
+            linked_io = self_node;
         }
         
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "Damaging UI");
@@ -109,8 +113,6 @@ namespace R0UI {
     void Window::set_pinned(bool pin) {
         if (pin == pinned) return;
 
-        // lib::ScopedLock lock(linklock);
-
         winpair *&src = pinned ? pinned_io : linked_io;
 
         winpair *tmp_io = src;
@@ -142,7 +144,6 @@ namespace R0UI {
         if (!dst) {
             tmp_io->next = tmp_io;
             tmp_io->prev = tmp_io;
-            dst = tmp_io;
         } else {
             winpair *last = dst->prev;
             tmp_io->next = dst;
@@ -150,6 +151,7 @@ namespace R0UI {
             last->next = tmp_io;
             dst->prev = tmp_io;
         }
+        dst = tmp_io;
 
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "%s window %s",
                            pinned ? "Pinned" : "Unpinned", classname.c_str());
@@ -157,7 +159,6 @@ namespace R0UI {
         Composer::add_damage(factposn.x, factposn.y, factposn.width, factposn.height);
         Composer::force_redraw();
     }
-
 
     WindowView *Window::watch(Scheduler::Task *watcher_task) {
         if (!watcher_task || watcher_task == (Scheduler::Task *)owner) {
@@ -237,7 +238,7 @@ namespace R0UI {
             return;
         }
     }
-    
+
     void Window::map_watcher_pixels(Watcher &w, Scheduler::Task *task) {
         uint32_t total_bytes = factposn.width * factposn.height * sizeof(uint32_t);
         uint32_t total_pages = (total_bytes + VMM::SIZE_OF_PAGE - 1) / VMM::SIZE_OF_PAGE;
@@ -331,6 +332,7 @@ namespace R0UI {
 
     Window::~Window() {
         Composer::notify_window_destroyed(this);
+
         for (auto i{0uz}; i < watchers.size(); ++i) {
             Watcher &w = watchers.data()[i];
             if (!w.task) continue;
@@ -363,8 +365,6 @@ namespace R0UI {
         uint32_t total_pages = (total_bytes + VMM::SIZE_OF_PAGE - 1) / VMM::SIZE_OF_PAGE;
         PMEM::free_pages(buffer, total_pages);
         PMEM::free_page(winref);
-
-        // lib::ScopedLock x(linklock);
 
         winpair *&home = pinned ? pinned_io : linked_io;
 
@@ -577,9 +577,6 @@ namespace R0UI {
                 copy_w * sizeof(uint32_t)
             );
         }
-
-        HAL::SCREEN::add_damage(clip_left, clip_top, copy_w, clip_bottom - clip_top);
-        HAL::SCREEN::repaint();
     }
 
     bool Window::push_event(const Event &ev) {

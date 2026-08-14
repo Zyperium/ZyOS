@@ -201,6 +201,11 @@ namespace TTY::BOOT {
     void show_log(const char *lclass, const char *level, const char *log);
 }
 
+namespace Input{ 
+    void reg_kb_cb(void (*callback)(char c));
+    void add_kb(char nc);
+}
+
 namespace Syscalls {
     // Not actually a syscall, but part of the syscall system.
     char *usr_to_string(uint64_t usr_ptr, uint64_t max_value);

@@ -19,12 +19,11 @@ namespace R0UI {
         void resize(uint32_t nwidth, uint32_t nheight);
         void paint(uint32_t *screen);
         void readref(Scheduler::Task *ref);
-        
+
         uint32_t *map_to(Scheduler::Task *pass_to);
         bool push_event(const Event &ev);
 
         WindowView *watch(Scheduler::Task *watcher_task);
-
         void remove_watcher(Scheduler::Task *watcher_task);
 
         void set_pinned(bool pin);
@@ -46,9 +45,9 @@ namespace R0UI {
         bool pinned{false};
 
         struct Watcher {
-            Scheduler::Task *task{nullptr}; 
-            WindowView *view{nullptr};      
-            uint64_t view_va{0};            
+            Scheduler::Task *task{nullptr};
+            WindowView *view{nullptr};
+            uint64_t view_va{0};
             uint64_t pix_va{0};
             uint32_t mapped_pages{0};
         };
@@ -71,7 +70,6 @@ namespace R0UI {
 
     extern lib::Spinlock linklock;
     extern winpair *linked_io;
-
     extern winpair *pinned_io;
 
     extern lib::umap<Scheduler::Task *, lib::vec<Window *>> watched_resources;

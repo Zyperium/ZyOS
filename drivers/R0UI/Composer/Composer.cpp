@@ -6,6 +6,9 @@
 #include <HAL.hpp>
 #include <SERVICES.hpp>
 #include <lib/string.h>
+#include <lib/regs.h>
+
+using namespace HAL::MEM;
 
 namespace R0UI::Composer {
     size_t height = 0, pitch = 0, width = 0;
@@ -19,6 +22,11 @@ namespace R0UI::Composer {
 
     static Window *focused_window{nullptr};
     static Point cursor_pos{0, 0};
+
+    static uint32_t *wallpaper_buffer{nullptr};
+    static uint64_t wallpaper_owner{0};
+    static uint64_t wallpaper_usr_va{0};
+    static uint32_t wallpaper_pages{0};
 
     static bool push_hw_event(const HardwareInputEvent &ev) {
         uint32_t h = input_queue.head;
@@ -53,8 +61,6 @@ namespace R0UI::Composer {
 
     void add_damage(int32_t x, int32_t y, uint32_t w, uint32_t h) {
         if (w == 0 || h == 0) return;
-
-        // lib::ScopedLock lock(cmp_lock);
 
         if (current_damage.width == 0 || current_damage.height == 0) {
             current_damage = {x, y, w, h};
@@ -92,8 +98,64 @@ namespace R0UI::Composer {
         }
     }
 
+    uint32_t *request_wallpaper(Scheduler::Task *owner) {
+        lib::ScopedLock lock(cmp_lock);
+
+        if (wallpaper_buffer) {
+            if (wallpaper_owner == (uint64_t)owner) {
+                return (uint32_t *)wallpaper_usr_va;
+            }
+            return nullptr;
+        }
+
+        uint32_t total_bytes = (uint32_t)(width * height * sizeof(uint32_t));
+        uint32_t total_pages = (total_bytes + VMM::SIZE_OF_PAGE - 1) / VMM::SIZE_OF_PAGE;
+
+        wallpaper_buffer = (uint32_t *)PMEM::alloc_pages(total_pages,
+            VMM::PTE_PRESENT | VMM::PTE_WRITABLE | VMM::PTE_WRITEBACK | VMM::PTE_NX);
+
+        FMEM::FastFill32(wallpaper_buffer, 0xFF1F1F1F, width * height);
+
+        uint64_t write_at = owner->utask->usr_virt_mmap;
+        owner->utask->usr_virt_mmap += total_pages * VMM::SIZE_OF_PAGE;
+
+        uint64_t cast_buf = (uint64_t)wallpaper_buffer;
+        for (auto i{0uz}; i < total_pages; ++i) {
+            uint64_t phys_addr = VMM::GetPhysicalAddress(read_cr3(), cast_buf + (i * VMM::SIZE_OF_PAGE));
+            VMM::map_page(
+                (uint64_t *)(owner->cr3 + PMM::hhdm_offset),
+                write_at + (i * VMM::SIZE_OF_PAGE),
+                phys_addr,
+                VMM::PTE_PRESENT | VMM::PTE_WRITABLE | VMM::PTE_NX | VMM::PTE_WRITEBACK | VMM::PTE_USER
+            );
+        }
+
+        wallpaper_owner = (uint64_t)owner;
+        wallpaper_usr_va = write_at;
+        wallpaper_pages = total_pages;
+
+        force_redraw();
+
+        return (uint32_t *)write_at;
+    }
+
+    void release_wallpaper(Scheduler::Task *owner) {
+        lib::ScopedLock lock(cmp_lock);
+
+        if (!wallpaper_buffer || wallpaper_owner != (uint64_t)owner) return;
+
+        PMEM::free_pages(wallpaper_buffer, wallpaper_pages);
+
+        wallpaper_buffer = nullptr;
+        wallpaper_owner = 0;
+        wallpaper_usr_va = 0;
+        wallpaper_pages = 0;
+
+        force_redraw();
+    }
+
     static void paint_init(uint32_t *ttybuffer, size_t w, size_t h) {
-        HAL::MEM::FMEM::FastFill32(ttybuffer, 0xFF1F1F1F, w * h);
+        FMEM::FastFill32(ttybuffer, 0xFF1F1F1F, w * h);
         HAL::SCREEN::add_damage(0, 0, w, h);
         HAL::SCREEN::repaint();
     }
@@ -117,17 +179,17 @@ namespace R0UI::Composer {
 
         lib::ScopedLock lock(linklock);
 
-        if (!linked_io && !pinned_io) {
-            paint_init(tty_buf, width, height);
-            requires_redraw = false;
-            current_damage = {0, 0, 0, 0};
-            return;
+        if (wallpaper_buffer) {
+            FMEM::FastCopy(tty_buf, wallpaper_buffer, width * height * sizeof(uint32_t));
+        } else {
+            FMEM::FastFill32(tty_buf, 0xFF1F1F1F, width * height);
         }
-
-        HAL::MEM::FMEM::FastFill32(tty_buf, 0xFF1F1F1F, width * height);
 
         paint_list(linked_io, tty_buf);
         paint_list(pinned_io, tty_buf);
+
+        HAL::SCREEN::add_damage(0, 0, width, height);
+        HAL::SCREEN::repaint();
 
         requires_redraw = false;
 

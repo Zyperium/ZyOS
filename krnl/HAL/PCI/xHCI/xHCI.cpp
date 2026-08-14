@@ -403,7 +403,8 @@ namespace HAL::PCI {
         op_regs->dcbaap = VMM::GetPhysicalAddress(read_cr3(), (uint64_t)dcbaap_virt);
 
         uint32_t hcs2 = cap_regs->hcs_params2;
-        uint32_t max_scratchpad = (((hcs2) >> 16) & 0x3e0) | (((hcs2) >> 27) & 0x1f);
+        // uint32_t max_scratchpad = (((hcs2) >> 16) & 0x3e0) | (((hcs2) >> 27) & 0x1f);
+        uint32_t max_scratchpad = (hcs2 >> 27) & 0x1F; 
 
         if (max_scratchpad > 0) {
             Debug::krnl_print("xHCI", Debug::LOG_INFO,
@@ -411,7 +412,7 @@ namespace HAL::PCI {
             
             uint64_t *sp_array = zalloc_page<uint64_t *>();
             if (!sp_array) panic(PanicReasons::xHCI_CRITICAL_ERROR);
-            
+
             for (uint32_t i = 0; i < max_scratchpad; i++) {
                 void *sp_page = zalloc_page<void *>();
                 if (!sp_page) panic(PanicReasons::xHCI_CRITICAL_ERROR);

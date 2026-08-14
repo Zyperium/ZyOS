@@ -90,7 +90,7 @@ namespace R0UI {
     static_assert(sizeof(WinControl) == 0x1000, "WinControl MUST be exactly 4096 bytes");
 
     struct alignas(4096) WindowView {
-        volatile uint32_t generation; 
+        volatile uint32_t generation;
         volatile uint32_t valid;
         uint32_t *pix_buf;
         uint32_t width, height;
@@ -100,10 +100,12 @@ namespace R0UI {
     static_assert(sizeof(WindowView) <= 4096, "WindowView must fit in a single page");
 
     enum class R0UICall : uint64_t {
-        Redraw      = 0,
-        OpenWindow  = 1,
-        PushRef     = 2,
-        WatchWindow = 3,
-        SetPinned   = 4,
+        Redraw           = 0,
+        OpenWindow       = 1,
+        PushRef          = 2,
+        WatchWindow      = 3,
+        PinWindow        = 4,
+        UnpinWindow      = 5,
+        RequestWallpaper = 6,
     };
 }

@@ -4,6 +4,7 @@
 namespace Input {
     void add_kb(char nc);
     void reg_kb_cb(void (*callback)(char c));
+    void testing();
 
     // later!
     struct MousePos {

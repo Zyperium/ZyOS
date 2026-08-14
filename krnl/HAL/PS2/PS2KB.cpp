@@ -20,6 +20,7 @@ namespace PS2 {
     bool Keyboard::extended_code{};
 
     void Keyboard::HandleInterrupt() {
+
         if (!(inb(STATUS_PORT) & 1)) {
             return; 
         }
@@ -57,6 +58,7 @@ namespace PS2 {
         }
 
         char ascii = TranslateScancode(scancode);
+        Debug::krnl_print("PS/2", Debug::LOG_INFO, "Key %i", ascii);
 
         if (ascii != 0) {
             Input::add_kb(ascii);

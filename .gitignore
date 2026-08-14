@@ -13,3 +13,4 @@ bochsout.txt
 *.elf
 *.d
 *.a
+*.fd

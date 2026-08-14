@@ -10,7 +10,7 @@ ASM         := nasm
 AR          := x86_64-elf-ar
 ARFLAGS     := rcs
 
-COMMON_FLAGS := -O0 -m64 -ffreestanding -fno-pie -mcmodel=small \
+COMMON_FLAGS := -O3 -m64 -ffreestanding -fno-pie -mcmodel=small \
                 -march=x86-64-v3 \
                 -Wall -Wextra -Iinclude -I../lib/include -mstackrealign
 CFLAGS       := $(COMMON_FLAGS)

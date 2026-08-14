@@ -4,6 +4,7 @@
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/MEM/PMEM.hpp>
 #include <HAL/MEM/VMM.hpp>
+#include <Services/Input/Input.hpp>
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <Library/regs.h>
@@ -72,7 +73,6 @@ namespace HAL::PCI::HID {
     }
 
     void USBKeyboard::process_report(const KeyboardBootReport& report) {
-        Debug::krnl_print("xHCI", Debug::LOG_INFO, "Received proc report!");
         for (size_t i = 0; i < 6; i++) {
             uint8_t code = report.keycodes[i];
             if (code == 0) continue;
@@ -91,7 +91,7 @@ namespace HAL::PCI::HID {
                     full_convert = USBKeymap::Get(code).shifted;
                 }
 
-                (void)full_convert;
+                Input::add_kb(full_convert);
             }
         }
 

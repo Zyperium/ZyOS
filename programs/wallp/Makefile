@@ -25,7 +25,7 @@ COMMON_FLAGS := -O3 -m64 -ffreestanding -fno-pie -mcmodel=small \
                 -Wall -Wextra -Iinclude -mstackrealign
 
 CFLAGS   += $(COMMON_FLAGS) -std=c11
-CXXFLAGS += $(COMMON_FLAGS) -std=c++20 -fno-rtti -fno-exceptions -fno-threadsafe-statics -I$(abspath ../winlib/include)
+CXXFLAGS += $(COMMON_FLAGS) -std=c++23 -fno-rtti -fno-exceptions -fno-threadsafe-statics -I$(abspath ../winlib/include)
 
 ASMFLAGS := -f elf64
 

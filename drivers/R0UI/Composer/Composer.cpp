@@ -172,6 +172,55 @@ namespace R0UI::Composer {
         } while (node != head->prev && node != nullptr);
     }
 
+    static constexpr int32_t CURSOR_W = 15;
+    static constexpr int32_t CURSOR_H = 23;
+
+    static const uint8_t cursor_sprite[CURSOR_H][CURSOR_W] = {
+        {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {1,1,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {1,2,1,0,0,0,0,0,0,0,0,0,0,0,0},
+        {1,2,2,1,0,0,0,0,0,0,0,0,0,0,0},
+        {1,2,2,2,1,0,0,0,0,0,0,0,0,0,0},
+        {1,2,2,2,2,1,0,0,0,0,0,0,0,0,0},
+        {1,2,2,2,2,2,1,0,0,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,1,0,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,1,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,2,1,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,2,2,1,0,0,0,0},
+        {1,2,2,2,2,2,2,2,2,2,2,1,0,0,0},
+        {1,2,2,2,2,2,2,2,2,2,2,2,1,0,0},
+        {1,2,2,2,2,2,2,2,2,2,2,2,2,1,0},
+        {1,2,2,2,2,2,1,1,1,1,1,1,1,1,1},
+        {1,2,2,2,2,1,0,0,0,0,0,0,0,0,0},
+        {1,2,2,2,1,0,0,0,0,0,0,0,0,0,0},
+        {1,2,2,1,0,0,0,0,0,0,0,0,0,0,0},
+        {1,2,1,0,0,0,0,0,0,0,0,0,0,0,0},
+        {1,1,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+    };
+
+    static void draw_cursor(uint32_t *screen) {
+        int32_t cx = cursor_pos.x;
+        int32_t cy = cursor_pos.y;
+
+        for (int32_t row = 0; row < CURSOR_H; ++row) {
+            int32_t y = cy + row;
+            if (y < 0 || (uint32_t)y >= height) continue;
+
+            for (int32_t col = 0; col < CURSOR_W; ++col) {
+                uint8_t px = cursor_sprite[row][col];
+                if (px == 0) continue; // transparent, leave whatever was painted underneath
+
+                int32_t x = cx + col;
+                if (x < 0 || (uint32_t)x >= width) continue;
+
+                screen[(uint32_t)y * width + (uint32_t)x] = (px == 1) ? 0xFFFFFFFF : 0xFF000000;
+            }
+        }
+    }
+
     void do_run_through() {
         if (!requires_redraw) return;
 
@@ -187,6 +236,8 @@ namespace R0UI::Composer {
 
         paint_list(linked_io, tty_buf);
         paint_list(pinned_io, tty_buf);
+
+        draw_cursor(tty_buf);
 
         HAL::SCREEN::add_damage(0, 0, width, height);
         HAL::SCREEN::repaint();
@@ -219,6 +270,11 @@ namespace R0UI::Composer {
         return hit;
     }
 
+    static Window *pinned_hit_test(int32_t x, int32_t y) {
+        lib::ScopedLock lock(linklock);
+        return hit_test_list(pinned_io, x, y, nullptr);
+    }
+
     static void dispatch_keyboard(const HardwareInputEvent &ev) {
         if (!focused_window) return;
 
@@ -245,6 +301,10 @@ namespace R0UI::Composer {
         bool m1_edge_up   = !ev.data.mouse.m1 && prev_m1;
         prev_m1 = ev.data.mouse.m1;
 
+        if (ev.data.mouse.rel_x != 0 || ev.data.mouse.rel_y != 0) {
+            force_redraw();
+        }
+
         Window *target = hit_test(cursor_pos.x, cursor_pos.y);
 
         if (m1_edge_down && target != focused_window) {
@@ -252,29 +312,43 @@ namespace R0UI::Composer {
             force_redraw();
         }
 
-        if (!focused_window) return;
-
         Event out{};
         out.data.mouse.rel_x = ev.data.mouse.rel_x;
         out.data.mouse.rel_y = ev.data.mouse.rel_y;
         out.data.mouse.buttons = (ev.data.mouse.m1 ? 0x1 : 0) | (ev.data.mouse.m2 ? 0x2 : 0);
 
-        out.type = EventType::MouseMove;
-        focused_window->push_event(out);
+        auto deliver = [&](Window *w) {
+            if (!w) return;
 
-        if (m1_edge_down) {
-            Event down = out;
-            down.type = EventType::MouseDown;
-            focused_window->push_event(down);
-        } else if (m1_edge_up) {
-            Event up = out;
-            up.type = EventType::MouseUp;
-            focused_window->push_event(up);
-        }
+            Event mv = out;
+            mv.type = EventType::MouseMove;
+            w->push_event(mv);
 
-        if (focused_window->winref) {
-            focused_window->winref->mouse_pos.x = cursor_pos.x - focused_window->factposn.x;
-            focused_window->winref->mouse_pos.y = cursor_pos.y - focused_window->factposn.y;
+            if (m1_edge_down) {
+                Event down = out;
+                down.type = EventType::MouseDown;
+                w->push_event(down);
+            } else if (m1_edge_up) {
+                Event up = out;
+                up.type = EventType::MouseUp;
+                w->push_event(up);
+            }
+
+            if (w->winref) {
+                w->winref->mouse_pos.x = cursor_pos.x - w->factposn.x;
+                w->winref->mouse_pos.y = cursor_pos.y - w->factposn.y;
+            }
+        };
+
+        // Pinned windows (taskbar, dock, etc.) always get hover/click input for
+        // whatever's under the cursor, regardless of who currently has focus.
+        Window *pinned_target = pinned_hit_test(cursor_pos.x, cursor_pos.y);
+        deliver(pinned_target);
+
+        // The focused window still gets its own stream too, unless it's the
+        // same pinned window we already delivered to above.
+        if (focused_window && focused_window != pinned_target) {
+            deliver(focused_window);
         }
     }
 
@@ -287,8 +361,6 @@ namespace R0UI::Composer {
             __builtin_ia32_lfence();
 
             if (ev.type == HardwareInputEvent::Type::Keyboard) {
-                Debug::krnl_print("R0UI", Debug::LOG_INFO, "Key: %x (Pressed: %d)", 
-                                  ev.data.kb.keycode, ev.data.kb.pressed);
                 dispatch_keyboard(ev);
             } else if (ev.type == HardwareInputEvent::Type::Mouse) {
                 dispatch_mouse(ev);
@@ -307,6 +379,14 @@ namespace R0UI::Composer {
         pitch = b.pitch;
         width = b.width;
         tty_buf = tty_bbuf;
+
+        Input::reg_kb_cb([](char c){
+            handle_kb_input(c, true);
+        });
+
+        Input::reg_ms_cb([](const Input::MousePos mp){
+            handle_mouse_input(mp.delta_x, mp.delta_y, mp.buttons & 0x1, mp.buttons & 0x2);
+        });
 
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "Composer running with visual address @ %x", tty_bbuf);
 

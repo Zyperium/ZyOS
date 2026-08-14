@@ -1,3 +1,4 @@
+#include <HAL/PCI/xHCI/HID/xHCIMouse.hpp>
 #include <HAL/PCI/xHCI/xHCIDriver.hpp>
 #include <HAL/PCI/xHCI/HID/xHCIKeyboard.hpp>
 #include <HAL/DISK/USB/USBStorage.hpp>
@@ -17,7 +18,7 @@ namespace HAL::PCI {
                 }
                 else if (protocol == PROT_HID_MOUSE) {
                     Debug::krnl_print("xHCI", Debug::LOG_INFO, "Discovered USB Mouse");
-                    return nullptr;
+                    return new HID::USBMouse;
                 }
             }
         }

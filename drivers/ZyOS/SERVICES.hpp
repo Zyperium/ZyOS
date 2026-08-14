@@ -201,11 +201,21 @@ namespace TTY::BOOT {
     void show_log(const char *lclass, const char *level, const char *log);
 }
 
-namespace Input{ 
-    void reg_kb_cb(void (*callback)(char c));
+namespace Input {
     void add_kb(char nc);
-}
+    void reg_kb_cb(void (*callback)(char c));
+    
+    // now
+    struct MousePos {
+        int8_t delta_x;
+        int8_t delta_y;
+        uint8_t buttons;
+        int8_t scroll_wheel;
+    } __attribute__((packed));
 
+    void add_mouse(const MousePos ref);
+    void reg_ms_cb(void (*xmscallback)(const MousePos ref));
+}
 namespace Syscalls {
     // Not actually a syscall, but part of the syscall system.
     char *usr_to_string(uint64_t usr_ptr, uint64_t max_value);

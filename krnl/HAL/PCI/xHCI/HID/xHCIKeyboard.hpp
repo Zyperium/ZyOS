@@ -28,11 +28,11 @@ namespace HAL::PCI {
 
         class USBKeyboard : public PCI::xHCIDriver {
         private:
-            xHCI* controller{nullptr};
+            xHCI *controller{nullptr};
             uint8_t slot_id{0};
             uint8_t interrupt_in_ep{0};
 
-            KeyboardBootReport* report_virt{nullptr};
+            KeyboardBootReport *report_virt{nullptr};
             uint64_t report_phys{0};
 
             bool initialized{false};
@@ -45,7 +45,7 @@ namespace HAL::PCI {
             USBKeyboard() = default;
             virtual ~USBKeyboard() override = default;
 
-            virtual void initialize(PCI::xHCI* _ctrl, uint8_t _slot, void *endpoints, int ep_count) override;
+            virtual void initialize(PCI::xHCI *_ctrl, uint8_t _slot, void *endpoints, int ep_count) override;
             virtual void on_int(uint32_t bytes_transferred, uint32_t endpoint_id, uint64_t param_event) override;
             virtual void start() override;
         };

@@ -11,12 +11,13 @@ void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
     HAL::SCREEN::fill_screen(HAL::SCREEN::COL::RED);
     HAL::SCREEN::flip_buffer();
     Debug::krnl_print("IDT", Debug::LOG_INFO, "Panic!");
+
     switch (reason) {
         case PanicReasons::DIVIDE_BY_ZERO_ERROR:
             Debug::krnl_print("IDT", Debug::LOG_INFO, "Divide by zero error!");
             break;
         case PanicReasons::PAGE_FAULT_KMODE:
-            Debug::krnl_print("IDT", Debug::LOG_INFO, "Page fault in kmode! (%s fault)", HAL::CORE::get_core_data()->current_task->task_name.c_str());
+            Debug::krnl_print("IDT", Debug::LOG_INFO, "Page fault in kmode!");
             break;
         case PanicReasons::GENERAL_FAULT_KMODE: {
             Debug::krnl_print("IDT", Debug::LOG_INFO, "General protection fault!");

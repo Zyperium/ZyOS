@@ -1,5 +1,6 @@
-#include "HAL/MSR.hpp"
+#include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <Services/Scheduler/Scheduler.hpp>
+#include <Services/TTY/BootTTY.hpp>
 #include <HAL/IDT/IDT.hpp>
 #include <HAL/IDT/Panic.hpp>
 #include <HAL/IDT/IOAPIC/IOAPIC.hpp>
@@ -10,10 +11,12 @@
 #include <Library/debug.hpp>
 #include <Library/io.hpp>
 
+extern "C" void xHCIHandler();
 using namespace HAL::IDT;
 volatile bool exception_in_progress{};
 extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
-    if (frame->ss & 0x3) {
+    TTY::BOOT::enable();
+    if (frame->cs & 0x3) {
         asm volatile("swapgs");
         auto *x = HAL::CORE::get_core_data();
         auto *task = x->current_task;
@@ -103,7 +106,8 @@ namespace HAL::IDT {
             set_gate(i, (void*)ignore_handler, GATE_INTERRUPT);
         }
 
-        set_gate(DEFAULT_KB_VECTOR, (void *)PS2Keyboard, GATE_INTERRUPT);
+        set_gate(MSIX_VECTOR, (void *)xHCIHandler, GATE_INTERRUPT);
+        set_gate(KEYBOARD_VECTOR, (void *)PS2Keyboard, GATE_INTERRUPT);
         set_gate(ISR_CODES::DIV_ZERO, (void *)isr0, GATE_INTERRUPT);
         set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void *)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI + 1);
         set_gate(ISR_CODES::DOUBLE_FAULT, (void *)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT + 1);

@@ -104,9 +104,8 @@ namespace HAL::PCI {
 using namespace HAL::PCI;
 
 extern "C" void xHCIIntHandler() {
-    Debug::krnl_print("MSIX", Debug::LOG_INFO, "MSI-X interrupt?");
     MSIX::xHCI::current_loops = 0;
     MSIX::xHCI::xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
-    
+    HAL::CORE::ack_lapic();
     return;
 }

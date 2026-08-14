@@ -1,5 +1,3 @@
-#include "HAL/MSR.hpp"
-#include "Services/Input/Input.hpp"
 #include <stdint.h>
 #include <limine.h>
 
@@ -66,11 +64,11 @@ extern "C" void krnlmain() {
         true
     );
 
-    new Scheduler::Task(
-        (Scheduler::Task::EntryPoint)HAL::CORE::discover_all_cores, 
-        "CoreFinder", 
-        true
-    );
+    // new Scheduler::Task(
+    //     (Scheduler::Task::EntryPoint)HAL::CORE::discover_all_cores, 
+    //     "CoreFinder", 
+    //     true
+    // );
 
     while (HAL::CORE::total_cores != HAL::CORE::core_count) {
         asm volatile("pause");
@@ -90,18 +88,12 @@ extern "C" void krnlmain() {
         true
     );
 
-    // new Scheduler::Task(
-    //     (Scheduler::Task::EntryPoint)Input::testing,
-    //     "KB&M IO",
-    //     true
-    // );
-
     PS2::Keyboard::Initialize();
 
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Enabling scheduler");
     Scheduler::EnableScheduler();
 
-    IDT::IOAPIC::debug_dump_keyboard_gsi();
+    // IDT::IOAPIC::debug_dump_keyboard_gsi();
 
     asm volatile("sti");
 

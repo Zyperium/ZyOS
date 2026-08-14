@@ -85,17 +85,16 @@ ifeq ($(OS),Windows_NT)
 		-device usb-mouse,bus=xhci.0 -device usb-kbd,bus=xhci.0 \
 		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log
 else
-	SDL_VIDEODRIVER=x11 qemu-system-x86_64 -cpu max -m 512M \
-        -machine q35,acpi=on,kernel-irqchip=split \
-        -drive file=disk_bios.img,id=usbdisk,format=raw,if=none \
-        -device qemu-xhci,id=xhci \
-        -device usb-storage,bus=xhci.0,drive=usbdisk,bootindex=1 \
-        -device VGA,vgamem_mb=64,edid=on,xres=1920,yres=1080 -display sdl,gl=on \
-        -trace "pckbd_*" -trace "ps2_*" \
-        -rtc base=localtime \
-        -d int,cpu_reset \
-        -no-reboot -no-shutdown -D qemu.log \
-        -debugcon stdio -smp 1 -full-screen
+	qemu-system-x86_64 -cpu host --accel kvm -m 512M \
+		-machine q35,acpi=on,kernel-irqchip=split \
+		-drive file=disk_bios.img,id=usbdisk,format=raw,if=none \
+		-device qemu-xhci,id=xhci \
+		-device usb-kbd,bus=xhci.0 \
+		-device usb-mouse,bus=xhci.0 \
+		-device usb-storage,bus=xhci.0,drive=usbdisk,bootindex=1 \
+		-device VGA,vgamem_mb=64,edid=on,xres=1280,yres=720 -display sdl,gl=on \
+		-rtc base=localtime -debugcon stdio \
+		-no-reboot -no-shutdown -smp 1
 endif
 #-accel kvm
 
@@ -103,7 +102,7 @@ OVMF_URL = https://github.com/clearlinux/common/raw/master/OVMF.fd
 
 run-uefi: $(DISK_UEFI)
 	@if [ ! -f OVMF.fd ]; then wget $(OVMF_URL); fi
-	qemu-system-x86_64 -cpu host -m 512M -accel kvm -machine pc \
+	qemu-system-x86_64 -cpu host -m 512M -accel kvm -machine q35 \
 		-bios OVMF.fd \
 		-drive file=$(DISK_UEFI),format=raw,if=none,id=usbdisk \
 		-device qemu-xhci,id=xhci -device usb-storage,bus=xhci.0,drive=usbdisk,bootindex=0 \

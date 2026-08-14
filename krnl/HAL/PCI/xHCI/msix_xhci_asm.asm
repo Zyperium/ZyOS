@@ -4,10 +4,8 @@ extern xHCIIntHandler
 xHCIHandler:
     cld
 
-    mov rax, [rsp + 128] ; (15 * 8 + RIP = 128)
-    and rax, 0x03
-    cmp rax, 3
-    jne .krnl_enter
+    cmp qword [rsp + 8], 0x08
+    je .krnl_enter
 
     swapgs
 
@@ -32,13 +30,6 @@ xHCIHandler:
     mov rdi, rsp
     call xHCIIntHandler
 
-    mov rax, [rsp + 128]
-    and rax, 0x03
-    cmp rax, 3
-    jne .exit_kernel
-    swapgs
-
-.exit_kernel:
     pop rax
     pop rbx
     pop rcx
@@ -57,7 +48,15 @@ xHCIHandler:
 
     test byte [rsp + 8], 3
     jz .done
+    swapgs
     or qword [rsp + 32], 3
+
+    cmp qword [rsp + 32], 0x23 ; Code segment should be 0x23
+    je .done
+
+    ; Code Segment and Stack Segment are likely swapped!
+    mov qword [rsp + 8], 0x1B
+    mov qword [rsp + 32], 0x23
 
 .done:
     iretq

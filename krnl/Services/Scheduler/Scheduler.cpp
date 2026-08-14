@@ -283,6 +283,8 @@ namespace Scheduler {
         vruntime = global_min_vruntime;
 
         uint32_t *mxcsr = reinterpret_cast<uint32_t *>(&fx_state[24]);
+        *reinterpret_cast<uint16_t *>(&fx_state[0]) = 0x037F;
+        *reinterpret_cast<uint32_t *>(&fx_state[28]) = 0x0000FFFF;
         *mxcsr = 0x1F80;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
@@ -410,16 +412,36 @@ namespace Scheduler {
         return;
     }
 
+    lib::Spinlock block_lock;
     void Task::unblock(BlockReasons reason) {
+        lib::ScopedLock x(block_lock);
+
         if (!blockmap[(size_t)reason]) {
             return;
         }
 
         blockmap[(size_t)reason] = false;
     
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Unblocked task %s", task_name.c_str());
-
         TaskBlock *found_self_block = blocked_queue[(size_t)reason];
+
+        if (!found_self_block) {
+            // quick repair:
+            bool requeue_task{true};
+
+            for (auto i{0uz}; i < (size_t)BlockReasons::TOTAL_REASONS; ++i) {
+                if (blockmap[i]) {
+                    requeue_task = false;
+                    break;
+                }
+            }
+
+            if (requeue_task) {
+                enqueue();
+            }
+
+            return;
+        }
+
         while (found_self_block->t_ptr != this) {
             found_self_block = found_self_block->next;
             if (found_self_block == blocked_queue[(size_t)reason]) {
@@ -539,8 +561,9 @@ namespace Scheduler {
     }
 }
 static inline void xsave_state(void *buffer) {
-    uint32_t low = 0xFFFFFFFF;
-    uint32_t high = 0xFFFFFFFF;
+    uint32_t low, high;
+
+    asm volatile("xgetbv" : "=a" (low), "=d" (high) : "c" (0));
     
     asm volatile("xsave64 %0"
         : "=m" (*(uint8_t *)buffer)
@@ -549,12 +572,43 @@ static inline void xsave_state(void *buffer) {
 }
 
 static inline void xrstor_state(const void *buffer) {
-    uint32_t low = 0xFFFFFFFF;
-    uint32_t high = 0xFFFFFFFF;
+    const uint64_t *header = reinterpret_cast<const uint64_t *>(static_cast<const uint8_t *>(buffer) + 512);
+    uint32_t low, high;
+
+    asm volatile("xgetbv" : "=a" (low), "=d" (high) : "c" (0));
+
+    if ((uint64_t)buffer % 64 != 0) {
+        Debug::krnl_print("SCHD", Debug::LOG_ERROR, "Misaligned address!");
+        for (;;);
+    }
+
+    uint64_t xcr0 = (static_cast<uint64_t>(high) << 32) | low;
+    if (header[0] & ~xcr0) {
+        Debug::krnl_print("SCHD", Debug::LOG_ERROR, "xCR0 has bits not set in XSTATE_BV");
+        for (;;);
+    }
+
+    if (header[1] & (1ULL << 63)) {
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "xrstr on compacted buffer?");
+        for (;;);
+    }
+
+    for (int i = 2; i < 8; i++) {
+        if (header[i] != 0) {
+            Debug::krnl_print("SCHD", Debug::LOG_ERROR, "Reserved bytes in XSAVE header are non-zero!");
+            for (;;);
+        }
+    }
+
+    uint32_t mxcsr = *reinterpret_cast<const uint32_t *>(static_cast<const uint8_t *>(buffer) + 24);
+    if (mxcsr & 0xFFFF0000) {
+        Debug::krnl_print("SCHD", Debug::LOG_ERROR, "MXCSR has reserved upper bits set!");
+        for (;;);
+    }
 
     asm volatile("xrstor64 %0"
         :
-        : "m" (*(uint8_t *)buffer), "a" (low), "d" (high)
+        : "m" (*(const uint8_t *)buffer), "a" (low), "d" (high)
         : "memory");
 }
 

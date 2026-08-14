@@ -107,6 +107,7 @@ namespace R0UI {
         PinWindow        = 4,
         UnpinWindow      = 5,
         RequestWallpaper = 6,
+        RedrawMyWindows  = 7
     };
 }
 

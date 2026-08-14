@@ -59,14 +59,6 @@ namespace R0UI {
     }
 
     uint64_t on_call(Scheduler::Task *from, uint64_t data, uint64_t extra) {
-        Debug::krnl_print(
-            "R0UI", 
-            Debug::LOG_INFO, 
-            "Received call id %i from %s",
-            data,
-            from->task_name.c_str()
-        );
-
         if (data == 0) {
             Composer::force_redraw();
             Composer::do_run_through();
@@ -168,6 +160,25 @@ namespace R0UI {
         }
         else if (data == 6) {
             return (uint64_t)Composer::request_wallpaper(from);
+        }
+        else if (data == 7) {
+            lib::vec<Window *> *owr = owned_resources.find(from);
+            if (!owr) {
+                Debug::krnl_print("R0UI", Debug::LOG_WARN, "Unable to find registered owned resources?");
+                Debug::krnl_print("R0UI", Debug::LOG_INFO, "Did callee task actually use this service?");
+                return 1;
+            }
+
+            for (auto i{0uz}; i < owr->size(); ++i) {
+                Composer::add_damage(
+                    owr->data()[i]->factposn.x, 
+                    owr->data()[i]->factposn.y,
+                    owr->data()[i]->factposn.width,
+                    owr->data()[i]->factposn.height
+                );
+            }
+
+            Composer::do_run_through();
         }
 
         return 0;

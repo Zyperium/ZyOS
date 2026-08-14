@@ -57,16 +57,15 @@ PS2Keyboard:
     pop r14
     pop r15
 
-    push rax
-    push rcx
-    mov rcx, [lapic_base_ptr]
-    mov dword [rcx + 0xB0], 0
-    pop rcx
-    pop rax
-
-    test byte [rsp + 8], 3
+    test qword [rsp + 8], 3
     jz .done
     or qword [rsp + 32], 3
+
+    cmp qword [rsp + 32], 0x23
+    je .done
+
+    mov qword [rsp + 32], 0x23
+    mov qword [rsp + 8], 0x1B
 .done:
 
     iretq

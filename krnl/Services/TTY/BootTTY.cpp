@@ -40,6 +40,10 @@ namespace TTY::BOOT {
         active = false;
     }
 
+    void enable() {
+        active = true;
+    }
+
     int logx{};
 
     uint32_t global_col = 0;

@@ -1,16 +1,13 @@
 #include <HAL/PS2/PS2KB.hpp>
+#include <HAL/CORE/Core.hpp>
 #include <Library/io.hpp>
 #include <Library/debug.hpp>
 
 #include <Services/Input/Input.hpp>
-/**
-This is a really fast PS2 driver to test the xHCI driver in more depth.
-Please, please ignore the magic numbers. I'll either remove this driver later,
-or fix the magic. Realistically, who is using PS2 in 2026? (Laptop keyboards, funnily enough)
-*/
 
 extern "C" void KBHI_Wrapper() {
     PS2::Keyboard::HandleInterrupt();
+    HAL::CORE::ack_lapic();
     return;
 }
 
@@ -58,7 +55,6 @@ namespace PS2 {
         }
 
         char ascii = TranslateScancode(scancode);
-        Debug::krnl_print("PS/2", Debug::LOG_INFO, "Key %i", ascii);
 
         if (ascii != 0) {
             Input::add_kb(ascii);

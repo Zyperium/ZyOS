@@ -1,9 +1,12 @@
 #include <Library/debug.hpp>
 #include <Library/string.h>
+#include <Library/regs.h>
 #include <HAL/ACPI/HPET.hpp>
 #include <HAL/ACPI/ACPI.hpp>
 #include <HAL/IDT/Panic.hpp>
 #include <HAL/MEM/PMM.hpp>
+#include <HAL/MEM/PMEM.hpp>
+#include <HAL/MEM/VMM.hpp>
 #include <stdint.h>
 #include <limine.h>
 
@@ -39,27 +42,37 @@ namespace ACPI {
         }
 
         auto *rsdp = static_cast<RSDP2 *>(rsdp_request.response->address);
+        bool use_xsdt = (rsdp->rsdp.revision >= 2 && rsdp->xsdt_address != 0);
 
-        if (rsdp->rsdp.revision >= 2) {
+        size_t entries = 0;
+        uintptr_t tables_base = 0;
+
+        if (use_xsdt) {
             auto xsdt_phys = rsdp->xsdt_address;
-            auto xsdt = reinterpret_cast<XSDT *>(xsdt_phys + PMM::hhdm_offset);
+            auto *xsdt = reinterpret_cast<XSDT *>(xsdt_phys + PMM::hhdm_offset);
 
-            Debug::krnl_print("ACPI", Debug::LOG_INFO, "Found xsdt at %xP %xV", xsdt_phys, xsdt);
-            panic(PanicReasons::HAL_FAILED_INITIALIZATION);
+            Debug::krnl_print("ACPI", Debug::LOG_INFO, "Found XSDT at %xP %xV", xsdt_phys, xsdt);
+
+            entries = (xsdt->header.length - sizeof(ACPISDT)) / sizeof(uint64_t);
+            tables_base = reinterpret_cast<uintptr_t>(xsdt + 1);
+        } else {
+            Debug::krnl_print("ACPI", Debug::LOG_INFO, "Version is < 2, using RSDT");
+
+            auto *rsdt = reinterpret_cast<RSDT *>(rsdp->rsdp.rsdt_address + PMM::hhdm_offset);
+            entries = (rsdt->header.length - sizeof(ACPISDT)) / sizeof(uint32_t);
+            tables_base = reinterpret_cast<uintptr_t>(rsdt + 1);
         }
-
-        Debug::krnl_print("ACPI", Debug::LOG_INFO, "Version is < 2");
-
-        auto *rsdt = reinterpret_cast<RSDT *>(rsdp->rsdp.rsdt_address + PMM::hhdm_offset);
-        auto entries = (rsdt->header.length - sizeof(ACPISDT)) / sizeof(uint32_t);
 
         Debug::krnl_print("ACPI", Debug::LOG_INFO, "Found %i entries", entries);
 
-        auto *tables_array = reinterpret_cast<uint32_t *>(rsdt + 1);
         for (auto i{0uz}; i < entries; ++i) {
-            auto table_phys = tables_array[i];
+            uintptr_t table_phys = use_xsdt
+                ? reinterpret_cast<uint64_t *>(tables_base)[i]
+                : reinterpret_cast<uint32_t *>(tables_base)[i];
+
             auto *table = reinterpret_cast<ACPISDT *>(table_phys + PMM::hhdm_offset);
             Debug::krnl_print("ACPI", Debug::LOG_INFO, "Identified table at address %x", table);
+
             char acpi_sig[ACPI_SIGN_LEN + 1] {
                 table->signature[0],
                 table->signature[1],
@@ -79,7 +92,7 @@ namespace ACPI {
                     hpet_table->header.oem_id, hpet_table->address, hpet_table->header.signature
                 );
 
-                hpet = reinterpret_cast<uint64_t *>((uintptr_t)hpet_table->address + PMM::hhdm_offset);
+                hpet = (uint64_t *)PMEM::map_mmio((uintptr_t)hpet_table->address, 1);
                 hpet[HPET_GCONF / HPET_EN_BIT] |= HPET_ON;
                 hpet_speed = hpet[HPET_GCAP] >> HPET_SPEED_OFF;
                 Debug::krnl_print("ACPI", Debug::LOG_INFO, "Speed: %i", hpet_speed);

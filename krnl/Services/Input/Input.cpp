@@ -9,6 +9,7 @@ namespace Input {
     char *ring_buf{nullptr};
     size_t rpointr{0};
     void (*callback)(char c){nullptr};
+    void (*mscallback)(const MousePos ref){nullptr};
 
     void add_kb(char nc) {
         if (callback)
@@ -21,15 +22,14 @@ namespace Input {
         callback = xz;
     }
 
-    void testing() {
-        for(;;) {
-            uint8_t ps2_status = inb(0x64); 
-            if (ps2_status & 0x01) {
-                asm volatile("int $0x21");
-            }
-            else {
-                Scheduler::Yield();
-            }
-        }
+    void add_mouse(const MousePos ref) {
+        if (!mscallback)
+            return;
+        mscallback(ref);
+    }
+
+    void reg_ms_cb(void (*xmscallback)(const MousePos ref)) {
+        if (!mscallback)
+        mscallback = xmscallback;
     }
 }

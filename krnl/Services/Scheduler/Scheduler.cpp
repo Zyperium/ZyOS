@@ -54,16 +54,6 @@ namespace Scheduler {
 
     }
 
-    struct TrapFrame {
-        uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
-        uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
-        uint64_t rip;
-        uint64_t cs;
-        uint64_t rflags;
-        uint64_t rsp;
-        uint64_t ss;
-    };
-
     Task *frkr_task;
     void ForkerTask() {
         frkr_task = HAL::CORE::get_core_data()->current_task;
@@ -148,12 +138,6 @@ namespace Scheduler {
 
             to_fork->unblock(BlockReasons::FORK);
             fork->unblock(BlockReasons::FORKD);
-
-            TrapFrame *child_frame = reinterpret_cast<TrapFrame *>(fork->rsp);
-            Debug::krnl_print("FRKR", Debug::LOG_INFO, 
-                "Child Kernel RSP: %x | Trapped RIP: %x | Trapped RSP: %x", 
-                fork->rsp, child_frame->rip, child_frame->rsp
-            );
 
             asm volatile("sti");
 
@@ -571,8 +555,8 @@ static inline void xsave_state(void *buffer) {
         : "memory");
 }
 
-static inline void xrstor_state(const void *buffer) {
-    const uint64_t *header = reinterpret_cast<const uint64_t *>(static_cast<const uint8_t *>(buffer) + 512);
+static inline void xrstor_state(void *buffer) {
+    uint64_t *header = reinterpret_cast<uint64_t *>(static_cast<uint8_t *>(buffer) + 512);
     uint32_t low, high;
 
     asm volatile("xgetbv" : "=a" (low), "=d" (high) : "c" (0));
@@ -595,8 +579,9 @@ static inline void xrstor_state(const void *buffer) {
 
     for (int i = 2; i < 8; i++) {
         if (header[i] != 0) {
-            Debug::krnl_print("SCHD", Debug::LOG_ERROR, "Reserved bytes in XSAVE header are non-zero!");
-            for (;;);
+            header[i] = 0;
+            // Debug::krnl_print("SCHD", Debug::LOG_ERROR, "Reserved bytes in XSAVE header are non-zero!");
+            asm volatile("pause");
         }
     }
 
@@ -622,7 +607,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     HAL::CORE::CoreLocal *thread_data = HAL::CORE::get_core_data();
     uint64_t curr_sys_time = ACPI::get_sys_time();
-    if (curr_sys_time - last_ram_prnt > 30000) {
+    if (curr_sys_time - last_ram_prnt > 10000) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "RAM: %i/%i", PMM::used_memory, PMM::total_memory);
         last_ram_prnt = curr_sys_time;
     }
@@ -631,7 +616,12 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Core %i is scheduling", thread_data->core_id);
 
     auto prev_task = thread_data->current_task;
+    
+    asm volatile("mfence" ::: "memory");
+    asm volatile("sfence" ::: "memory");
 
+    Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
+    
     if (prev_task && prev_task != thread_data->system_idle_task) {
         prev_task->rsp = current_rsp;
 
@@ -643,13 +633,18 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
             prev_task->last_ran_time = curr_sys_time;
             prev_task->running = false;
 
+            // Debug::krnl_print("SCHD", Debug::LOG_INFO, "%s vruntim @ %i", prev_task->task_name.c_str(), prev_task->vruntime);
+
             prev_task->enqueue();
         }
     }
 
-    Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
-    if (thread_data->core_id != 0)
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swap to %s", next_task->task_name.c_str());
+    asm volatile("mfence" ::: "memory");
+    asm volatile("sfence" ::: "memory");
+
+    if (next_task == HAL::CORE::get_core_data()->system_idle_task)
+        next_task = Scheduler::Task::GetNextTask();
+
     if (next_task && next_task != thread_data->system_idle_task) {
         next_task->dequeue();
     }

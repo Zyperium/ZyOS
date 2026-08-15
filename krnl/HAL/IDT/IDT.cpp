@@ -108,6 +108,7 @@ namespace HAL::IDT {
 
         set_gate(MSIX_VECTOR, (void *)xHCIHandler, GATE_INTERRUPT);
         set_gate(KEYBOARD_VECTOR, (void *)PS2Keyboard, GATE_INTERRUPT);
+        set_gate(MOUSE_VECTOR, (void *)PS2Mouse, GATE_INTERRUPT);
         set_gate(ISR_CODES::DIV_ZERO, (void *)isr0, GATE_INTERRUPT);
         set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void *)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI + 1);
         set_gate(ISR_CODES::DOUBLE_FAULT, (void *)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT + 1);
@@ -123,6 +124,7 @@ namespace HAL::IDT {
         IOAPIC::initialize();
 
         IOAPIC::set_redirect(DEFAULT_KB_VECTOR, KEYBOARD_VECTOR, 0);
+        IOAPIC::set_redirect(DEFAULT_MS_VECTOR, MOUSE_VECTOR, 0);
 
         outb(PIC1_DATA, PIC_FULL_MASK);
         outb(PIC2_DATA, PIC_FULL_MASK);

@@ -18,6 +18,30 @@ namespace PS2 {
     public:
         static void HandleInterrupt();
         static void Initialize();
+        static constexpr uint16_t COMMAND_PORT = 0x64;
+
+        static constexpr uint8_t STATUS_OUTPUT_BUFFER_FULL = 0x01;
+        static constexpr uint8_t STATUS_INPUT_BUFFER_FULL  = 0x02;
+
+        static constexpr uint8_t CMD_DISABLE_FIRST_PORT   = 0xAD;
+        static constexpr uint8_t CMD_DISABLE_SECOND_PORT  = 0xA7;
+        static constexpr uint8_t CMD_READ_CONFIG_BYTE     = 0x20;
+        static constexpr uint8_t CMD_WRITE_CONFIG_BYTE    = 0x60;
+        static constexpr uint8_t CMD_ENABLE_FIRST_PORT    = 0xAE;
+
+        static constexpr uint8_t CONFIG_PORT1_INTERRUPT    = (1 << 0);
+        static constexpr uint8_t CONFIG_SYSTEM_POST_PASSED = (1 << 2);
+        static constexpr uint8_t CONFIG_PORT1_CLOCK_ENABLE = (0 << 4);
+        static constexpr uint8_t CONFIG_PORT1_TRANSLATION  = (1 << 6);
+
+        static constexpr uint8_t DEV_CMD_ENABLE_SCANNING   = 0xF4;
+        static constexpr uint8_t DEV_RESP_ACK              = 0xFA;
+
+        static constexpr uint8_t SCANCODE_EXTENDED_PREFIX = 0xE0;
+        static constexpr uint8_t SCANCODE_RELEASE_FLAG    = 0x80;
+        static constexpr uint8_t SCANCODE_LEFT_SHIFT      = 0x2A;
+        static constexpr uint8_t SCANCODE_RIGHT_SHIFT     = 0x36;
+        static constexpr uint8_t SCANCODE_CAPS_LOCK       = 0x3A;
     };
 
     static const char scancode_set1_lowercase[] = {

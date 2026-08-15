@@ -4,6 +4,7 @@
 #include <HAL/MEM/KMEM.hpp>
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/MEM/PMM.hpp>
+#include <HAL/CORE/Core.hpp>
 
 #include <Library/regs.h>
 #include <Library/ZyOS.hpp>

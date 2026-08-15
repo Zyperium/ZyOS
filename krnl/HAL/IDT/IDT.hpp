@@ -12,6 +12,7 @@ extern "C" void isr14();
 extern "C" void SchedulerHandler();
 extern "C" void QuietSwitch();
 extern "C" void PS2Keyboard();
+extern "C" void PS2Mouse();
 
 namespace HAL::IDT {
     struct InterruptFrame {
@@ -60,7 +61,9 @@ namespace HAL::IDT {
     constexpr uint8_t LAPIC_SPURIOUS_VECTOR = 0x8A;
     constexpr uint8_t YIELD_VECTOR = 0x67;
     constexpr uint8_t DEFAULT_KB_VECTOR = 0x1;
+    constexpr uint8_t DEFAULT_MS_VECTOR = 0xC;
     constexpr uint8_t KEYBOARD_VECTOR = 0x21;
+    constexpr uint8_t MOUSE_VECTOR = 0x2C;
     constexpr uint8_t IST_MASK = 0x07;
     constexpr uint16_t MAX_VECTORS = 256;
 

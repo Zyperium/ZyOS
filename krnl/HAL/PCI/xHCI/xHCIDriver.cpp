@@ -1,3 +1,4 @@
+#include "Library/debug.hpp"
 #include <HAL/PCI/xHCI/HID/xHCIMouse.hpp>
 #include <HAL/PCI/xHCI/xHCIDriver.hpp>
 #include <HAL/PCI/xHCI/HID/xHCIKeyboard.hpp>

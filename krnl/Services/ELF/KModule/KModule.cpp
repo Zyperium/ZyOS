@@ -27,10 +27,12 @@ namespace ELF::KModule {
         Debug::krnl_print("KMOD", Debug::LOG_INFO, "Initialize");
         lib::fullpath parsed_path = lib::parse_path(FIXED_SYMBOL_PATH);
 
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Current disk is %i", DISK::root_disk_id);
         while (!DISK::root_disk_id) {
+            Scheduler::GetTaskByPID(2)->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
             Scheduler::Yield();
-            asm volatile("pause");
         }
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Disk is active!");
 
         auto *root_disk = DISK::GetDisk(parsed_path.drv);
         lib::sptr<VFS::VNode> kmap_node = root_disk->rootnode->resolve_path_to_vnode(parsed_path.path);

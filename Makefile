@@ -89,8 +89,6 @@ else
 		-machine q35,acpi=on,kernel-irqchip=split \
 		-drive file=disk_bios.img,id=usbdisk,format=raw,if=none \
 		-device qemu-xhci,id=xhci \
-		-device usb-kbd,bus=xhci.0 \
-		-device usb-mouse,bus=xhci.0 \
 		-device usb-storage,bus=xhci.0,drive=usbdisk,bootindex=1 \
 		-device VGA,vgamem_mb=64,edid=on,xres=1280,yres=720 -display sdl,gl=on \
 		-rtc base=localtime -debugcon stdio \

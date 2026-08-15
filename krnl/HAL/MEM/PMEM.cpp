@@ -30,6 +30,7 @@ namespace HAL::MEM::PMEM {
         void* phys_addr = PMM::alloc_page();
         
         if (!phys_addr) {
+            Debug::krnl_print("PMEM", Debug::LOG_WARN, "Unable to alloc physical page!");
             return nullptr;
         }
 

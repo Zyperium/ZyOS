@@ -17,22 +17,21 @@ namespace PS2 {
     bool Keyboard::extended_code{};
 
     void Keyboard::HandleInterrupt() {
-
-        if (!(inb(STATUS_PORT) & 1)) {
+        if (!(inb(STATUS_PORT) & STATUS_OUTPUT_BUFFER_FULL)) {
             return; 
         }
 
         uint8_t scancode = inb(DATA_PORT);
 
-        if (scancode == 0xE0) {
+        if (scancode == SCANCODE_EXTENDED_PREFIX) {
             extended_code = true;
             return;
         }
 
-        if (scancode & 0x80) {
-            uint8_t make_code = scancode & 0x7F;
+        if (scancode & SCANCODE_RELEASE_FLAG) {
+            uint8_t make_code = scancode & ~SCANCODE_RELEASE_FLAG;
             
-            if (make_code == 0x2A || make_code == 0x36) {
+            if (make_code == SCANCODE_LEFT_SHIFT || make_code == SCANCODE_RIGHT_SHIFT) {
                 shift_pressed = false;
             }
 
@@ -45,11 +44,11 @@ namespace PS2 {
             return;
         }
 
-        if (scancode == 0x2A || scancode == 0x36) {
+        if (scancode == SCANCODE_LEFT_SHIFT || scancode == SCANCODE_RIGHT_SHIFT) {
             shift_pressed = true;
             return;
         }
-        if (scancode == 0x3A) {
+        if (scancode == SCANCODE_CAPS_LOCK) {
             caps_lock = !caps_lock;
             return;
         }
@@ -76,51 +75,52 @@ namespace PS2 {
     }
 
     void Keyboard::WaitWrite() {
-        while (inb(STATUS_PORT) & 2) {
+        while (inb(STATUS_PORT) & STATUS_INPUT_BUFFER_FULL) {
             asm volatile("pause");
         }
     }
 
     void Keyboard::WaitRead() {
-        while (!(inb(STATUS_PORT) & 1)) {
+        while (!(inb(STATUS_PORT) & STATUS_OUTPUT_BUFFER_FULL)) {
             asm volatile("pause");
         }
     }
 
     void Keyboard::Initialize() {
         Debug::krnl_print("PS/2", Debug::LOG_INFO, "Initialize keyboard");
+        
         WaitWrite();
-        outb(STATUS_PORT, 0xAD);
+        outb(COMMAND_PORT, CMD_DISABLE_FIRST_PORT);
         WaitWrite();
-        outb(STATUS_PORT, 0xA7);
+        outb(COMMAND_PORT, CMD_DISABLE_SECOND_PORT);
 
-        while (inb(STATUS_PORT) & 1) {
+        while (inb(STATUS_PORT) & STATUS_OUTPUT_BUFFER_FULL) {
             inb(DATA_PORT);
         }
 
         WaitWrite();
-        outb(STATUS_PORT, 0x20);
+        outb(COMMAND_PORT, CMD_READ_CONFIG_BYTE);
         WaitRead();
         uint8_t config = inb(DATA_PORT);
 
-        config |= (1 << 0);
-        config |= (1 << 2);
+        config |= CONFIG_PORT1_INTERRUPT;
+        config |= CONFIG_SYSTEM_POST_PASSED;
         config &= ~(1 << 4);
-        config |= (1 << 6);
+        config |= CONFIG_PORT1_TRANSLATION;
 
         WaitWrite();
-        outb(STATUS_PORT, 0x60);
+        outb(COMMAND_PORT, CMD_WRITE_CONFIG_BYTE);
         WaitWrite();
         outb(DATA_PORT, config);
+
+        WaitWrite();
+        outb(COMMAND_PORT, CMD_ENABLE_FIRST_PORT);
         
         WaitWrite();
-        outb(STATUS_PORT, 0xAE);
-        
-        WaitWrite();
-        outb(DATA_PORT, 0xF4);
+        outb(DATA_PORT, DEV_CMD_ENABLE_SCANNING);
         
         WaitRead();
-        if (inb(DATA_PORT) == 0xFA) {
+        if (inb(DATA_PORT) == DEV_RESP_ACK) {
             Debug::krnl_print("PS/2", Debug::LOG_INFO, "Keyboard fully initialized");
         }
     }

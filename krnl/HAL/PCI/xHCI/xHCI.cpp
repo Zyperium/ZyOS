@@ -15,49 +15,12 @@
 #include <Library/debug.hpp>
 #include <Library/regs.h>
 #include <Library/string.h>
+#include <Library/locks.hpp>
 
 namespace HAL::PCI {
     using namespace MEM;
 
-
-    bool a_xhci_lock = false;
-    uint64_t cur_rflags = 0;
-    uint64_t core_id_holder = -1;
-    int reentrancy = 0;
-
-    void acquire_lock() {
-        return;
-        if (core_id_holder == HAL::CORE::get_core_data()->current_task->get_pid()) {
-            reentrancy++;
-            return;
-        }
-
-        uint64_t rflags = 0;
-        asm volatile("pushfq; pop %0" : "=r"(rflags));
-        while (__atomic_test_and_set(&a_xhci_lock, __ATOMIC_ACQUIRE)) {
-            asm volatile("pause");
-        }
-
-        cur_rflags = rflags;
-        core_id_holder = HAL::CORE::get_core_data()->current_task->get_pid();
-
-        return;
-    }
-
-    void release_lock() {
-        return;
-        if (reentrancy > 0) {
-            reentrancy--;
-            return;
-        }
-        
-        restore_rflags(cur_rflags);
-        cur_rflags = 0;
-        core_id_holder = -1;
-
-        __atomic_clear(&a_xhci_lock, __ATOMIC_RELEASE);
-        return;
-    }
+    lib::Spinlock xlock;
 
     xHCI::xHCI(uint8_t bus, uint8_t device, uint8_t function) : pci_bus(bus), pci_device(device),
         pci_func(function), cmd_ring_cycle_state(true), cmd_ring_enqueue_ptr(0), 
@@ -408,7 +371,7 @@ namespace HAL::PCI {
 
         if (max_scratchpad > 0) {
             Debug::krnl_print("xHCI", Debug::LOG_INFO,
-                "Allocating %u scratchpad buffer(s)...", max_scratchpad);
+                "Allocating %i scratchpad buffer(s)...", max_scratchpad);
             
             uint64_t *sp_array = zalloc_page<uint64_t *>();
             if (!sp_array) panic(PanicReasons::xHCI_CRITICAL_ERROR);
@@ -563,6 +526,8 @@ namespace HAL::PCI {
                     }
                 }
 
+                asm volatile("mfence" ::: "memory");
+
                 if (code == XHCI_CODE_SUCCESS && allocated_slot != 0) {
                     TRB *completed_cmd_trb = reinterpret_cast<TRB *>(event->param + PMM::hhdm_offset);
                     uint8_t cmd_type = (completed_cmd_trb->control >> XHCI_TRB_TYPE_SHIFT) & XHCI_TRB_TYPE_MASK;
@@ -578,6 +543,7 @@ namespace HAL::PCI {
                         addr_device(allocated_slot, pending_port_setup);
                         pending_port_setup = PENDING_PORT_COMPLETE;
                         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Setting IF");
+                        asm volatile("mfence" ::: "memory");
                     }
                     else if (cmd_type == TRB_TYPE_ADDRESS_DEVICE) {
                         descriptor_buffer[allocated_slot] = zfalloc<uint8_t *>(USB::DEVICE_DESCRIPTOR_SIZE);
@@ -587,6 +553,7 @@ namespace HAL::PCI {
                         uint8_t req_type = USB::REQ_DIR_IN | USB::REQ_TYPE_STANDARD | USB::REQ_REC_DEVICE;
                         uint16_t wValue  = USB::make_wValue(USB::DESC_TYPE_DEVICE, 0);
                         send_control_request(allocated_slot, req_type, USB::REQ_GET_DESCRIPTOR, wValue, 0, USB::DEVICE_DESCRIPTOR_SIZE, descriptor_phys);
+                        asm volatile("mfence" ::: "memory");
                     }
                     else if (cmd_type == TRB_TYPE_CONFIGURE_EP) {
                         Debug::krnl_print("xHCI", Debug::LOG_INFO, "Endpoints Configured. Setting Device Configuration...");
@@ -596,11 +563,13 @@ namespace HAL::PCI {
                         uint16_t config_val = pending_config_value[allocated_slot] ? pending_config_value[allocated_slot] : USB::DEFAULT_CONFIGURATION_VALUE;
 
                         send_control_request(allocated_slot, req_type, USB::REQ_SET_CONFIGURATION, config_val, 0, 0, 0);
+                        asm volatile("mfence" ::: "memory");
                     }
 
                     if (slot_states[allocated_slot] == SetupState::STATE_CONFIGURED) {
                         if (attached_drivers[allocated_slot]) {
                             check_ports();
+                            asm volatile("mfence" ::: "memory");
                         }
                     }
 
@@ -615,7 +584,7 @@ namespace HAL::PCI {
                 int port_idx = (int)port_id - 1;
 
                 Debug::krnl_print("xHCI", Debug::LOG_INFO,
-                    "Port Status Change on port %u", port_id);
+                    "Port Status Change on port %i", port_id);
                     
                 if (port_idx >= 0) ports_resetting &= ~(1U << port_idx);
                 check_ports();
@@ -636,6 +605,7 @@ namespace HAL::PCI {
                             uint16_t wValue   = USB::make_wValue(USB::DESC_TYPE_CONFIG, 0);
 
                             send_control_request(slot, req_type, USB::REQ_GET_DESCRIPTOR, wValue, 0x0000, CONFIG_HEADER_SIZE, phys);
+                            asm volatile("mfence" ::: "memory");
                             break;
                         }
                         case SetupState::STATE_GET_CONFIG_DESC_HEADER: {
@@ -963,7 +933,7 @@ namespace HAL::PCI {
     }
 
     void xHCI::queue_bulk_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size) {
-        acquire_lock();
+        lib::ScopedLock x(xlock);
 
         uint8_t ep_num = endpoint_address & USB::USB_EP_NUM_MASK;
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
@@ -1003,12 +973,10 @@ namespace HAL::PCI {
         asm volatile("sfence" ::: "memory");
 
         *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
-
-        release_lock();
     }
 
     void xHCI::queue_int_transfer(uint8_t slot_id, uint8_t endpoint_address, uint64_t buffer_phys, uint32_t buffer_size) {
-        acquire_lock();
+        lib::ScopedLock x(xlock);
         uint8_t ep_num = endpoint_address & USB::USB_EP_NUM_MASK;
         bool is_in = (endpoint_address & USB::USB_EP_DIR_IN) != 0;
         uint8_t dci = (ep_num * 2) + (is_in ? 1 : 0);
@@ -1075,7 +1043,6 @@ namespace HAL::PCI {
         asm volatile("mfence" ::: "memory");
 
         *(volatile uint32_t*)(&db_regs[slot_id]) = dci;
-        release_lock();
         return;
     }
 }

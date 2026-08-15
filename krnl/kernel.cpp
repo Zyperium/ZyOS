@@ -7,6 +7,7 @@
 #include <HAL/PCI/xHCI/msix_xhci.hpp>
 #include <HAL/CORE/Core.hpp>
 #include <HAL/PS2/PS2KB.hpp>
+#include <HAL/PS2/PS2Mouse.hpp>
 #include <HAL/IDT/IOAPIC/IOAPIC.hpp>
 
 #include <Services/ELF/KModule/KModule.hpp>
@@ -89,6 +90,7 @@ extern "C" void krnlmain() {
     );
 
     PS2::Keyboard::Initialize();
+    PS2::Mouse::Initialize();
 
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Enabling scheduler");
     Scheduler::EnableScheduler();

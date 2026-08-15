@@ -33,7 +33,6 @@ using namespace HAL;
 void SysIdleTask() {
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Entering idle task...");
     for (;;) {
-        Debug::krnl_print("KRNL", Debug::LOG_INFO, "I am doing nothing!");
         asm volatile("sti; hlt");
     }
 }

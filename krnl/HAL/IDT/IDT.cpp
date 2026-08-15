@@ -15,7 +15,6 @@ extern "C" void xHCIHandler();
 using namespace HAL::IDT;
 volatile bool exception_in_progress{};
 extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
-    TTY::BOOT::enable();
     if (frame->cs & 0x3) {
         asm volatile("swapgs");
         auto *x = HAL::CORE::get_core_data();
@@ -44,12 +43,14 @@ extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
         for (;;) asm volatile("hlt");
     }
 
+    TTY::BOOT::enable();
+
     while (__atomic_test_and_set(&exception_in_progress, __ATOMIC_ACQUIRE)) {
         asm volatile("pause");
     }
 
     HAL::CORE::broadcast_nmi();
-
+    
     Debug::krnl_print("IDT", Debug::LOG_ERROR, "Broadcasted error via NMIs");
 
     switch (static_cast<ISR_CODES>(frame->int_number)) {
@@ -120,8 +121,6 @@ namespace HAL::IDT {
 
         idtr.limit = (sizeof(IDTEntry) * MAX_VECTORS) - 1;
         idtr.base  = reinterpret_cast<uint64_t>(&idt[0]);
-
-        IOAPIC::initialize();
 
         IOAPIC::set_redirect(DEFAULT_KB_VECTOR, KEYBOARD_VECTOR, 0);
         IOAPIC::set_redirect(DEFAULT_MS_VECTOR, MOUSE_VECTOR, 0);

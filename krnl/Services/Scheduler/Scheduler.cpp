@@ -597,8 +597,8 @@ static inline void xrstor_state(void *buffer) {
         : "memory");
 }
 
+void SysIdleTask();
 lib::Spinlock swaplock;
-volatile bool log_switches = false;
 uint64_t last_ram_prnt{0};
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (!Scheduler::active) {
@@ -612,9 +612,6 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         last_ram_prnt = curr_sys_time;
     }
 
-    if (thread_data->core_id != 0)
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Core %i is scheduling", thread_data->core_id);
-
     auto prev_task = thread_data->current_task;
     
     asm volatile("mfence" ::: "memory");
@@ -622,10 +619,9 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
     
-    if (prev_task && prev_task != thread_data->system_idle_task) {
+    if (prev_task) {
         prev_task->rsp = current_rsp;
-
-        if (prev_task->running) {
+        if (prev_task->running && prev_task != thread_data->system_idle_task) {
             uint64_t delta_time = (curr_sys_time - thread_data->last_task_runtime) + 1;
             thread_data->last_task_runtime = curr_sys_time;
 
@@ -641,9 +637,6 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
 
     asm volatile("mfence" ::: "memory");
     asm volatile("sfence" ::: "memory");
-
-    if (next_task == HAL::CORE::get_core_data()->system_idle_task)
-        next_task = Scheduler::Task::GetNextTask();
 
     if (next_task && next_task != thread_data->system_idle_task) {
         next_task->dequeue();
@@ -670,10 +663,6 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
             xrstor_state(next_task->fx_state);
         }
     }
-
-
-    if (log_switches || thread_data->core_id != 0)
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Swap to %s", next_task->task_name.c_str());
 
     return next_task->rsp;
 }

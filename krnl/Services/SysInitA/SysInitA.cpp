@@ -100,6 +100,11 @@ namespace SysInitA {
         lib::sptr<VFS::VNode> sys_list = root_disk->rootnode->resolve_path_to_vnode(parsed_path.path);
         
         uint32_t req_bytes = sys_list->get_size();
+        
+        if (req_bytes == 0) {
+            return;
+        }
+
         uint32_t req_pages = (req_bytes + (PAGE_SIZE - 1)) / PAGE_SIZE;
 
         uint8_t *byte_ptr = (uint8_t *)PMEM::alloc_pages(req_pages, VMM::PTE_PRESENT | VMM::PTE_WRITABLE);

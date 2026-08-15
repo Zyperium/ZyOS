@@ -135,5 +135,3 @@ namespace Scheduler {
 
     #define FORK_APPEND_TEXT " (Forked)"
 }
-
-extern volatile bool log_switches;

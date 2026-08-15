@@ -215,7 +215,7 @@ namespace Debug {
            LogLevel level,
            const char* fmt, ...)
     {
-        lib::ScopedLock x(lock);
+        // lib::ScopedLock x(lock);
         bool da = HAL::CORE::validate_gs_reg();
 
         // if (da && !current_access) {

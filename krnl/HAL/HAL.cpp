@@ -58,6 +58,7 @@ namespace HAL {
 
         GDT::initialize();
 
+        ACPI::init();
         IDT::initialize();
 
         Debug::krnl_print("HAL", Debug::LOG_INFO, "Initialize core 0");
@@ -72,7 +73,6 @@ namespace HAL {
         
         CORE::init_core(data);
 
-        ACPI::init();
         Debug::krnl_print("HAL", Debug::LOG_INFO, "ACPI initialized!");
 
         SCREEN::initialize(framebuffer_request.response);

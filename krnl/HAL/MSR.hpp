@@ -18,6 +18,7 @@ namespace HAL::MSR {
     constexpr uint64_t IA32_SYSENTER_CS = 0x00000174;
     constexpr uint64_t IA32_SYSENTER_ESP = 0x00000175;
     constexpr uint64_t IA32_SYSENTER_EIP = 0x00000176;
+    constexpr uint64_t IA32_PAT = 0x00000277;
 
     static inline void wrmsr(uint64_t msr_id, uint64_t data) {
         uint32_t low = data & 0xFFFFFFFF;

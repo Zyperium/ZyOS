@@ -1,7 +1,3 @@
-/*
-REDBLACK trees so i can implement my own CFS
-*/
-
 #include <Library/locks.hpp>
 #include <Library/redblack.hpp>
 #include <Library/debug.hpp>
@@ -78,7 +74,12 @@ namespace lib {
             leftmost = node;
         }
 
+        if (rightmost == nullptr || node->compare(rightmost) > 0) {
+            rightmost = node;
+        }
+
         fix_insert(node);
+        ++node_count;
     }
 
     void RB_Tree::fix_insert(RB_Base *node) {
@@ -154,6 +155,47 @@ namespace lib {
         }
     }
 
+    RB_Base *RB_Tree::steal_rightmost() {
+        ScopedLock lock(rb_lock);
+
+        if (rightmost == nullptr) {
+            return nullptr;
+        }
+
+        RB_Base *z = rightmost;
+
+        if (z->left != nullptr) {
+            RB_Base *max_node = z->left;
+            while (max_node->right != nullptr) {
+                max_node = max_node->right;
+            }
+            rightmost = max_node;
+        } else {
+            rightmost = z->parent;
+        }
+        
+        if (z == leftmost) {
+            leftmost = nullptr;
+        }
+
+        RB_Base *x = z->left;
+        RB_Base *x_parent = z->parent;
+        RB_Colour y_original_color = z->col;
+
+        transplant(z, z->left);
+
+        z->left = nullptr;
+        z->right = nullptr;
+        z->parent = nullptr;
+
+        if (y_original_color == RB_Colour::BLACK) {
+            fix_delete(x, x_parent);
+        }
+
+        --node_count;
+        return z;
+    }
+
     void RB_Tree::remove_node(RB_Base *z) {
         if (z == nullptr) return;
         ScopedLock lock(rb_lock);
@@ -172,6 +214,25 @@ namespace lib {
             }
         }
 
+        if (z == rightmost) {
+            if (z->left != nullptr) {
+                RB_Base *max_node = z->left;
+                while (max_node->right != nullptr) {
+                    max_node = max_node->right;
+                }
+                rightmost = max_node;
+            }
+            else {
+                RB_Base *current = z;
+                RB_Base *pred = z->parent;
+                while (pred != nullptr && current == pred->left) {
+                    current = pred;
+                    pred = pred->parent;
+                }
+                rightmost = pred;
+            }
+        }
+
         RB_Base *x = nullptr;
         RB_Base *x_parent = nullptr;
         RB_Base *y = z;
@@ -181,11 +242,13 @@ namespace lib {
             x = z->right;
             x_parent = z->parent;
             transplant(z, z->right);
-        } else if (z->right == nullptr) {
+        } 
+        else if (z->right == nullptr) {
             x = z->left;
             x_parent = z->parent;
             transplant(z, z->left);
-        } else {
+        } 
+        else {
             y = tree_minimum(z->right);
             y_original_color = y->col;
             x = y->right;
@@ -213,6 +276,8 @@ namespace lib {
         if (y_original_color == RB_Colour::BLACK) {
             fix_delete(x, x_parent);
         }
+
+        --node_count;
     }
 
     void RB_Tree::fix_delete(RB_Base *node, RB_Base *parent) {

@@ -14,7 +14,7 @@
 #include "lib/vec.hpp"
 
 namespace R0UI {
-    lib::umap<Scheduler::Task *, lib::vec<Window *>> owned_resources;
+    lib::umap<Scheduler::Task *, lib::vec<Window *>> owned_resources(16);
     lib::umap<lib::string, Window *> class_mapping(16);
 
     uint64_t on_enter(Scheduler::Task *nt) {

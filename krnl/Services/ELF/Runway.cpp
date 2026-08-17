@@ -1,3 +1,4 @@
+#include "Library/locks.hpp"
 #include <Services/ELF/ELF.hpp>
 #include <Services/ELF/User.hpp>
 #include <Services/Scheduler/Scheduler.hpp>
@@ -23,7 +24,10 @@ extern "C" void R3Entry(
 );
 
 namespace ELF {
+    lib::Spinlock runway_lock;
+
     void Runway(lib::string cmd_line) {
+        uint64_t keys = runway_lock.lock();
         Debug::krnl_print("RNWY", Debug::LOG_INFO, "Building ring 3 process");
 
         Scheduler::Task *task = CORE::get_core_data()->current_task;
@@ -39,6 +43,7 @@ namespace ELF {
 
         auto fail_load = [&](int stage){
             Debug::krnl_print("RNWY", Debug::LOG_WARN, "Failed to load app: %s, stage: %i", cmd_line.c_str(), stage);
+            runway_lock.unlock(keys);
             Scheduler::Suicide();
             for (;;);
         };
@@ -72,6 +77,8 @@ namespace ELF {
         *tcb_ptr = fs_base;
 
         Debug::krnl_print("RNWY", Debug::LOG_INFO, "Finished ring 3 bootstrap");
+
+        runway_lock.unlock(keys);
 
         R3Entry((uint64_t)entry, fs_base, USER::STACK_BASE + USER::STACK_SIZE);
 

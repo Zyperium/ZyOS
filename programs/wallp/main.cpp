@@ -30,7 +30,6 @@ namespace Config {
     constexpr float HoverScaleMin = 0.75f;
     constexpr float HoverScaleMax = 1.00f;
     constexpr float PressScaleMin = 0.82f;
-    constexpr float PressScaleMax = 1.00f;
 
     constexpr float IconScaleNormal = 1.00f;
     constexpr float IconScalePressed = 0.85f;
@@ -42,6 +41,7 @@ struct TaskbarItem {
     int w;
     int h;
     uint32_t *icon;
+    const char *path;
     int icon_w;
     int icon_h;
 };
@@ -144,6 +144,7 @@ extern "C" int main() {
     items[0].h = Config::ItemHeight;
     items[0].x = (Config::TaskbarHeight - items[0].w) / 2;
     items[0].y = (Config::TaskbarHeight - items[0].h) / 2;
+    items[0].path = "none";
 
     WinControl *start_menu = (WinControl *)r0ui_call(R0UICall::OpenWindow, (uint64_t)"Start Menu");
 
@@ -169,12 +170,14 @@ extern "C" int main() {
     items[1].h = Config::ItemHeight;
     items[1].x = items[0].x + Config::ItemSpacing;
     items[1].y = (Config::TaskbarHeight - items[1].h) / 2;
+    items[1].path = "none";
 
     items[2].icon = load_png("A:/SYSTEM/SETTIN.PNG", &items[2].icon_w, &items[2].icon_h);
     items[2].w = Config::ItemWidth;
     items[2].h = Config::ItemHeight;
     items[2].x = items[1].x + Config::ItemSpacing;
     items[2].y = (Config::TaskbarHeight - items[2].h) / 2;
+    items[2].path = "A:/USER/TASKW.ZYX";
 
     r0ui_call(R0UICall::PinWindow, (uint64_t)"Taskbar");
     r0ui_call(R0UICall::PinWindow, (uint64_t)"Start Menu");
@@ -246,6 +249,11 @@ extern "C" int main() {
 
                             render_frame(taskbar, clean_bg, items, Config::ItemCount, current_hover_idx, cap_scale, icon_scale);
                             usleep(Config::FrameDelayUs);
+                        }
+
+                        if (current_hover_idx > 1) {
+                            syscall(21, (uint64_t)items[current_hover_idx].path);
+                            klog("Launched task %s", items[current_hover_idx].path);
                         }
                     }
                     break;

@@ -1,8 +1,12 @@
+#include <HAL/MSR.hpp>
 #include <HAL/SCREEN/Screen.hpp>
 #include <HAL/SCREEN/Font.hpp>
 #include <HAL/IDT/Panic.hpp>
 #include <HAL/MEM/FMEM.hpp>
+#include <HAL/MEM/VMM.hpp>
+#include <HAL/MEM/PMM.hpp>
 
+#include <Library/regs.h>
 #include <Library/debug.hpp>
 #include <Library/string.h>
 
@@ -62,6 +66,18 @@ namespace HAL::SCREEN {
 
         backbuffer = new uint32_t[screen_w * screen_h];
         has_damage = false;
+
+
+        uint64_t pat = MSR::rdmsr(HAL::MSR::IA32_PAT);
+
+        pat &= ~(0xFFULL << 32);
+        pat |=  (0x01ULL << 32);
+        MSR::wrmsr(MSR::IA32_PAT, pat);
+
+        // size_t page_count = (screen_p * screen_h + (PAGE_SIZE - 1)) / PAGE_SIZE;
+
+        // MEM::VMM::set_write_combining((uint64_t *)(read_cr3() + MEM::PMM::hhdm_offset), (uint64_t)screen_addr, page_count);
+
         return;
     }
 
@@ -70,15 +86,24 @@ namespace HAL::SCREEN {
 
         int dest_pitch_pixels = screen_p / sizeof(uint32_t);
         int copy_width = damage_x2 - damage_x1;
-        size_t copy_bytes = copy_width * sizeof(uint32_t);
 
-        for (int y = damage_y1; y < damage_y2; y++) {
-            uint32_t* src_row = backbuffer + (y * screen_w) + damage_x1;
-            uint32_t* dest_row = screen_addr + (y * dest_pitch_pixels) + damage_x1;
+        if (damage_x1 == 0 && copy_width == screen_w && dest_pitch_pixels == screen_w) {
+            size_t total_bytes = (damage_y2 - damage_y1) * screen_w * sizeof(uint32_t);
+            uint32_t* src = backbuffer + (damage_y1 * screen_w);
+            uint32_t* dest = screen_addr + (damage_y1 * screen_w);
 
-            HAL::MEM::FMEM::FastCopy(dest_row, src_row, copy_bytes);
+            HAL::MEM::FMEM::FastCopy(dest, src, total_bytes);
+        } else {
+            size_t copy_bytes = copy_width * sizeof(uint32_t);
+            for (int y = damage_y1; y < damage_y2; y++) {
+                uint32_t* src_row = backbuffer + (y * screen_w) + damage_x1;
+                uint32_t* dest_row = screen_addr + (y * dest_pitch_pixels) + damage_x1;
+
+                HAL::MEM::FMEM::FastCopy(dest_row, src_row, copy_bytes);
+            }
         }
 
+        asm volatile("sfence" ::: "memory");
         has_damage = false;
     }
 
@@ -93,19 +118,20 @@ namespace HAL::SCREEN {
             HAL::MEM::FMEM::FastCopy(dest_row, src_row, screen_w * sizeof(uint32_t));
         }
 
+        asm volatile("sfence" ::: "memory");
         has_damage = false;
     }
 
     void fill_screen(uint32_t col) {
         if (!backbuffer) return;
         HAL::MEM::FMEM::FastFill32(backbuffer, col, screen_w * screen_h);
-        add_damage(0, 0, screen_w, screen_h);
+        flip_buffer();
     }
 
     void fill_screen(COL col) {
         if (!backbuffer) return;
         HAL::MEM::FMEM::FastFill32(backbuffer, static_cast<uint32_t>(col), screen_w * screen_h);
-        add_damage(0, 0, screen_w, screen_h);
+        flip_buffer();
     }
 
     void set_pixel(int x, int y, uint32_t col) {
@@ -115,7 +141,6 @@ namespace HAL::SCREEN {
         }
         
         backbuffer[x + (y * screen_w)] = col;
-        add_damage(x, y, 1, 1);
     }
 
     void draw_char(char c, int x, int y, uint32_t col) {

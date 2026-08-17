@@ -88,6 +88,8 @@ namespace HAL::PCI {
                 if (current_loops >= LOOPS_BEFORE_YIELD)
                     xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
 
+                asm volatile("mfence" ::: "memory");
+
                 Scheduler::Yield();
             }
         }

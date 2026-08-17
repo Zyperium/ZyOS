@@ -215,17 +215,10 @@ namespace Debug {
            LogLevel level,
            const char* fmt, ...)
     {
-        // lib::ScopedLock x(lock);
+        lib::ScopedLock x(lock);
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
         bool da = HAL::CORE::validate_gs_reg();
-
-        // if (da && !current_access) {
-        //     current_access = HAL::CORE::get_core_data()->core_id + 1;
-        // }
-        // else if (da) {
-        //     while (current_access)
-        //         asm volatile("pause");
-        //     current_access = HAL::CORE::get_core_data()->core_id + 1;
-        // }
 
         puts("\033[");
         print_int(str_to_col(class_name));
@@ -270,5 +263,6 @@ namespace Debug {
         va_end(args_copy);
         
         TTY::BOOT::show_log(class_name, level_name(level), tbuf);
+        return;
     }
 }

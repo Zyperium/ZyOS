@@ -29,14 +29,19 @@ namespace lib {
 
         void insert_node(RB_Base *node);
         void remove_node(RB_Base *node);
+        size_t get_node_count() const { return node_count; }
 
         RB_Base *get_leftmost() const { return leftmost; }
+        RB_Base *get_rightmost() const { return rightmost; }
         RB_Base *get_root() const { return root; }
+        RB_Base *steal_rightmost();
 
     protected:
         RB_Base *root{nullptr};
+        RB_Base *rightmost{nullptr};
         RB_Base *leftmost{nullptr};
         Spinlock rb_lock;
+        size_t node_count;
 
     private:
         void rotate_left(RB_Base *x);

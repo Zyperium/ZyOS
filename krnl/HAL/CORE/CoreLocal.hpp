@@ -2,6 +2,7 @@
 #include <Services/Scheduler/Scheduler.hpp>
 #include <stdint.h>
 #include <Library/ZyOS.hpp>
+#include <HAL/GDT/GDT.hpp>
 
 namespace HAL::CORE {
     struct alignas(ZyOS::sbQWORD) CoreLocal {
@@ -13,6 +14,8 @@ namespace HAL::CORE {
         int core_id;
         uint32_t lapic_ticks_per_ms;
         Scheduler::Task *system_idle_task;
-        uint64_t root_cr3;
+        lib::RB_Tree *task_tree;
+        GDT::TSS *tss;
+        GDT::GDT *gdt_table;
     };
 }

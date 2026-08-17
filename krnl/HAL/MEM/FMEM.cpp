@@ -1,4 +1,5 @@
-#include "Library/debug.hpp"
+#include <HAL/MSR.hpp>
+#include <Library/debug.hpp>
 #include <HAL/MEM/FMEM.hpp>
 #include <Library/osconfig.hpp>
 
@@ -36,7 +37,7 @@ namespace HAL::MEM::FMEM {
             : "xmm0", "memory", "cc"
         );
 
-        dest += chunks  *16;
+        dest += chunks * 16;
         count %= 16;
 
         while (count--) {
@@ -84,39 +85,30 @@ namespace HAL::MEM::FMEM {
         }
     }
 
-    static bool are_interrupts_enabled() {
-        uint64_t rflags;
-        asm volatile("pushfq; pop %0" : "=r"(rflags));
-        return (rflags & 0x200);
-    }
 
-    __attribute__((target("sse")))
+    __attribute__((target("avx2")))
     void FastCopy(void *d, const void *s, size_t count) {
-        bool intre = are_interrupts_enabled();
-        asm volatile("cli");
-        uint8_t *dest = (uint8_t*)d;
-        const uint8_t *src = (const uint8_t*)s;
+        uint8_t *dest = (uint8_t *)d;
+        const uint8_t *src = (const uint8_t *)s;
 
-        size_t chunks = count / 16;
+        size_t chunks = count / 32;
 
         while (chunks--) {
             asm volatile(
-                "movdqu (%1), %%xmm0\n"
-                "movdqu %%xmm0, (%0)"
-                :: "r"(dest), "r"(src)
-                : "xmm0", "memory"
+                "vmovdqu (%1), %%ymm0\n"
+                "vmovdqu %%ymm0, (%0)"
+                :
+                : "r"(dest), "r"(src)
+                : "ymm0", "memory"
             );
-            dest += 16;
-            src += 16;
+            dest += 32;
+            src += 32;
         }
 
-        count %= 16;
+        count %= 32;
         while (count--) {
             *dest++ = *src++;
         }
-
-        if (intre)
-            asm volatile("sti");
     }
 
     static inline void write_xcr0(uint32_t reg, uint64_t val) {

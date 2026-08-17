@@ -4,6 +4,46 @@
 #include <stddef.h>
 
 namespace R0UI {
+    constexpr uint64_t DECO_HEIGHT = 32;
+
+    struct DecoInit {
+        uint32_t *deco_buffer;
+        uint32_t width;
+        uint32_t height;
+        uint32_t identity;
+        char title[32];
+    };
+
+    struct DecoChange {
+        uint32_t identity;
+        char ntitle[32];
+        uint32_t nwidth;
+        uint32_t nheight;
+    };
+
+    enum class DecoEventTypes {
+        EV_CREATE_DECO,
+        EV_CHANGE_DECO,
+        EV_DESTROY_DECO,
+        EV_INPUT_AT_DECO
+    };
+
+    struct DecoEvent {
+        DecoEventTypes de_type;
+        union {
+            DecoInit de_control;
+            DecoChange de_change;
+            uint32_t shutdown_id;
+            struct {
+                int32_t rel_x;
+                int32_t rel_y;
+                uint8_t buttons;
+            } mouse;
+        };
+
+        uint8_t reserved[8];
+    };
+
     struct Point {
         int32_t x;
         int32_t y;

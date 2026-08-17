@@ -36,7 +36,7 @@ namespace PS2 {
     }
 
     void Mouse::Initialize() {
-        Debug::krnl_print("PS/2 Mouse", Debug::LOG_INFO, "Initializing Mouse...");
+        Debug::krnl_print("PS/2", Debug::LOG_INFO, "Initializing Mouse...");
 
         WaitWrite();
         outb(COMMAND_PORT, CMD_ENABLE_SECOND_PORT);
@@ -55,27 +55,27 @@ namespace PS2 {
 
         WriteCommand(MOUSE_CMD_RESET);
         if (ReadData() != MOUSE_RESP_ACK) {
-            Debug::krnl_print("PS/2 Mouse", Debug::LOG_ERROR, "Reset ACK failed");
+            Debug::krnl_print("PS/2", Debug::LOG_ERROR, "Reset ACK failed");
             return;
         }
         if (ReadData() != MOUSE_RESP_BAT_SUCCESS || ReadData() != 0x00) {
-            Debug::krnl_print("PS/2 Mouse", Debug::LOG_ERROR, "Self-test failed");
+            Debug::krnl_print("PS/2", Debug::LOG_ERROR, "Self-test failed");
             return;
         }
 
         WriteCommand(MOUSE_CMD_SET_DEFAULTS);
         if (ReadData() != MOUSE_RESP_ACK) {
-            Debug::krnl_print("PS/2 Mouse", Debug::LOG_ERROR, "Set defaults ACK failed");
+            Debug::krnl_print("PS/2", Debug::LOG_ERROR, "Set defaults ACK failed");
             return;
         }
 
         WriteCommand(MOUSE_CMD_ENABLE_STREAM);
         if (ReadData() != MOUSE_RESP_ACK) {
-            Debug::krnl_print("PS/2 Mouse", Debug::LOG_ERROR, "Enable streaming ACK failed");
+            Debug::krnl_print("PS/2", Debug::LOG_ERROR, "Enable streaming ACK failed");
             return;
         }
 
-        Debug::krnl_print("PS/2 Mouse", Debug::LOG_INFO, "Mouse fully initialized");
+        Debug::krnl_print("PS/2", Debug::LOG_INFO, "Mouse fully initialized");
     }
 
     void Mouse::HandleInterrupt() {

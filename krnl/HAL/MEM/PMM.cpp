@@ -1,3 +1,4 @@
+#include <HAL/CORE/Core.hpp>
 #include <HAL/MEM/PMM.hpp>
 #include <Library/regs.h>
 #include <Library/string.h>
@@ -126,6 +127,8 @@ namespace HAL::MEM::PMM {
 
         for (uint64_t i = 0; i < total_pages; i++) {
             if (!is_page_used(i)) {
+                if (HAL::CORE::validate_gs_reg() && HAL::CORE::get_core_data()->current_task)
+                    HAL::CORE::get_core_data()->current_task->used_ram += PAGE_SIZE;
                 lock_page(i);
                 ref_counts[i] = 1;
                 release_lock();
@@ -167,6 +170,8 @@ namespace HAL::MEM::PMM {
                     ref_counts[i + k] = 1;
                 }
                 release_lock();
+                if (HAL::CORE::validate_gs_reg() && HAL::CORE::get_core_data()->current_task)
+                    HAL::CORE::get_core_data()->current_task->used_ram += PAGE_SIZE * i;
                 return (void *)(i * PAGE_SIZE);
             }
 
@@ -188,6 +193,8 @@ namespace HAL::MEM::PMM {
         uint64_t page_index = ui_addr / PAGE_SIZE;
 
         if (ref_counts[page_index] > 0) {
+            if (HAL::CORE::validate_gs_reg() && HAL::CORE::get_core_data()->current_task)
+                HAL::CORE::get_core_data()->current_task->used_ram -= PAGE_SIZE;
             ref_counts[page_index]--;
         }
 

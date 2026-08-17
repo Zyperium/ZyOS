@@ -1,3 +1,4 @@
+#include <klibkrnl.h>
 #include <stdint.h>
 #include <kalloc.h>
 
@@ -88,6 +89,7 @@ void apply_blur(uint32_t *taskbar_img, int width, int height, int radius, int pa
     uint32_t *temp_buf = (uint32_t *)malloc(width * height * sizeof(uint32_t));
     if (!temp_buf) return;
 
+    klog("Applying blur!");
     for (int i = 0; i < passes; i++) {
         box_blur_h(taskbar_img, temp_buf, width, height, radius);
         box_blur_v(temp_buf, taskbar_img, width, height, radius);

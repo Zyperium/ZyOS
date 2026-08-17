@@ -15,6 +15,7 @@ size_t kwrite(size_t file_d, size_t offset, uint8_t *buf, size_t bufsz);
 void kclose(size_t file_d);
 
 size_t ioctl(const char *drvr, size_t data, size_t ex);
+size_t open_app(const char *path);
 
 void yield();
 void klog(const char *fmt, ...);

@@ -8,6 +8,7 @@
 #include <lib/vec.hpp>
 #include <lib/umap.hpp>
 #include "r0ui_protocol.hpp"
+#include "Deco.hpp"
 
 namespace R0UI {
     class Window {
@@ -34,6 +35,7 @@ namespace R0UI {
         static constexpr size_t WINDOWED_PADDING_AMOUNT = 10;
 
         WinControl *winref{nullptr};
+        DecoRoot has_deco;
         lib::string classname;
         uint64_t usr_pix{0};
         Rect factposn{};

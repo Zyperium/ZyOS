@@ -19,6 +19,7 @@ namespace lib {
 
         while (__atomic_test_and_set(&locked, __ATOMIC_ACQUIRE)) {
             asm volatile("pause");
+            // Debug::krnl_print("SCHD", Debug::LOG_INFO, "Stuck!");
         }
 
         return _flags;

@@ -56,11 +56,6 @@ namespace HAL {
         Debug::krnl_print("HAL", Debug::LOG_INFO, "Initialize");
         MEM::initialize(&hhdm_request, memmap_request.response);
 
-        GDT::initialize();
-
-        ACPI::init();
-        IDT::initialize();
-
         Debug::krnl_print("HAL", Debug::LOG_INFO, "Initialize core 0");
         // This should be core 0. Otherwise something weird is going on.
         CORE::CoreLocal *data = new CORE::CoreLocal;
@@ -69,9 +64,13 @@ namespace HAL {
         data->kernel_stack = 0;
         data->self = data;
         data->lapic_ticks_per_ms = 0;
-        data->root_cr3 = read_cr3();
-        
+
+        GDT::initialize(data);
+
         CORE::init_core(data);
+
+        ACPI::init();
+        IDT::initialize();
 
         Debug::krnl_print("HAL", Debug::LOG_INFO, "ACPI initialized!");
 

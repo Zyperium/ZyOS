@@ -1,3 +1,4 @@
+#include "Services/ELF/ELF.hpp"
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <Library/path.hpp>
@@ -415,6 +416,22 @@ namespace Syscalls {
             case SYSCALL_ID::SYS_GET_PID: {
                 uint64_t pid = HAL::CORE::get_core_data()->current_task->get_pid();
                 return pid;
+            }
+            case SYSCALL_ID::SYS_EXEC_APP: {
+                char *path = usr_to_string(regs.A1, 64);
+
+                Scheduler::Task *ntask = new Scheduler::Task([](void *ptr){ 
+                    for (;;);
+                    char stack[64];
+                    memcpy(stack, ptr, 64);
+                    delete[] (char *)ptr;
+                    ELF::Runway(stack);
+                    Scheduler::Suicide();
+                }, path, true, path);
+
+                ntask->sleep(10000);
+
+                return ntask->get_pid();
             }
             default:
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unknown syscall ID! (%i)", id);

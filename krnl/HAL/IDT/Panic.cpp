@@ -20,7 +20,14 @@ void panic(PanicReasons reason, HAL::IDT::InterruptFrame *iframe) {
             Debug::krnl_print("IDT", Debug::LOG_INFO, "Page fault in kmode!");
             break;
         case PanicReasons::GENERAL_FAULT_KMODE: {
-            Debug::krnl_print("IDT", Debug::LOG_INFO, "General protection fault!");
+            uint16_t ds, es, fs, gs;
+            asm volatile("mov %%ds, %0" : "=r"(ds));
+            asm volatile("mov %%es, %0" : "=r"(es));
+            asm volatile("mov %%fs, %0" : "=r"(fs));
+            asm volatile("mov %%gs, %0" : "=r"(gs));
+
+            Debug::krnl_print("IDT", Debug::LOG_INFO, "DS: %x | ES: %x | FS: %x | GS: %x", ds, es, fs, gs);
+            Debug::krnl_print("IDT", Debug::LOG_INFO, "General protection fault! (%x)", iframe->rip);
             Debug::krnl_print("SCHD", Debug::LOG_INFO, "Top stack:");
             uint64_t *stack = (uint64_t *)iframe->rsp;
             for (auto i{0uz}; i < 5; i++)

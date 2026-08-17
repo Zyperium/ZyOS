@@ -1,3 +1,4 @@
+#include "Library/redblack.hpp"
 #include "Services/IPC/drvio.hpp"
 #include <stddef.h>
 #include <stdint.h>
@@ -26,10 +27,13 @@ namespace Scheduler {
     bool active{false};
     bool event_occured{};
     uint32_t xsave_pages{0};
+    uint64_t krnl_cr3{0};
 
-    lib::RB_Tree *task_tree;
     lib::Spinlock Task::lock{};
-    TaskBlock *blocked_queue[(size_t)BlockReasons::TOTAL_REASONS]{};
+    lib::Spinlock garbage_lock;
+    GarbageQueue *garbage_queue;
+    lib::RB_Tree sleep_tree;
+    size_t sleeping_tasks;
 
     Task ***TaskDirectory;
     Task *reaper_task{nullptr};
@@ -44,10 +48,12 @@ namespace Scheduler {
 
     void EnableScheduler() {
         active = true;
+        asm volatile("sfence" ::: "memory");
     }
 
     void DisabledScheduler() {
         active = false;
+        asm volatile("sfence" ::: "memory");
     }
 
     void PollBlockedTasks() {
@@ -59,14 +65,11 @@ namespace Scheduler {
         frkr_task = HAL::CORE::get_core_data()->current_task;
 
         for (;;) {
-            if (!blocked_queue[(int)BlockReasons::FORK]) {
-                frkr_task->block(BlockReasons::SLEEP);
-                continue;
-            }
+            frkr_task->block(BlockReasons::FORK);
 
             asm volatile("cli");
 
-            Task *to_fork = blocked_queue[(int)BlockReasons::FORK]->t_ptr;
+            Task *to_fork = frkr_task;
 
             Debug::krnl_print("FRKR", Debug::LOG_INFO, "Forking task %s", to_fork->task_name.c_str());
 
@@ -138,6 +141,8 @@ namespace Scheduler {
 
             to_fork->unblock(BlockReasons::FORK);
             fork->unblock(BlockReasons::FORKD);
+            
+            asm volatile("sfence" ::: "memory");
 
             asm volatile("sti");
 
@@ -153,7 +158,11 @@ namespace Scheduler {
             TaskDirectory[i] = nullptr;
         }
 
-        task_tree = new lib::RB_Tree{};
+        krnl_cr3 = read_cr3();
+        garbage_queue = (GarbageQueue *)PMEM::alloc_page(VMM::PTE_WRITABLE | VMM::PTE_PRESENT | VMM::PTE_NX | VMM::PTE_CACHELESS);
+        memset(garbage_queue, 0, sizeof(GarbageQueue));
+
+        HAL::CORE::get_core_data()->task_tree = new lib::RB_Tree{};
 
         active = false;
         TaskDirectory[0] = new Task*[TASK_TABLE_SIZE];
@@ -169,7 +178,8 @@ namespace Scheduler {
     }
 
     Task *Task::GetNextTask() {
-        lib::RB_Base* leftmost_node = task_tree->get_leftmost();
+        asm volatile("mfence" ::: "memory");
+        lib::RB_Base* leftmost_node = HAL::CORE::get_core_data()->task_tree->get_leftmost();
         if (!leftmost_node) {
             return HAL::CORE::get_core_data()->system_idle_task;
         }
@@ -240,7 +250,7 @@ namespace Scheduler {
 
         heap_ptr = 0;
         mapped_limit = 0;
-        cr3 = read_cr3();
+        cr3 = krnl_cr3;
         fs_base = 0;
         usr_stack_top = 0;
         krnl_stack_top = 0;
@@ -248,8 +258,8 @@ namespace Scheduler {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Fetching core info {Core data @ %x}", tdata);
         current_core = tdata->core_id;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "ints are %s", (is_interrupt_enabled()) ? "on" : "off");
-        current_queue = 0;
         running = false;
+        is_queued = false;
         if (!xsave_pages) {
             uint32_t xsve = get_xsave_size();
 
@@ -272,6 +282,7 @@ namespace Scheduler {
         *mxcsr = 0x1F80;
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
+        asm volatile("sfence" ::: "memory");
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished primitive task setup");
     }
 
@@ -280,10 +291,10 @@ namespace Scheduler {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Creating new task %s", task_name.c_str());
 
         krnl_stack_btm = (ZyOS::QWORD *)PMEM::alloc_pages(TASK_STACK_PAGES + 1, VMM::PTE_WRITABLE | VMM::PTE_PRESENT);
-        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Allocated pages for new task");
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Allocated pages for new task (@%x)", krnl_stack_btm);
 
         VMM::unmap_page(
-            reinterpret_cast<uint64_t *>(read_cr3() & VMM::PTE_ADDR_MASK), 
+            reinterpret_cast<uint64_t *>(krnl_cr3 + PMM::hhdm_offset), 
             reinterpret_cast<uint64_t>(krnl_stack_btm)
         );
 
@@ -319,6 +330,7 @@ namespace Scheduler {
             enqueue();
         }
 
+        asm volatile("sfence" ::: "memory");
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler has initialized task %s", task_name.c_str());
         return;
     }
@@ -331,7 +343,7 @@ namespace Scheduler {
         
         if (pid < o->pid) return -1;
         if (pid > o->pid) return 1;
-        
+
         return 0;
     }
 
@@ -343,7 +355,6 @@ namespace Scheduler {
     }
 
     void Task::suicide() {
-        reaper_task->unblock(BlockReasons::SLEEP);
         block(BlockReasons::GARBAGE);
         for (;;) asm volatile("hlt");
     }
@@ -353,108 +364,41 @@ namespace Scheduler {
     }
 
     void Task::block(BlockReasons reason, uint64_t arg1) {
-        // if (this == HAL::CORE::get_core_data()->current_task) {
-        //     asm volatile("sti");
-        // }
-
-        if (blockmap[(size_t)reason]) {
-            Yield();
+        if (blocked == reason) {
+            blocked_by = arg1;
             return;
         }
 
-        blockmap[(size_t)reason] = true;
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Blocking %s", task_name.c_str());
 
+        if (reason == BlockReasons::GARBAGE) {
+            lib::ScopedLock x(garbage_lock);
+            garbage_queue->to_clear[garbage_queue->curr_ptr] = this;
+            ++garbage_queue->curr_ptr;
+            reaper_task->unblock(BlockReasons::SLEEP);
+        }
+
+        blocked = reason;
+        blocked_by = arg1;
+        
         if (!running)
             dequeue();
-
-        TaskBlock *n_block = new TaskBlock {
-            reason,
-            arg1,
-            this,
-            nullptr,
-            nullptr
-        };
-
-        TaskBlock *r_block = blocked_queue[(size_t)reason];
+        
         running = false;
 
-        if (!r_block) {
-            n_block->next = n_block;
-            n_block->prev = n_block;
-            blocked_queue[(size_t)reason] = n_block;
-            
-            Yield();
-            return;
-        }
-
-        n_block->next = r_block;
-        n_block->prev = r_block->prev;
-        r_block->prev = n_block;
-        n_block->prev->next = n_block;
- 
+        asm volatile("sfence" ::: "memory");
         Yield();
         return;
     }
 
     lib::Spinlock block_lock;
     void Task::unblock(BlockReasons reason) {
-        lib::ScopedLock x(block_lock);
-
-        if (!blockmap[(size_t)reason]) {
+        if (blocked != reason)
             return;
-        }
 
-        blockmap[(size_t)reason] = false;
-    
-        TaskBlock *found_self_block = blocked_queue[(size_t)reason];
+        blocked = BlockReasons::TOTAL_REASONS;
 
-        if (!found_self_block) {
-            // quick repair:
-            bool requeue_task{true};
-
-            for (auto i{0uz}; i < (size_t)BlockReasons::TOTAL_REASONS; ++i) {
-                if (blockmap[i]) {
-                    requeue_task = false;
-                    break;
-                }
-            }
-
-            if (requeue_task) {
-                enqueue();
-            }
-
-            return;
-        }
-
-        while (found_self_block->t_ptr != this) {
-            found_self_block = found_self_block->next;
-            if (found_self_block == blocked_queue[(size_t)reason]) {
-                return;
-            }
-        }
-        
-        if (found_self_block->next == found_self_block) {
-            blocked_queue[(size_t)reason] = nullptr;
-        } else {
-            if (found_self_block == blocked_queue[(size_t)reason]) {
-                blocked_queue[(size_t)reason] = found_self_block->next;
-            }
-            found_self_block->prev->next = found_self_block->next;
-            found_self_block->next->prev = found_self_block->prev;
-        }
-
-        bool requeue_task{true};
-
-        for (auto i{0uz}; i < (size_t)BlockReasons::TOTAL_REASONS; ++i) {
-            if (blockmap[i]) {
-                requeue_task = false;
-                break;
-            }
-        }
-
-        if (requeue_task) {
-            enqueue();
-        }
+        enqueue();
 
         return;
     }
@@ -464,17 +408,25 @@ namespace Scheduler {
     }
 
     void Task::enqueue() {
+        if (is_queued) return;
         lib::ScopedLock x(lock);
         if (vruntime < global_min_vruntime) {
             vruntime = global_min_vruntime;
         }
-
-        task_tree->insert_node(this);
+        if (HAL::CORE::get_core_data()->core_id != 0)
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Inserting %s into AP%i", task_name.c_str(), HAL::CORE::get_core_data()->core_id);
+        HAL::CORE::get_core_data()->task_tree->insert_node(this);
+        is_queued = true;
+        asm volatile("sfence" ::: "memory");
+        return;
     }
 
     void Task::dequeue() {
+        if (!is_queued) return;
         lib::ScopedLock x(lock);
-        task_tree->remove_node(this);
+        HAL::CORE::get_core_data()->task_tree->remove_node(this);
+        is_queued = false;
+        asm volatile("sfence" ::: "memory");
     }
 
     void Task::TerminateTask(Task *term) {
@@ -491,59 +443,83 @@ namespace Scheduler {
         return TaskDirectory[dir][idx];
     }
 
+    void Task::sleep(ZyOS::QWORD time) {
+        Scheduler::sleeping_tasks++;
+        vruntime = time + ACPI::get_sys_time();
+        Debug::krnl_print("SCHD", Debug::LOG_INFO, "Inserting task into sleep tree!");
+        sleep_tree.insert_node(this);
+        block(BlockReasons::SLEEP);
+    }
+
     void Suicide() {
         HAL::CORE::get_core_data()->current_task->suicide();
     }
-    
-    void ClearGarbage() {
-        TaskBlock *head = blocked_queue[(size_t)BlockReasons::GARBAGE];
-        if (!head) {
-            return;
-        }
-    
-        blocked_queue[(size_t)BlockReasons::GARBAGE] = nullptr;
-    
-        TaskBlock *current = head;
-        TaskBlock *next_node = nullptr;
-        ZyOS::QWORD krnl_cr3 = read_cr3();
-    
-        do {
-            next_node = current->next;
-        
-            if (current->t_ptr) {
-                Task *t = current->t_ptr;
-            
-                ZyOS::QWORD pid = t->get_pid();
-                ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;
-                ZyOS::QWORD idx = pid % TASK_TABLE_SIZE;
-            
-                if (TaskDirectory[dir]) {
-                    TaskDirectory[dir][idx] = nullptr;
-                }
 
-                if (t->utask) {
-                    Debug::krnl_print("SCHD", Debug::LOG_INFO, "Deleting utask %x", t->utask);
-                    delete t->utask;
-                    Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished deleting utask");
-                }
-            
-                if (t->cr3 != krnl_cr3) {
-                    VMM::FreeProcessPages(t->cr3);
-                }
-            
-                if (t->krnl_stack_btm) {
-                    uintptr_t original_alloc_ptr = reinterpret_cast<uintptr_t>(t->krnl_stack_btm) - PAGE_SIZE;
-                    PMEM::free_pages(reinterpret_cast<void *>(original_alloc_ptr), TASK_STACK_PAGES + 1);
-                }
-            
-                delete t;
+    void ClearGarbage() {
+        lib::ScopedLock x(garbage_lock);
+    
+        for (auto i{0uz}; i < garbage_queue->curr_ptr; ++i) {
+            Task *t = garbage_queue->to_clear[i];
+        
+            ZyOS::QWORD pid = t->get_pid();
+            ZyOS::QWORD dir = pid / TASK_TABLE_SIZE;
+            ZyOS::QWORD idx = pid % TASK_TABLE_SIZE;
+        
+            if (TaskDirectory[dir]) {
+                TaskDirectory[dir][idx] = nullptr;
+            }
+            if (t->utask) {
+                delete t->utask;
             }
         
-            delete current;
-            current = next_node;
-        } while (current != head);
+            if (t->cr3 != krnl_cr3) {
+                VMM::FreeProcessPages(t->cr3);
+            }
+        
+            if (t->krnl_stack_btm) {
+                uintptr_t original_alloc_ptr = reinterpret_cast<uintptr_t>(t->krnl_stack_btm) - PAGE_SIZE;
+                PMEM::free_pages(reinterpret_cast<void *>(original_alloc_ptr), TASK_STACK_PAGES + 1);
+            }
+        
+            garbage_queue->to_clear[i] = nullptr;
+            delete t;
+        }
+
+        garbage_queue->curr_ptr = 0;
+    }
+
+    lib::Spinlock steal_lock;
+    Task *AttemptCoreSteal() {
+        for (auto i{0uz}; i < HAL::CORE::get_core_count(); ++i) {
+            if (i == (size_t)HAL::CORE::get_core_data()->core_id) continue;
+
+            lib::RB_Tree *target = HAL::CORE::CoreTLS[i]->task_tree;
+
+            if (target->get_node_count() <= 2) {
+                continue;
+            }
+
+            lib::ScopedLock x(steal_lock);
+
+            if (target->get_node_count() <= 2) {
+                continue;
+            }
+
+            Task *stolen = (Task *)target->steal_rightmost();
+            if (stolen == nullptr) {
+                continue;
+            }
+
+            asm volatile("sfence" ::: "memory");
+            stolen->running = true;
+            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Stealing task %s", stolen->task_name.c_str());
+            return stolen;
+        }
+
+        return nullptr;
     }
 }
+
 static inline void xsave_state(void *buffer) {
     uint32_t low, high;
 
@@ -553,6 +529,8 @@ static inline void xsave_state(void *buffer) {
         : "=m" (*(uint8_t *)buffer)
         : "a" (low), "d" (high)
         : "memory");
+
+    asm volatile("sfence" ::: "memory");
 }
 
 static inline void xrstor_state(void *buffer) {
@@ -595,6 +573,8 @@ static inline void xrstor_state(void *buffer) {
         :
         : "m" (*(const uint8_t *)buffer), "a" (low), "d" (high)
         : "memory");
+
+    asm volatile("sfence" ::: "memory");
 }
 
 void SysIdleTask();
@@ -613,9 +593,6 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     }
 
     auto prev_task = thread_data->current_task;
-    
-    asm volatile("mfence" ::: "memory");
-    asm volatile("sfence" ::: "memory");
 
     Scheduler::Task *next_task = Scheduler::Task::GetNextTask();
     
@@ -635,8 +612,18 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         }
     }
 
-    asm volatile("mfence" ::: "memory");
-    asm volatile("sfence" ::: "memory");
+    if (thread_data->core_id == 0 && Scheduler::sleep_tree.get_node_count() > 0) {
+        loop:
+        Scheduler::Task *t = (Scheduler::Task *)Scheduler::sleep_tree.get_leftmost();
+        if (t && t->vruntime >= curr_sys_time) {
+            Scheduler::sleep_tree.remove_node(t);
+            t->vruntime = 0; // this forces it back to the lowest
+            t->unblock(Scheduler::BlockReasons::SLEEP); // reinserts it to regular tree.
+            --Scheduler::sleeping_tasks;
+            goto loop;
+        }
+        asm volatile("sfence" ::: "memory");
+    }
 
     if (next_task && next_task != thread_data->system_idle_task) {
         next_task->dequeue();
@@ -645,10 +632,16 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (!next_task) {
         next_task = thread_data->system_idle_task;
     }
-
+    
     HAL::CORE::set_lapic_shot(next_task->niceness);
     next_task->running = true;
     thread_data->current_task = next_task;
+
+    if (next_task == thread_data->system_idle_task) {
+        Scheduler::Task *new_target = Scheduler::AttemptCoreSteal();
+        if (new_target) next_task = new_target;
+        // else Debug::krnl_print("SCHD", Debug::LOG_INFO, "Failed to steal task ):");
+    }
 
     if (next_task != prev_task) {
         if (prev_task) {
@@ -659,6 +652,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
                 xsave_state(prev_task->fx_state);
             }
         }
+
         if (next_task->fx_state) {
             xrstor_state(next_task->fx_state);
         }

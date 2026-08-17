@@ -2,6 +2,7 @@
 #include "SERVICES.hpp"
 #include "Composer.hpp"
 #include "lib/locks.hpp"
+#include "r0ui_protocol.hpp"
 
 #include <LOG.hpp>
 #include <HAL.hpp>
@@ -68,6 +69,7 @@ namespace R0UI {
             linked_io = self_node;
         }
         
+        has_deco.active = false;
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "Damaging UI");
         Composer::add_damage(factposn.x, factposn.y, factposn.width, factposn.height);
     }
@@ -540,6 +542,13 @@ namespace R0UI {
         winref->width = factposn.width;
         winref->height = factposn.height;
 
+        bool og = has_deco.active;
+        has_deco.active = winref->flags & WindowFlags::HasDecor;
+        if (has_deco.active)
+            has_deco.Realloc(winref->width);
+        else if (og) 
+            has_deco.Clean();
+
         if (size_changed) {
             realloc_pixel_buffer(ref, og_w, og_h);
             remap_watchers();
@@ -554,6 +563,8 @@ namespace R0UI {
     }
 
     void Window::paint(uint32_t *screen) {
+        uint32_t added_deco = (has_deco.active) ? DECO_HEIGHT : 0;
+
         int32_t clip_left   = (factposn.x < 0) ? 0 : factposn.x;
         int32_t clip_top    = (factposn.y < 0) ? 0 : factposn.y;
         int32_t clip_right  = (factposn.x + factposn.width > Composer::width) ? Composer::width : factposn.x + factposn.width;
@@ -563,20 +574,23 @@ namespace R0UI {
             return;
 
         uint32_t copy_w = clip_right - clip_left;
+        int32_t win_x = clip_left - factposn.x;
 
         for (int32_t y = clip_top; y < clip_bottom; ++y) {
             int32_t win_y = y - factposn.y;
-            int32_t win_x = clip_left - factposn.x;
-
+            
             uint32_t dest_offset = clip_left + (y * Composer::width);
             uint32_t src_offset  = win_x + (win_y * factposn.width);
 
-            memcpy(
+            HAL::MEM::FMEM::FastCopy(
                 &screen[dest_offset],
                 &buffer[src_offset],
                 copy_w * sizeof(uint32_t)
             );
         }
+
+        if (has_deco.active)
+            has_deco.Paint(factposn.x, clip_top - added_deco, copy_w, screen);
     }
 
     bool Window::push_event(const Event &ev) {

@@ -1,3 +1,5 @@
+#include "HAL/MEM/FMEM.hpp"
+#include <Library/redblack.hpp>
 #include <HAL/IDT/IDT.hpp>
 #include <Library/io.hpp>
 #include <Library/locks.hpp>
@@ -20,12 +22,14 @@ static constinit volatile limine_mp_request mp_request = {
 };
 
 namespace HAL::CORE {
+    lib::vec<CoreLocal *> CoreTLS;
     void init_core(CoreLocal *data) {
         uint64_t addr = reinterpret_cast<uint64_t>(data);
 
         MSR::wrmsr(MSR::IA32_GS_BASE, addr);
         MSR::wrmsr(MSR::IA32_KERNEL_GS_BASE, addr);
 
+        (void)CoreTLS.push_back(data);
         init_lapic();
     }
 
@@ -34,40 +38,51 @@ namespace HAL::CORE {
     volatile uint16_t core_count{1};
     volatile uint16_t total_cores{1};
     void addi_core_EP() {
-        Debug::krnl_print("CORE", Debug::LOG_INFO, "New core initializing. Core ID: %i", core_count);
-
-        lib::ScopedLock x(core_lock);
-        HAL::GDT::initialize();
-        HAL::IDT::reload_idt();
-
+        core_lock.lock();
+        asm volatile("sfence" ::: "memory");
+        
         CoreLocal *data = new CoreLocal;
         data->core_id = core_count;
+        // Debug::krnl_print("CORE", Debug::LOG_INFO, "New core initializing. Core ID: %i", core_count);
         core_count += 1;
+        asm volatile("sfence" ::: "memory");
         data->self = data;
         data->kernel_stack = 0;
         data->lapic_ticks_per_ms = 0;
         data->current_task = nullptr;
         data->last_task_runtime = ACPI::get_sys_time();
-        data->root_cr3 = read_cr3();
+
         init_core(data);
+        HAL::GDT::initialize(data);
+        init_core(data);
+        HAL::IDT::reload_idt();
+        Debug::krnl_print("CORE", Debug::LOG_INFO, "Initialized IDT, Core & GDT");
 
         char task_name[24];
         Debug::snprintf(task_name, 24, "ZyOS %i", data->core_id);
+        data->task_tree = new lib::RB_Tree;
+
+        asm volatile("sfence" ::: "memory");
 
         Scheduler::Task *idle_task = new Scheduler::Task((Scheduler::Task::EntryPoint)idleptr, task_name, false);
         idle_task->current_core = data->core_id;
         data->system_idle_task = idle_task;
 
+        MEM::FMEM::enable_sse();
+
         calibrate_lapic();
         set_lapic_shot(1);
 
+        core_lock.unlock(0);
+        asm volatile("sfence" ::: "memory");
         asm volatile("sti");
+        idleptr();
 
+        Debug::krnl_print("CORE", Debug::LOG_INFO, "Doing nothing....");
         while (true) asm volatile("hlt");
     }
 
     void broadcast_nmi() {
-        return;
         Debug::krnl_print("CORE", Debug::LOG_INFO, "Broadcasting NMI from core %i", get_core_data()->core_id);
         while (lapic_read(LAPIC_ICR_LOW) & LAPIC_ICR_SEND_PENDING) {
             asm volatile("pause");
@@ -104,7 +119,7 @@ namespace HAL::CORE {
     }
 
     size_t get_core_count() {
-        return total_cores;
+        return core_count;
     }
 
     uintptr_t lapic_base_ptr = 0;
@@ -159,7 +174,7 @@ namespace HAL::CORE {
         get_core_data()->lapic_ticks_per_ms = ticks_in_1ms;
         lapic_write(LAPIC_TIMER_INITCNT, ticks_in_1ms);
         lapic_write(LAPIC_PRIORITY_REG, 0);
-        Debug::krnl_print("CORE", Debug::LOG_INFO, "Calibrated lapic @ %i ticks_per_ms", ticks_in_1ms);
+        // Debug::krnl_print("CORE", Debug::LOG_INFO, "Calibrated lapic @ %i ticks_per_ms", ticks_in_1ms);
     }
 
     void set_lapic_shot(uint64_t milliseconds) {
@@ -176,13 +191,13 @@ namespace HAL::CORE {
             lapic_mapped = true;
         }
 
-        Debug::krnl_print("CORE", Debug::LOG_INFO, "Initializing LAPIC on core %i", get_core_data()->core_id);
+        // Debug::krnl_print("CORE", Debug::LOG_INFO, "Initializing LAPIC on core %i", get_core_data()->core_id);
         uint32_t spurious_reg = lapic_read(LAPIC_SPURIOUS);
 
         spurious_reg &= ~LAPIC_SPURIOUS_VECTOR_MASK;
         spurious_reg |= LAPIC_APIC_SOFTWARE_ENABLE | IDT::LAPIC_SPURIOUS_VECTOR;
         lapic_write(LAPIC_SPURIOUS, spurious_reg);
-        Debug::krnl_print("CORE", Debug::LOG_INFO, "Lapic initialized!");
+        // Debug::krnl_print("CORE", Debug::LOG_INFO, "Lapic initialized!");
 
         calibrate_lapic();
 

@@ -19,19 +19,7 @@ extern "C" void exception_handler(HAL::IDT::InterruptFrame *frame) {
         asm volatile("swapgs");
         auto *x = HAL::CORE::get_core_data();
         auto *task = x->current_task;
-        uint64_t cr2_val;
-        asm volatile("mov %%cr2, %0" : "=r"(cr2_val));
-        Debug::krnl_print(
-            "IDT", 
-            Debug::LOG_INFO, 
-            "%s died: RIP: %x | RSP: %x | CR2: %x | Err: %x | Vector: %x", 
-            task->task_name.c_str(),
-            frame->rip,
-            *(uint64_t*)frame->rsp,
-            cr2_val,
-            frame->int_number,
-            frame->error_code
-        );
+        Debug::krnl_print("IDT", Debug::LOG_INFO, "Segfault! (%x, %s)", frame->rip, task->task_name.c_str());
 
         task->suicide();
         for (;;);

@@ -1,3 +1,4 @@
+#include <Library/debug.hpp>
 #include <HAL/MEM/VMM.hpp>
 #include <HAL/MEM/PMM.hpp>
 
@@ -87,6 +88,51 @@ namespace HAL::MEM::VMM {
         current_table[index] = (uint64_t)new_table_phys | dir_flags;
 
         return new_table_virt;
+    }
+
+    void set_write_combining(uint64_t *pml4_root, uint64_t virt_start, size_t page_count) {
+        uint64_t virt_end = virt_start + (page_count * 0x1000);
+        uint64_t virt = virt_start;
+
+        while (virt < virt_end) {
+            uint64_t pml4_idx = (virt >> 39) & 0x1FF;
+            uint64_t pdpt_idx = (virt >> 30) & 0x1FF;
+            uint64_t pd_idx   = (virt >> 21) & 0x1FF;
+            uint64_t pt_idx   = (virt >> 12) & 0x1FF;
+
+            uint64_t *pdpt = get_next_level(pml4_root, pml4_idx, false, 4);
+            if (!pdpt || !(*pdpt & PTE_PRESENT)) { virt += 0x1000; continue; }
+
+            uint64_t *pd = get_next_level(pdpt, pdpt_idx, false, 3);
+            if (!pd || !(*pd & PTE_PRESENT)) { virt += 0x1000; continue; }
+
+            uint64_t *pde = &pd[pd_idx];
+            if (!(*pde & PTE_PRESENT)) { virt += 0x1000; continue; }
+
+            if (*pde & PTE_HUGE) {
+                *pde &= ~PTE_CACHELESS;
+                *pde |=  PTE_WRITEBACK;
+                *pde &= ~(1ULL << 12);
+
+                Debug::krnl_print("VMM", Debug::LOG_INFO, "PDE is now set to writeback (%x)", *pde);
+                asm volatile("invlpg (%0)" :: "r" (virt) : "memory");
+                virt += 0x200000;
+            } else {
+                uint64_t *pt = get_next_level(pd, pd_idx, false, 2);
+                if (!pt || !(*pt & PTE_PRESENT)) { virt += 0x1000; continue; }
+
+                uint64_t *pte = &pt[pt_idx];
+                if (!(*pte & PTE_PRESENT)) { virt += 0x1000; continue; }
+
+                *pte &= ~PTE_CACHELESS;
+                *pte |=  PTE_WRITEBACK;
+                *pte &= ~(1ULL << 7);
+
+                asm volatile("invlpg (%0)" :: "r" (virt) : "memory");
+                Debug::krnl_print("VMM", Debug::LOG_INFO, "PTE is now set to writeback (%x)", *pte);
+                virt += 0x1000;
+            }
+        }
     }
 
     void map_page(uint64_t *pml4_root, uint64_t virt, uint64_t phys, uint64_t flags) {

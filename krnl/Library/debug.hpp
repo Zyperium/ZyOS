@@ -18,5 +18,5 @@ namespace Debug {
     int snprintf(char* buffer, size_t n, 
                 const char* fmt, ...);
 
-    #define DISABLE_DEBUG_LOGS 1
+    #define DISABLE_DEBUG_LOGS 0
 }

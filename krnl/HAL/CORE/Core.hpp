@@ -1,6 +1,7 @@
 #pragma once
 #include <HAL/CORE/CoreLocal.hpp>
 #include <stddef.h>
+#include <Library/vec.hpp>
 
 namespace HAL::CORE {
     void init_core(CoreLocal *data);
@@ -13,6 +14,7 @@ namespace HAL::CORE {
     void set_lapic_shot(uint64_t milliseconds);
     void broadcast_nmi();
     bool validate_gs_reg();
+    extern lib::vec<CoreLocal *> CoreTLS;
     extern void(*idleptr)();
     extern volatile bool activate_cores;
 
@@ -20,7 +22,6 @@ namespace HAL::CORE {
     constexpr uint32_t LAPIC_APIC_SOFTWARE_ENABLE = 0x100;
     constexpr uint32_t MASK_PIT_TIMER = 0xFF;
 
-    extern volatile uint16_t core_count;
     extern volatile uint16_t total_cores;
 
     extern uintptr_t lapic_base_ptr;

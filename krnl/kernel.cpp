@@ -33,6 +33,7 @@ using namespace HAL;
 void SysIdleTask() {
     Debug::krnl_print("KRNL", Debug::LOG_INFO, "Entering idle task...");
     for (;;) {
+        Debug::krnl_print("KRNL", Debug::LOG_INFO, "I ran out of things to do ):");
         asm volatile("sti; hlt");
     }
 }
@@ -64,15 +65,15 @@ extern "C" void krnlmain() {
         true
     );
 
-    // new Scheduler::Task(
-    //     (Scheduler::Task::EntryPoint)HAL::CORE::discover_all_cores, 
-    //     "CoreFinder", 
-    //     true
-    // );
+    new Scheduler::Task(
+        (Scheduler::Task::EntryPoint)HAL::CORE::discover_all_cores, 
+        "CoreFinder",
+        true
+    );
 
-    while (HAL::CORE::total_cores != HAL::CORE::core_count) {
-        asm volatile("pause");
-    }
+    // while (HAL::CORE::total_cores != HAL::CORE::core_count) {
+    //     asm volatile("pause");
+    // }
 
     HAL::PCI::MSIX::xHCI::create_xhci_worker();
 

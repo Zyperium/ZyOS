@@ -9,8 +9,6 @@
  most kernel services are ready. Think PMM, VMM, PMEM, KMEM, scheduling, etc.
 */
 
-
-
 namespace TTY::BOOT {
     uint32_t *framebuffer{};
     uint32_t scrw{}, scrh{}, scrp{};
@@ -53,6 +51,7 @@ namespace TTY::BOOT {
             logx++;
             return;
         }
+
         for (auto ly{0}; ly < Font::HEIGHT; ly++) {
             for (auto lx{0}; lx < Font::WIDTH; lx++) {
                 if (Font::get_pixel(c, lx, ly)) {

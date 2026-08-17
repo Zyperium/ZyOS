@@ -30,6 +30,10 @@ size_t ioctl(const char *drvr, size_t data, size_t ex) {
     return syscall(5, drvr, data, sz, ex);
 }
 
+size_t open_app(const char *path) {
+    return syscall(21, path);
+}
+
 void klog(const char *fmt, ...) {
     char buf[512];
 

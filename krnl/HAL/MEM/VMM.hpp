@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
 namespace HAL::MEM::VMM {
     constexpr uint64_t PTE_PRESENT = 1;
@@ -12,6 +13,7 @@ namespace HAL::MEM::VMM {
     constexpr uint64_t PTE_ADDR_MASK = 0x000FFFFFFFFFF000;
 
     uint64_t *get_next_level(uint64_t* current_table, uint64_t index, bool allocate, int level, uint64_t target_flags = 0);
+    void set_write_combining(uint64_t *pml4_root, uint64_t virt_start, size_t page_count);
     void map_page(uint64_t *pml4_root, uint64_t virt, uint64_t phys, uint64_t flags);
     void unmap_page(uint64_t *pml4_root, uint64_t virt);
 

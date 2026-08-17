@@ -1,6 +1,11 @@
 #pragma once
 #include <stdint.h>
 
+
+namespace HAL::CORE {
+    struct CoreLocal;
+}
+
 namespace HAL::GDT {
     struct TSS {
         uint32_t reserved0;
@@ -49,9 +54,8 @@ namespace HAL::GDT {
     } __attribute__((packed));
 
     extern "C" void LoadGDT(GDTDescriptor *ptr);
-    extern TSS tss;
     void SetTSSStack(uint64_t kernel_stack);
-    void initialize();
+    void initialize(CORE::CoreLocal *AP);
     void ReloadSegments();
 
     constexpr uint8_t TSS_IST_DOUBLE_FAULT = 0;

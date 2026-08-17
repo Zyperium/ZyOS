@@ -1,4 +1,5 @@
 #pragma once
+#include "Library/string.h"
 #include <Library/umap.hpp>
 #include <Library/ZyOS.hpp>
 #include <Library/cystr.hpp>
@@ -21,16 +22,15 @@ namespace Scheduler {
         FORK,
         FORKER,
         FORKD,
-        TOTAL_REASONS // This should always be last
+        TOTAL_REASONS
     };
 
     class Task;
-    struct TaskBlock {
-        BlockReasons reason;
-        uint64_t arg1;
-        Task *t_ptr;
-        TaskBlock *next;
-        TaskBlock *prev;
+
+    constexpr uint64_t TOTAL_QUEUES = PAGE_SIZE / sizeof(Task *) - 1;
+    struct GarbageQueue {
+        uint32_t curr_ptr;
+        Task *to_clear[TOTAL_QUEUES];
     };
 
     constexpr uint8_t MAX_USR_FD = 16;
@@ -76,8 +76,10 @@ namespace Scheduler {
         uint8_t *fx_state;
         ZyOS::QWORD last_ran_time;
         ZyOS::DWORD niceness;
+        ZyOS::QWORD used_ram;
         ZyOS::WORD current_core;
         volatile bool running;
+        volatile bool is_queued;
         bool core_pinned;
         bool syscalls_allowed;
 
@@ -97,9 +99,9 @@ namespace Scheduler {
         static void UnblockAll(BlockReasons whoisblocking);
         static Task *GetNextTask();
     private:
-        ZyOS::WORD current_queue;
         ZyOS::QWORD pid;
-        bool blockmap[(size_t)BlockReasons::TOTAL_REASONS]{false};
+        BlockReasons blocked;
+        uint64_t blocked_by;
         void *_arg;
         static ZyOS::QWORD global_min_vruntime;
         static lib::Spinlock lock;

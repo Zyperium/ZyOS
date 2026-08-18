@@ -91,6 +91,7 @@ namespace HAL::IDT {
 
     void initialize() {
         Debug::krnl_print("IDT", Debug::LOG_INFO, "Initialize");
+
         for (int i = 0; i < MAX_VECTORS; i++) {
             set_gate(i, (void*)ignore_handler, GATE_INTERRUPT);
         }
@@ -99,10 +100,10 @@ namespace HAL::IDT {
         set_gate(KEYBOARD_VECTOR, (void *)PS2Keyboard, GATE_INTERRUPT);
         set_gate(MOUSE_VECTOR, (void *)PS2Mouse, GATE_INTERRUPT);
         set_gate(ISR_CODES::DIV_ZERO, (void *)isr0, GATE_INTERRUPT);
-        set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void *)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI + 1);
-        set_gate(ISR_CODES::DOUBLE_FAULT, (void *)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT + 1);
-        set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void *)isr13, GATE_INTERRUPT, HAL::GDT::TSS_IST_REGULAR_FAULT + 1);
-        set_gate(ISR_CODES::PAGE_FAULT, (void *)isr14, GATE_INTERRUPT, HAL::GDT::TSS_IST_REGULAR_FAULT + 1);
+        set_gate(ISR_CODES::NON_MASKABLE_INTERRUPT, (void *)isr2, GATE_INTERRUPT, HAL::GDT::TSS_IST_NMI);
+        set_gate(ISR_CODES::DOUBLE_FAULT, (void *)isr8, GATE_INTERRUPT, HAL::GDT::TSS_IST_DOUBLE_FAULT);
+        set_gate(ISR_CODES::GENERAL_PROTECTION_FAULT, (void *)isr13, GATE_INTERRUPT, HAL::GDT::TSS_IST_REGULAR_FAULT);
+        set_gate(ISR_CODES::PAGE_FAULT, (void *)isr14, GATE_INTERRUPT, HAL::GDT::TSS_IST_REGULAR_FAULT);
 
         set_gate(LAPIC_VECTOR, (void *)SchedulerHandler, GATE_INTERRUPT);
         set_gate(YIELD_VECTOR, (void *)QuietSwitch, GATE_INTERRUPT);
@@ -110,13 +111,16 @@ namespace HAL::IDT {
         idtr.limit = (sizeof(IDTEntry) * MAX_VECTORS) - 1;
         idtr.base  = reinterpret_cast<uint64_t>(&idt[0]);
 
-        IOAPIC::set_redirect(DEFAULT_KB_VECTOR, KEYBOARD_VECTOR, 0);
-        IOAPIC::set_redirect(DEFAULT_MS_VECTOR, MOUSE_VECTOR, 0);
-
+        asm volatile("sfence" ::: "memory");
+        asm volatile("lidt %0" :: "m"(idtr));
+        asm volatile("sfence" ::: "memory");
         outb(PIC1_DATA, PIC_FULL_MASK);
         outb(PIC2_DATA, PIC_FULL_MASK);
-
-        asm volatile("lidt %0" :: "m"(idtr));
+        
+        IOAPIC::set_redirect(DEFAULT_KB_VECTOR, KEYBOARD_VECTOR, 0);
+        IOAPIC::set_redirect(DEFAULT_MS_VECTOR, MOUSE_VECTOR, 0);
+        
+        Debug::krnl_print("IDT", Debug::LOG_INFO, "Finished IDT setup");
     }
 
     void reload_idt() {

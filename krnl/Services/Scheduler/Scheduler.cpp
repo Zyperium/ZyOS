@@ -1,3 +1,4 @@
+#include "HAL/GDT/GDT.hpp"
 #include "Library/redblack.hpp"
 #include "Services/IPC/drvio.hpp"
 #include <stddef.h>
@@ -609,7 +610,7 @@ static inline void xrstor_state(void *buffer) {
 
 void SysIdleTask();
 lib::Spinlock swaplock;
-uint64_t last_ram_prnt{0};
+volatile uint64_t last_ram_prnt{0};
 extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (!Scheduler::active) {
         return current_rsp;
@@ -624,6 +625,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (curr_sys_time - last_ram_prnt > 5000) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "RAM: %i/%i", PMM::used_memory, PMM::total_memory);
         last_ram_prnt = curr_sys_time;
+        asm volatile("sfence" ::: "memory");
     }
 
     auto prev_task = thread_data->current_task;
@@ -674,7 +676,7 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     thread_data->current_task = next_task;
 
     if (next_task == thread_data->system_idle_task) {
-        Scheduler::Task *new_target = nullptr; //Scheduler::AttemptCoreSteal();
+        Scheduler::Task *new_target = Scheduler::AttemptCoreSteal(); //
         if (new_target) next_task = new_target;
     }
 
@@ -696,6 +698,8 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
             xrstor_state(next_task->fx_state);
         }
     }
+
+    HAL::GDT::SetTSSStack((uint64_t)next_task->krnl_stack_top);
 
     return next_task->rsp;
 }

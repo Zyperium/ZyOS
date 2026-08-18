@@ -80,9 +80,9 @@ namespace HAL {
         CORE::init_core(data);
 
         ACPI::init();
-        IDT::initialize();
-
         Debug::krnl_print("HAL", Debug::LOG_INFO, "ACPI initialized!");
+        IDT::initialize();
+        Debug::krnl_print("HAL", Debug::LOG_INFO, "IDT initialized!");
 
         SCREEN::initialize(framebuffer_request.response);
 

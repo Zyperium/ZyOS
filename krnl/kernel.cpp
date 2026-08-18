@@ -64,11 +64,11 @@ extern "C" void krnlmain() {
         true
     );
 
-    new Scheduler::Task(
-        (Scheduler::Task::EntryPoint)HAL::CORE::discover_all_cores, 
-        "CoreFinder",
-        true
-    );
+    // new Scheduler::Task(
+    //     (Scheduler::Task::EntryPoint)HAL::CORE::discover_all_cores, 
+    //     "CoreFinder",
+    //     true
+    // );
 
     // while (HAL::CORE::total_cores != HAL::CORE::core_count) {
     //     asm volatile("pause");

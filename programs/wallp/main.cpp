@@ -47,6 +47,7 @@ struct TaskbarItem {
 };
 
 void usleep(size_t time) { // bad sleep implement until I add sleeping.
+    return;
     for (auto i{0ull}; i < time; ++i) {
         yield();
     }

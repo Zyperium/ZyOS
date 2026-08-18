@@ -10,7 +10,9 @@ namespace HAL::IDT::IOAPIC {
 
     void ioapic_write(uint8_t offset, uint32_t val) {
         *ioapic_regsel = offset;
+        asm volatile("" ::: "memory");
         *ioapic_iowin  = val;
+        asm volatile("" ::: "memory");
     }
 
     uint32_t ioapic_read(uint8_t offset) {
@@ -60,23 +62,5 @@ namespace HAL::IDT::IOAPIC {
         if (!masked) {
             ioapic_write(low_index, low_bits);
         }
-    }
-
-    void debug_dump_keyboard_gsi() {
-        uint32_t gsi = (iso_table[1].exists) ? iso_table[1].gsi : 1;
-        uint8_t low_index = IOREDTBL_BASE + (gsi * 2);
-
-        uint32_t low_bits = ioapic_read(low_index);
-        
-        bool is_masked = (low_bits & MASKED_BIT) != 0;
-        bool delivery_status = (low_bits & (1 << 14)) != 0; 
-
-        Debug::krnl_print("IOAPIC", Debug::LOG_INFO, 
-            "IRQ1 (mapped to GSI %i) State -> Vector: %x, Masked: %s, Pending: %s", 
-            gsi,
-            (low_bits & 0xFF), 
-            is_masked ? "YES" : "NO", 
-            delivery_status ? "YES (Stuck waiting for EOI!)" : "NO (Idle/Ready)"
-        );
     }
 }

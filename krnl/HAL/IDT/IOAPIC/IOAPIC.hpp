@@ -31,7 +31,6 @@ namespace HAL::IDT::IOAPIC {
     };
 
     void initialize(uintptr_t base_addr = DEFAULT_IOAPIC_BASE);
-    void debug_dump_keyboard_gsi();
     void set_redirect(uint8_t irq, uint8_t vector, uint8_t target_lapic_id, bool masked = false);
     void register_iso(uint8_t irq, uint32_t gsi, uint16_t flags);
 }

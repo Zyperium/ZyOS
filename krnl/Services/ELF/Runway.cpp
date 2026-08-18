@@ -34,7 +34,7 @@ namespace ELF {
 
         uint64_t _cr3 = task->cr3;
         task->cr3 = VMM::CreateProcessPageTable(_cr3);
-        task->utask = new Scheduler::UserTask;
+        task->utask = new Scheduler::UserTask{};
         task->utask->task_owner = task;
 
         asm volatile("sfence" ::: "memory");

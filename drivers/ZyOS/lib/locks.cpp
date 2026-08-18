@@ -21,14 +21,14 @@ namespace lib {
             asm volatile("pause");
             // Debug::krnl_print("SCHD", Debug::LOG_INFO, "Stuck!");
         }
-
+        asm volatile("sfence");
         return _flags;
     }
 
     __attribute__((no_stack_protector))
     void Spinlock::unlock(uint64_t _flags) {
         __atomic_clear(&locked, __ATOMIC_RELEASE);
-        
+        asm volatile("sfence");
         if (_flags & RFLAGS_IF)
             asm volatile("sti");
     }
@@ -49,7 +49,6 @@ namespace lib {
     ScopedLock::ScopedLock(Spinlock &plock) : lock(plock) {
         rflags = lock.lock();
     }
-
 
     ScopedLock::~ScopedLock() {
         lock.unlock(rflags);

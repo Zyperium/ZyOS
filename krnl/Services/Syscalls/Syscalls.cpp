@@ -319,8 +319,6 @@ namespace Syscalls {
     }
 
     uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
-        if (HAL::CORE::get_core_data()->current_task->get_pid() != 8)
-            Debug::krnl_print("SYS", Debug::LOG_INFO, "Syscall! ID: %i, ret: %x", id, HAL::CORE::get_core_data()->current_task->utask->rip);
         switch(id) {
             /*
                 Expects A1 to contain a user address that is either:

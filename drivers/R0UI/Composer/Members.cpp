@@ -109,6 +109,8 @@ namespace R0UI {
             VMM::PTE_WRITEBACK | VMM::PTE_USER
         );
 
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
         return (uint32_t *)write_at;
     }
 
@@ -328,7 +330,7 @@ namespace R0UI {
             w.view->x = factposn.x;
             w.view->y = factposn.y;
             __builtin_ia32_sfence();
-            w.view->generation++;
+            ++w.view->generation;
         }
     }
 
@@ -605,7 +607,9 @@ namespace R0UI {
         if (next_head == t) return false;
 
         winref->events.ring[h] = ev;
-        __builtin_ia32_sfence();
+        asm volatile("sfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
         winref->events.head = next_head;
         
         return true;

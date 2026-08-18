@@ -12,6 +12,7 @@
 #include <Library/debug.hpp>
 #include <Library/string.h>
 #include <Library/regs.h>
+#include <Library/io.hpp>
 
 #include <Services/TTY/BootTTY.hpp>
 
@@ -39,16 +40,25 @@ static constinit volatile limine_framebuffer_request framebuffer_request = {
 
 namespace HAL {
     void initialize() {
+        char help[] = "[KRNL] <CRITICAL> HAL initialization error!";
+        auto printhlp = [&]() {
+            for (auto i{0uz}; i < 44; ++i)
+                outb(0xE9, help[i]);
+        };
+
         if (framebuffer_request.response == nullptr) {
-            panic(PanicReasons::HAL_FAILED_INITIALIZATION);
+            printhlp();
+            for(;;);
         }
 
         if (hhdm_request.response == nullptr) {
-            panic(PanicReasons::HAL_FAILED_INITIALIZATION);
+            printhlp();
+            for(;;);
         }
 
         if (memmap_request.response == nullptr) {
-            panic(PanicReasons::HAL_FAILED_INITIALIZATION);
+            printhlp();
+            for(;;);
         }
 
         TTY::BOOT::initialize(framebuffer_request.response);

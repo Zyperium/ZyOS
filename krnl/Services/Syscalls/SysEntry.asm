@@ -14,10 +14,13 @@ section .text
 SysEntry:
     swapgs             ; Swap to kernel GS
 
+    cli
     mov [gs:24], r10
     mov r10, [gs:8] ; r10
     mov [r10 + 144], rsp ; usr_stack_save
     mov rsp, [r10 + 128]  ; krnl_stack_top
+    mov r10, [r10 + 152] ; utask block
+    mov [r10], rcx
 
     push r11
     push rcx
@@ -57,6 +60,8 @@ SysEntry:
 
     mov r10, [gs:8]
     mov rsp, [r10 + 144] ; Load usr_stack_save back to RSP
+    mov r10, [r10 + 152];
+    mov rcx, [r10]
 
     swapgs
     o64 sysret

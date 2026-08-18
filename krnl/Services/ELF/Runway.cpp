@@ -24,18 +24,22 @@ extern "C" void R3Entry(
 );
 
 namespace ELF {
-    lib::Spinlock runway_lock;
-
+    lib::SoftLock runway_lock;
     void Runway(lib::string cmd_line) {
-        uint64_t keys = runway_lock.lock();
         Debug::krnl_print("RNWY", Debug::LOG_INFO, "Building ring 3 process");
+
+        runway_lock.lock();
 
         Scheduler::Task *task = CORE::get_core_data()->current_task;
 
-        uint64_t _cr3 = read_cr3();
+        uint64_t _cr3 = task->cr3;
         task->cr3 = VMM::CreateProcessPageTable(_cr3);
         task->utask = new Scheduler::UserTask;
         task->utask->task_owner = task;
+
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         
         asm volatile("mov %0, %%cr3" :: "r"(task->cr3) : "memory");
 
@@ -43,7 +47,7 @@ namespace ELF {
 
         auto fail_load = [&](int stage){
             Debug::krnl_print("RNWY", Debug::LOG_WARN, "Failed to load app: %s, stage: %i", cmd_line.c_str(), stage);
-            runway_lock.unlock(keys);
+            runway_lock.unlock();
             Scheduler::Suicide();
             for (;;);
         };
@@ -53,6 +57,7 @@ namespace ELF {
         }
 
         auto active_pml4{(uint64_t *)(task->cr3 + PMM::hhdm_offset)};
+        asm volatile("sfence" ::: "memory");
 
         for (auto offset{0uz}; offset < USER::STACK_SIZE; offset += PAGE_SIZE) {
             auto ppage = PMM::alloc_page();
@@ -66,6 +71,8 @@ namespace ELF {
             VMM::map_page(active_pml4, USER::STACK_BASE + offset, (uint64_t)ppage, USER::STACK_FLAGS);
         }
 
+        asm volatile("sfence" ::: "memory");
+
         auto tls_phys_page = PMM::alloc_page();
         VMM::map_page(active_pml4, USER::TLS_BASE_ADDR, (uint64_t)tls_phys_page, USER::STACK_FLAGS);
 
@@ -77,8 +84,10 @@ namespace ELF {
         *tcb_ptr = fs_base;
 
         Debug::krnl_print("RNWY", Debug::LOG_INFO, "Finished ring 3 bootstrap");
-
-        runway_lock.unlock(keys);
+        
+        runway_lock.unlock();
+        
+        asm volatile("sfence" ::: "memory");
 
         R3Entry((uint64_t)entry, fs_base, USER::STACK_BASE + USER::STACK_SIZE);
 

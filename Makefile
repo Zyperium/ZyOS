@@ -85,14 +85,14 @@ ifeq ($(OS),Windows_NT)
 		-device usb-mouse,bus=xhci.0 -device usb-kbd,bus=xhci.0 \
 		-rtc base=localtime -d int,cpu_reset -no-reboot -no-shutdown -D qemu.log
 else
-	qemu-system-x86_64 -cpu host --accel kvm -m 512M \
+	qemu-system-x86_64 -cpu host -accel kvm -m 512M \
 		-machine q35,acpi=on,kernel-irqchip=split \
 		-drive file=disk_bios.img,id=usbdisk,format=raw,if=none \
 		-device qemu-xhci,id=xhci \
 		-device usb-storage,bus=xhci.0,drive=usbdisk,bootindex=1 \
-		-device VGA,vgamem_mb=64,edid=on,xres=1920,yres=1080 -display sdl,gl=on \
+		-device VGA,vgamem_mb=64,edid=on,xres=1280,yres=720 -display sdl,gl=on \
 		-rtc base=localtime -debugcon stdio \
-		-no-reboot -no-shutdown -smp 2
+		-no-reboot -no-shutdown -smp 1
 endif
 #-accel kvm
 

@@ -41,6 +41,11 @@ namespace ELF {
                 }
             }
         }
+
+
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
     }
 
     constexpr size_t ELF_READ_CHUNK = 1 * 1024 * 1024; // 1 MiB - tune to taste
@@ -51,8 +56,9 @@ namespace ELF {
     want ring 0 user apps, swap to a ring 3 address space, then load
     the app.
     */
+    lib::SoftLock elf_lock{};
     void *load_elf(lib::string path) {
-        lib::ScopedLock x(lib::Spinlock);
+        elf_lock.lock();
         Debug::krnl_print("ELF", Debug::LOG_INFO, "Loading %s (starting clock)", path.c_str());
         auto start_t = ACPI::get_sys_time();
         auto fp = lib::parse_path(path);
@@ -60,6 +66,7 @@ namespace ELF {
 
         if (!root_node) {
             Debug::krnl_print("ELF", Debug::LOG_WARN, "Bad path passed! (Invalid drive letter)");
+            elf_lock.unlock();
             return nullptr;
         }
 
@@ -67,17 +74,20 @@ namespace ELF {
 
         if (!target_node) {
             Debug::krnl_print("ELF", Debug::LOG_WARN, "Invalid path to file! (Non-existent!)");
+            elf_lock.unlock();
             return nullptr;
         }
 
         Header elf_header;
         if (target_node->read(0, &elf_header, sizeof(Header)) != sizeof(Header)) {
             Debug::krnl_print("ELF", Debug::LOG_WARN, "Failed to read ELF header");
+            elf_lock.unlock();
             return nullptr;
         }
 
         if (elf_header.magic != ELF_MAGIC) {
             Debug::krnl_print("ELF", Debug::LOG_WARN, "Invalid ELF header!");
+            elf_lock.unlock();
             return nullptr;
         }
 
@@ -89,8 +99,10 @@ namespace ELF {
         if (target_node->read(elf_header.ph_offset, prog_hdr, ph_table_size) != (int)ph_table_size) {
             Debug::krnl_print("ELF", Debug::LOG_WARN, "Failed to read program headers");
             delete[] prog_hdr;
+            elf_lock.unlock();
             return nullptr;
         }
+
 
         auto *stage = new uint8_t[ELF_READ_CHUNK];
 
@@ -98,15 +110,10 @@ namespace ELF {
             unload_partial_elf(app_pml4, prog_hdr, failed_index);
             delete[] stage;
             delete[] prog_hdr;
+            elf_lock.unlock();
             return nullptr;
         };
 
-        // Aggregate diagnostics across ALL segments (the previous set-once
-        // timers only ever captured segment 0 - that's why total didn't
-        // match p1+p2). Also split "time waiting on the VFS/disk" apart
-        // from "time spent copying in RAM" apart from "time spent in the
-        // allocator/page tables" so we can see which one is actually
-        // eating the clock instead of guessing.
         size_t map_t_total{0}, read_t_total{0}, copy_t_total{0};
         size_t reads_total{0}, bytes_read_grand_total{0};
         size_t new_pages_total{0}, reused_pages_total{0};
@@ -233,6 +240,13 @@ namespace ELF {
         if (elf_header.header_size == 0) {
             Debug::krnl_print("ELF", Debug::LOG_WARN, "Something is up with then read file!?");
         }
+
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
+
+        elf_lock.unlock();
+        Debug::krnl_print("ELF", Debug::LOG_INFO, "Fully loaded binary!");
         return (void *)elf_header.entry_point;
     }
 }

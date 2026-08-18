@@ -83,7 +83,9 @@ namespace Scheduler {
     constexpr uint8_t MAX_USR_FD = 16;
     constexpr size_t USR_MMAP_BEGIN = 0x0000'7000'0000'0000;
     struct UserTask {
+        uint64_t rip;
         VFS::VNode *descriptors[MAX_USR_FD]{nullptr};
+        Task *task_owner{nullptr};
         size_t permissions{0};
         size_t next_free_ds{0};
         size_t usr_virt_mmap{USR_MMAP_BEGIN};
@@ -113,14 +115,15 @@ namespace Scheduler {
         uint64_t *krnl_stack_btm;
         uint64_t usr_stack_save; /* This is used by SysEntry.asm. If you mess with the offsets
         make sure to adjust sysentry too. */
-        UserTask *utask;
+        UserTask *utask; // Accessed by SysEntry.asm
 
-        alignas(16) uint8_t *fx_state;
-        uint8_t *malignedfx;
+        uint8_t *fx_state;
         uint64_t last_ran_time;
         uint32_t niceness;
+        uint64_t used_ram;
         uint16_t current_core;
         volatile bool running;
+        volatile bool is_queued;
         bool core_pinned;
         bool syscalls_allowed;
 
@@ -140,9 +143,9 @@ namespace Scheduler {
         static void UnblockAll(BlockReasons whoisblocking);
         static Task *GetNextTask();
     private:
-        uint16_t current_queue;
         uint64_t pid;
-        bool blockmap[(size_t)BlockReasons::TOTAL_REASONS]{false};
+        BlockReasons blocked;
+        uint64_t blocked_by;
         void *_arg;
         static uint64_t global_min_vruntime;
         static lib::Spinlock lock;

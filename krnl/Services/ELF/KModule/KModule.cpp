@@ -24,7 +24,7 @@ namespace ELF::KModule {
 
     constexpr const char *FIXED_SYMBOL_PATH = "A:/SYSTEM/KHASH.MAP";
     void initialize() {
-        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Initialize");
+        Debug::krnl_print("KMOD", Debug::LOG_INFO, "Initializing kernel module service");
         lib::fullpath parsed_path = lib::parse_path(FIXED_SYMBOL_PATH);
 
         Debug::krnl_print("KMOD", Debug::LOG_INFO, "Current disk is %i", DISK::root_disk_id);

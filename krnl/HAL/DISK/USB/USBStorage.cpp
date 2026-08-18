@@ -111,6 +111,10 @@ namespace HAL::DISK::USB {
 
         Debug::krnl_print("xHCI", Debug::LOG_INFO, "USB Storage finished initializing FS!");
 
+        asm volatile("mfence" ::: "memory");
+        asm volatile("sfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
+
         HAL::DISK::root_disk_id = ndisk->drv_ltr;
 
         return;
@@ -167,6 +171,9 @@ namespace HAL::DISK::USB {
             current_lba += chunk_sectors;
             sectors_left -= chunk_sectors;
             total_sectors_written += chunk_sectors;
+            asm volatile("mfence" ::: "memory");
+            asm volatile("sfence" ::: "memory");
+            asm volatile("lfence" ::: "memory");
         }
 
         return total_sectors_written;
@@ -183,8 +190,7 @@ namespace HAL::DISK::USB {
         while (sectors_left > 0) {
             uint16_t chunk_sectors = (sectors_left > MAX_SECTORS_PER_CHUNK) ? MAX_SECTORS_PER_CHUNK : sectors_left;
             uint32_t chunk_bytes = chunk_sectors * 512;
-
-            while (io_pending) { asm volatile("pause"); }
+            while (io_pending) { Scheduler::Yield(); asm volatile("pause"); }
             __atomic_test_and_set(&io_pending, __ATOMIC_ACQUIRE);
 
             current_data_phys = bounce_phys;
@@ -222,6 +228,9 @@ namespace HAL::DISK::USB {
             current_lba += chunk_sectors;
             sectors_left -= chunk_sectors;
             total_sectors_read += chunk_sectors;
+            asm volatile("mfence" ::: "memory");
+            asm volatile("sfence" ::: "memory");
+            asm volatile("lfence" ::: "memory");
         }
 
         return total_sectors_read;

@@ -14,7 +14,7 @@ namespace Config {
     constexpr int TaskbarHeight = 48;
     constexpr int StartMenuWidth = 300;
     constexpr int StartMenuHeight = 300;
-    constexpr int ItemCount = 3;
+    constexpr int ItemCount = 6;
     constexpr int ItemWidth = 40;
     constexpr int ItemHeight = 40;
     constexpr int ItemSpacing = 45;
@@ -178,6 +178,27 @@ extern "C" int main() {
     items[2].x = items[1].x + Config::ItemSpacing;
     items[2].y = (Config::TaskbarHeight - items[2].h) / 2;
     items[2].path = "A:/USER/TASKW.ZYX";
+
+    items[3].icon = load_png("A:/SYSTEM/TERM.PNG", &items[3].icon_w, &items[3].icon_h);
+    items[3].w = Config::ItemWidth;
+    items[3].h = Config::ItemHeight;
+    items[3].x = items[2].x + Config::ItemSpacing;
+    items[3].y = (Config::TaskbarHeight - items[3].h) / 2;
+    items[3].path = "A:/USER/TASKW.ZYX";
+
+    items[4].icon = load_png("A:/SYSTEM/WATCHER.PNG", &items[4].icon_w, &items[4].icon_h);
+    items[4].w = Config::ItemWidth;
+    items[4].h = Config::ItemHeight;
+    items[4].x = items[3].x + Config::ItemSpacing;
+    items[4].y = (Config::TaskbarHeight - items[4].h) / 2;
+    items[4].path = "A:/USER/TASKW.ZYX";
+
+    items[5].icon = load_png("A:/SYSTEM/NOTES.PNG", &items[5].icon_w, &items[5].icon_h);
+    items[5].w = Config::ItemWidth;
+    items[5].h = Config::ItemHeight;
+    items[5].x = items[4].x + Config::ItemSpacing;
+    items[5].y = (Config::TaskbarHeight - items[5].h) / 2;
+    items[5].path = "A:/USER/TASKW.ZYX";
 
     r0ui_call(R0UICall::PinWindow, (uint64_t)"Taskbar");
     r0ui_call(R0UICall::PinWindow, (uint64_t)"Start Menu");

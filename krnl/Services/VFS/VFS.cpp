@@ -14,6 +14,7 @@ namespace VFS {
             delete this;
         }
         Debug::krnl_print("VFS", Debug::LOG_INFO, "vnode release");
+        asm volatile("sfence" ::: "memory");
     }
 
     FileType VNode::get_type() const {
@@ -51,6 +52,7 @@ namespace VFS {
             }
 
             if (!token_buffer.empty()) {
+                Debug::krnl_print("VFS", Debug::LOG_INFO, "Performing lookup...");
                 VFS::VNode* next_node = current_node->lookup(token_buffer.c_str());
                 Debug::krnl_print("VFS", Debug::LOG_INFO, "Lookup for '%s' returned: %x", token_buffer.c_str(), next_node);
                 if (current_node != this) {

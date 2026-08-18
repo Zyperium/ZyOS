@@ -1,3 +1,4 @@
+#include "Library/locks.hpp"
 #include "Services/ELF/ELF.hpp"
 #include <Library/debug.hpp>
 #include <Library/string.h>
@@ -62,11 +63,15 @@ namespace Syscalls {
         return a;
     }
 
+
+    lib::SoftLock syslock;
+
     /*
         @params usr_ptr: the LOWER half pointer to a VALID path.
         @returns a file descriptor.
     */
     uint64_t SYS_OPEN_FILE(uint64_t usr_ptr, uint64_t max) {
+        // lib::ScopedSoftLock x(syslock);
         auto *val = usr_to_string(usr_ptr, max);
 
         Debug::krnl_print("SYS", Debug::LOG_INFO, "Received value %s", val);
@@ -122,6 +127,7 @@ namespace Syscalls {
             return 0;
         }
 
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "Resolving virtual node!");
         auto *node = DISK::GetRootOfDrive(p.drv)->resolve_path_to_vnode(p.path);
 
         if (!node) {
@@ -143,6 +149,7 @@ namespace Syscalls {
         @returns bytes read
     */
     uint64_t SYS_READ_FILE(uint64_t file_descriptor, uint64_t read_offset, uint64_t read_amount, uint64_t buffer) {
+        // lib::ScopedSoftLock x(syslock);
         auto *usr_task = HAL::CORE::get_core_data()->current_task;
 
         Debug::krnl_print("SYS", Debug::LOG_INFO, "Reading fd %i at %i to %i into %x", file_descriptor, read_offset, read_amount, buffer);
@@ -178,6 +185,7 @@ namespace Syscalls {
     }
 
     uint64_t SYS_WRITE_FILE(uint64_t file_descriptor, uint64_t write_offset, uint64_t write_amount, uint64_t buffer) {
+        // lib::ScopedSoftLock x(syslock);
         auto *usr_task = HAL::CORE::get_core_data()->current_task;
 
         if (!usr_task->utask->descriptors[file_descriptor - 1]) {
@@ -206,6 +214,7 @@ namespace Syscalls {
     }
 
     uint64_t SYS_CLOSE_FILE(uint64_t fd) {
+        // lib::ScopedSoftLock x(syslock);
         auto *usr_task = HAL::CORE::get_core_data()->current_task->utask;
 
         if (!usr_task->descriptors[fd]) {
@@ -221,6 +230,7 @@ namespace Syscalls {
     }
 
     uint64_t SYS_KRNL_IO(uint64_t path, uint64_t data, uint64_t path_len, uint64_t extra) {
+        // lib::ScopedSoftLock x(syslock);
         if (path_len > 32) path_len = 32;
         auto *val = usr_to_string(path, path_len);
         auto path_str = lib::string(val);
@@ -244,6 +254,7 @@ namespace Syscalls {
     }
 
     uint64_t SYS_MMAP(uint64_t addr, uint64_t len, int prot, int flags, int fd, uint64_t off) {
+        // lib::ScopedSoftLock x(syslock);
         if (len == 0) return -EINVAL;
         (void)fd;
         (void)off;
@@ -287,6 +298,7 @@ namespace Syscalls {
     }
 
     uint64_t SYS_MUNMAP(uint64_t addr, uint64_t len) {
+        // lib::ScopedSoftLock x(syslock);
         if (addr % PAGE_SIZE != 0 || len == 0) return -EINVAL;
 
         auto *usr_task = HAL::CORE::get_core_data()->current_task;
@@ -307,6 +319,8 @@ namespace Syscalls {
     }
 
     uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
+        if (HAL::CORE::get_core_data()->current_task->get_pid() != 8)
+            Debug::krnl_print("SYS", Debug::LOG_INFO, "Syscall! ID: %i, ret: %x", id, HAL::CORE::get_core_data()->current_task->utask->rip);
         switch(id) {
             /*
                 Expects A1 to contain a user address that is either:
@@ -354,6 +368,7 @@ namespace Syscalls {
                     HAL::CORE::get_core_data()->current_task->task_name.c_str(), 
                     x
                 );
+                delete[] x;
                 return 0;
             }
             case SYSCALL_ID::SYS_MMAP: {
@@ -421,15 +436,14 @@ namespace Syscalls {
                 char *path = usr_to_string(regs.A1, 64);
 
                 Scheduler::Task *ntask = new Scheduler::Task([](void *ptr){ 
-                    for (;;);
                     char stack[64];
                     memcpy(stack, ptr, 64);
                     delete[] (char *)ptr;
                     ELF::Runway(stack);
                     Scheduler::Suicide();
                 }, path, true, path);
-
-                ntask->sleep(10000);
+                
+                asm volatile("mfence" ::: "memory");
 
                 return ntask->get_pid();
             }

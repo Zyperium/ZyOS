@@ -16,6 +16,8 @@ SchedulerHandler:
 
     swapgs
 
+    sfence
+
 .krnl_enter:
     push r15
     push r14
@@ -33,14 +35,19 @@ SchedulerHandler:
     push rbx
     push rax
 
+    sfence
+    mfence
+    lfence
     mov rdi, rsp
     call SchedulerSwitch
 
+    sfence
     push rax
     call AckInterrupt
     pop rax
 
     mov rsp, rax
+    sfence
 
     pop rax
     pop rbx
@@ -57,6 +64,8 @@ SchedulerHandler:
     pop r13
     pop r14
     pop r15
+
+    sfence
 
     test qword [rsp + 8], 3
     jz .krnl_exit
@@ -71,6 +80,9 @@ SchedulerHandler:
     mov qword [rsp + 8], 0x1B
 
 .krnl_exit:
+    mfence
+    sfence
+    lfence
     iretq
 
 QuietSwitch:
@@ -81,6 +93,8 @@ QuietSwitch:
     je .krnl_enter
 
     swapgs
+
+    sfence
 
 .krnl_enter:
     push r15
@@ -99,8 +113,13 @@ QuietSwitch:
     push rbx
     push rax
 
+    mfence
+    lfence
+    sfence
     mov rdi, rsp
     call SchedulerSwitch
+
+    sfence
 
     mov rsp, rax
 
@@ -119,6 +138,8 @@ QuietSwitch:
     pop r13
     pop r14
     pop r15
+
+    sfence
 
     test qword [rsp + 8], 3
     jz .krnl_exit
@@ -139,4 +160,7 @@ QuietSwitch:
     mov qword [rsp + 32], 0x23 ; Hopefully this fixes it immediately [so future calls can skip straight to .krnl_exit]
 
 .krnl_exit:
+    sfence
+    mfence
+    lfence
     iretq

@@ -1,3 +1,4 @@
+#include "Library/locks.hpp"
 #include <HAL/DISK/Disk.hpp>
 #include <Library/debug.hpp>
 #include <Library/io.hpp>
@@ -599,6 +600,7 @@ namespace VFS::FAT32 {
         while (current_cluster < VFS::FAT32::CLUSTER_EOF_MIN) {
             uint32_t cluster_base_sector = m_fs->cluster_to_sector(current_cluster);
 
+            Debug::krnl_print("FAT32", Debug::LOG_INFO, "Reading disk sectors...");
             m_fs->read_sectors(cluster_base_sector, cluster_buffer, sectors_per_cluster);
 
             uint32_t total_entries_in_cluster = cluster_size / sizeof(DirectoryEntry);

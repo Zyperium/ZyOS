@@ -158,6 +158,7 @@ namespace R0UI::Composer {
         FMEM::FastFill32(ttybuffer, 0xFF1F1F1F, w * h);
         HAL::SCREEN::add_damage(0, 0, w, h);
         HAL::SCREEN::repaint();
+        Debug::krnl_print("R0UI", Debug::LOG_INFO, "Performed init paint");
     }
 
     static void paint_list(winpair *head, uint32_t *ttybuffer) {
@@ -225,6 +226,8 @@ namespace R0UI::Composer {
         if (!requires_redraw) return;
 
         asm volatile("mfence" ::: "memory");
+        asm volatile("sfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
 
         lib::ScopedLock lock(linklock);
 

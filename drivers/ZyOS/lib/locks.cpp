@@ -1,35 +1,57 @@
-#include "locks.hpp"
-#include "regs.h"
+#include <Library/debug.hpp>
+#include <Library/locks.hpp>
+#include <Library/regs.h>
 
 namespace lib {
-    void Spinlock::lock() {
+    constexpr uint64_t RFLAGS_IF = (1ULL << 9);
+
+    __attribute__((no_stack_protector))
+    uint64_t Spinlock::lock() {
         uint64_t _flags;
-        asm volatile("pushfq; pop %0" : "=r"(_flags));
-        asm volatile("cli");
+        asm volatile(
+            "pushfq\n\t"
+            "pop %0\n\t"
+            "cli"
+            : "=r"(_flags)
+            :
+            : "memory"
+        );
 
         while (__atomic_test_and_set(&locked, __ATOMIC_ACQUIRE)) {
             asm volatile("pause");
+            // Debug::krnl_print("SCHD", Debug::LOG_INFO, "Stuck!");
         }
 
-        rflags = _flags;
+        return _flags;
     }
 
-    void Spinlock::unlock() {
-        // Why? Because otherwise there could be a preemption during a time where rflags are unlocked
-        // but the lock is active. That would deadlock.
-        uint64_t _flags = rflags;
-        rflags = 0;
+    __attribute__((no_stack_protector))
+    void Spinlock::unlock(uint64_t _flags) {
         __atomic_clear(&locked, __ATOMIC_RELEASE);
-        restore_rflags(_flags);
+        
+        if (_flags & RFLAGS_IF)
+            asm volatile("sti");
+    }
 
-        return;
+    __attribute__((no_stack_protector))
+    void SoftLock::unlock() {
+        __atomic_clear(&locked, __ATOMIC_RELEASE);
+    }
+
+    __attribute__((no_stack_protector))
+    void SoftLock::lock() {
+        while (__atomic_test_and_set(&locked, __ATOMIC_ACQUIRE)) {
+            asm volatile("pause");
+            // Debug::krnl_print("SCHD", Debug::LOG_INFO, "Stuck!");
+        }
     }
 
     ScopedLock::ScopedLock(Spinlock &plock) : lock(plock) {
-        lock.lock();
+        rflags = lock.lock();
     }
 
+
     ScopedLock::~ScopedLock() {
-        lock.unlock();
+        lock.unlock(rflags);
     }
 }

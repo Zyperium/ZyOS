@@ -89,6 +89,8 @@ namespace HAL::PCI {
                     xHCI_worker->block(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
 
                 asm volatile("mfence" ::: "memory");
+                asm volatile("sfence" ::: "memory");
+                asm volatile("lfence" ::: "memory");
 
                 Scheduler::Yield();
             }
@@ -131,6 +133,10 @@ namespace HAL::PCI {
 
             xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
             current_loops = 0;
+
+            asm volatile("mfence" ::: "memory");
+            asm volatile("sfence" ::: "memory");
+            asm volatile("lfence" ::: "memory");
         }
     }
 }
@@ -141,4 +147,7 @@ extern "C" void xHCIIntHandler() {
     MSIX::xHCI::current_loops = 0;
     MSIX::xHCI::xHCI_worker->unblock(Scheduler::BlockReasons::AWAIT_MSIX_EVENT);
     HAL::CORE::ack_lapic();
+    asm volatile("mfence" ::: "memory");
+    asm volatile("sfence" ::: "memory");
+    asm volatile("lfence" ::: "memory");
 }

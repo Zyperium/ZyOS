@@ -65,11 +65,12 @@ namespace Scheduler {
         frkr_task = HAL::CORE::get_core_data()->current_task;
 
         for (;;) {
-            frkr_task->block(BlockReasons::FORK);
+            frkr_task->block(BlockReasons::FORKER);
 
             asm volatile("cli");
 
-            Task *to_fork = frkr_task;
+            Task *to_fork = nullptr;
+            for (;;) frkr_task->block(BlockReasons::SLEEP); // just stay blocked idk what to do.
 
             Debug::krnl_print("FRKR", Debug::LOG_INFO, "Forking task %s", to_fork->task_name.c_str());
 
@@ -283,6 +284,8 @@ namespace Scheduler {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Assigning task null name");
         task_name = "unnamed task";
         asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Finished primitive task setup");
     }
 
@@ -331,6 +334,8 @@ namespace Scheduler {
         }
 
         asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "Scheduler has initialized task %s", task_name.c_str());
         return;
     }
@@ -350,7 +355,13 @@ namespace Scheduler {
     void Yield() {
         uint64_t _rflags;
         asm volatile("pushfq; pop %0" : "=r"(_rflags));
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         asm volatile("sti\nint $0x67");
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         restore_rflags(_rflags);
     }
 
@@ -387,6 +398,8 @@ namespace Scheduler {
         running = false;
 
         asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         Yield();
         return;
     }
@@ -399,6 +412,10 @@ namespace Scheduler {
         blocked = BlockReasons::TOTAL_REASONS;
 
         enqueue();
+
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
 
         return;
     }
@@ -413,11 +430,12 @@ namespace Scheduler {
         if (vruntime < global_min_vruntime) {
             vruntime = global_min_vruntime;
         }
-        if (HAL::CORE::get_core_data()->core_id != 0)
-            Debug::krnl_print("SCHD", Debug::LOG_INFO, "Inserting %s into AP%i", task_name.c_str(), HAL::CORE::get_core_data()->core_id);
+        
         HAL::CORE::get_core_data()->task_tree->insert_node(this);
         is_queued = true;
         asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         return;
     }
 
@@ -427,6 +445,8 @@ namespace Scheduler {
         HAL::CORE::get_core_data()->task_tree->remove_node(this);
         is_queued = false;
         asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
     }
 
     void Task::TerminateTask(Task *term) {
@@ -510,7 +530,9 @@ namespace Scheduler {
                 continue;
             }
 
+            asm volatile("mfence" ::: "memory");
             asm volatile("sfence" ::: "memory");
+            asm volatile("lfence" ::: "memory");
             stolen->running = true;
             Debug::krnl_print("SCHD", Debug::LOG_INFO, "Stealing task %s", stolen->task_name.c_str());
             return stolen;
@@ -523,6 +545,10 @@ namespace Scheduler {
 static inline void xsave_state(void *buffer) {
     uint32_t low, high;
 
+    asm volatile("mfence" ::: "memory");
+    asm volatile("sfence" ::: "memory");
+    asm volatile("lfence" ::: "memory");
+
     asm volatile("xgetbv" : "=a" (low), "=d" (high) : "c" (0));
     
     asm volatile("xsave64 %0"
@@ -530,7 +556,9 @@ static inline void xsave_state(void *buffer) {
         : "a" (low), "d" (high)
         : "memory");
 
+    asm volatile("mfence" ::: "memory");
     asm volatile("sfence" ::: "memory");
+    asm volatile("lfence" ::: "memory");
 }
 
 static inline void xrstor_state(void *buffer) {
@@ -574,7 +602,9 @@ static inline void xrstor_state(void *buffer) {
         : "m" (*(const uint8_t *)buffer), "a" (low), "d" (high)
         : "memory");
 
+    asm volatile("mfence" ::: "memory");
     asm volatile("sfence" ::: "memory");
+    asm volatile("lfence" ::: "memory");
 }
 
 void SysIdleTask();
@@ -584,10 +614,14 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     if (!Scheduler::active) {
         return current_rsp;
     }
+    
+    asm volatile("mfence" ::: "memory");
+    asm volatile("sfence" ::: "memory");
+    asm volatile("lfence" ::: "memory");
 
     HAL::CORE::CoreLocal *thread_data = HAL::CORE::get_core_data();
     uint64_t curr_sys_time = ACPI::get_sys_time();
-    if (curr_sys_time - last_ram_prnt > 10000) {
+    if (curr_sys_time - last_ram_prnt > 5000) {
         Debug::krnl_print("SCHD", Debug::LOG_INFO, "RAM: %i/%i", PMM::used_memory, PMM::total_memory);
         last_ram_prnt = curr_sys_time;
     }
@@ -612,18 +646,20 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
         }
     }
 
-    if (thread_data->core_id == 0 && Scheduler::sleep_tree.get_node_count() > 0) {
-        loop:
-        Scheduler::Task *t = (Scheduler::Task *)Scheduler::sleep_tree.get_leftmost();
-        if (t && t->vruntime >= curr_sys_time) {
-            Scheduler::sleep_tree.remove_node(t);
-            t->vruntime = 0; // this forces it back to the lowest
-            t->unblock(Scheduler::BlockReasons::SLEEP); // reinserts it to regular tree.
-            --Scheduler::sleeping_tasks;
-            goto loop;
-        }
-        asm volatile("sfence" ::: "memory");
-    }
+    // if (thread_data->core_id == 0 && Scheduler::sleep_tree.get_node_count() > 0) {
+    //     loop:
+    //     Scheduler::Task *t = (Scheduler::Task *)Scheduler::sleep_tree.get_leftmost();
+    //     if (t && t->vruntime >= curr_sys_time) {
+    //         Scheduler::sleep_tree.remove_node(t);
+    //         t->vruntime = 0; // this forces it back to the lowest
+    //         t->unblock(Scheduler::BlockReasons::SLEEP); // reinserts it to regular tree.
+    //         --Scheduler::sleeping_tasks;
+    //         goto loop;
+    //     }
+    //     asm volatile("mfence" ::: "memory");
+    //     asm volatile("sfence" ::: "memory");
+    //     asm volatile("lfence" ::: "memory");
+    // }
 
     if (next_task && next_task != thread_data->system_idle_task) {
         next_task->dequeue();
@@ -638,14 +674,17 @@ extern "C" uint64_t SchedulerSwitch(uint64_t current_rsp) {
     thread_data->current_task = next_task;
 
     if (next_task == thread_data->system_idle_task) {
-        Scheduler::Task *new_target = Scheduler::AttemptCoreSteal();
+        Scheduler::Task *new_target = nullptr; //Scheduler::AttemptCoreSteal();
         if (new_target) next_task = new_target;
-        // else Debug::krnl_print("SCHD", Debug::LOG_INFO, "Failed to steal task ):");
     }
 
     if (next_task != prev_task) {
         if (prev_task) {
             if (prev_task->cr3 != next_task->cr3) {
+                asm volatile("mfence" ::: "memory");
+                asm volatile("sfence" ::: "memory");
+                asm volatile("lfence" ::: "memory");
+
                 asm volatile("mov %0, %%cr3" :: "r"(next_task->cr3) : "memory");
             }
             if (prev_task->fx_state) {

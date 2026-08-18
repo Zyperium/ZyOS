@@ -20,6 +20,10 @@ namespace R0UI {
     uint64_t on_enter(Scheduler::Task *nt) {
         Debug::krnl_print("R0UI", Debug::LOG_INFO, "%s is trying to open a link with me!", nt->task_name.c_str());
         (void)owned_resources[nt].reserve(1);
+
+        asm volatile("mfence" ::: "memory");
+        asm volatile("sfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         
         return 0;
     }
@@ -49,6 +53,9 @@ namespace R0UI {
             for (auto i{0uz}; i < watching->size(); ++i) {
                 Window *w = watching->data()[i];
                 if (w) w->remove_watcher(nt);
+                asm volatile("mfence" ::: "memory");
+                asm volatile("sfence" ::: "memory");
+                asm volatile("lfence" ::: "memory");
             }
             watched_resources.remove(nt);
         }
@@ -84,6 +91,8 @@ namespace R0UI {
             delete[] res;
             (void)owned_resources[from].push_back(nwin);
             Debug::krnl_print("R0UI", Debug::LOG_INFO, "Mapping new window to %s", from->task_name.c_str());
+            asm volatile("mfence" ::: "memory");
+            asm volatile("sfence" ::: "memory");
             return (uint64_t)nwin->map_to(from);
         }
         else if (data == 2) {

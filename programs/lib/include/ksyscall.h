@@ -17,6 +17,8 @@ static inline uint64_t syscall_base(uint64_t ID, uint64_t A1, uint64_t A2,
     register uint64_t r8_val  asm("r8")  = A5;
     register uint64_t r9_val  asm("r9")  = A6;
 
+    asm volatile("mfence" ::: "memory");
+
     asm volatile(
         "syscall"
         : "=a"(ret)
@@ -25,8 +27,11 @@ static inline uint64_t syscall_base(uint64_t ID, uint64_t A1, uint64_t A2,
         : "rcx", "r11", "memory"
     );
 
+    asm volatile("mfence" ::: "memory");
+
     return ret;
 }
+
 #define _SYSCALL_RESOLVE(_1, _2, _3, _4, _5, _6, _7, NAME, ...) NAME
 
 #define syscall(...) _SYSCALL_RESOLVE(__VA_ARGS__, \

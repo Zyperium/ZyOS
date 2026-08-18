@@ -67,6 +67,10 @@ namespace HAL::MEM::PMEM {
             );
         }
 
+        asm volatile("sfence" ::: "memory");
+        asm volatile("mfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
+
         return (void*)virt_start;
     }
 

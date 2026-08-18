@@ -10,16 +10,32 @@ namespace lib {
     public:
         Spinlock() = default;
 
+        virtual uint64_t lock();
+        virtual void unlock(uint64_t);
+    };
+
+    class SoftLock {
+    private:
+        bool locked;
+        uint64_t rflags;
+    
+    public:
+        SoftLock() = default;
+
         void lock();
         void unlock();
     };
 
     class ScopedLock {
     private:
-        Spinlock &lock;
+        Spinlock lock;
+        uint64_t rflags{};
 
     public:
-        ScopedLock(Spinlock &lock);
+        explicit ScopedLock(Spinlock &lock);
         ~ScopedLock();
+
+        ScopedLock(const ScopedLock &) = delete;
+        ScopedLock &operator=(const ScopedLock &) = delete;
     };
 }

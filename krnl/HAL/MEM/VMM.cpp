@@ -160,6 +160,7 @@ namespace HAL::MEM::VMM {
         PMM::reference_page((void *)phys);
         
         asm volatile("invlpg (%0)" :: "r" (virt) : "memory");
+        asm volatile("sfence" ::: "memory");
     }
 
     void unmap_page(uint64_t *pml4_root, uint64_t virt) {
@@ -198,6 +199,10 @@ namespace HAL::MEM::VMM {
         for (int i = 256; i < 512; i++) {
             new_pml4_virt[i] = kernel_pml4_virt[i];
         }
+
+        asm volatile("mfence" ::: "memory");
+        asm volatile("sfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
 
         return (uint64_t)new_pml4_phys;
     }
@@ -260,6 +265,9 @@ namespace HAL::MEM::VMM {
                                PAGE_SIZE);
 
                         dst_pt[pt_i] = dst_frame_phys | (src_pt[pt_i] & 0xFFFULL);
+                        asm volatile("mfence" ::: "memory");
+                        asm volatile("sfence" ::: "memory");
+                        asm volatile("lfence" ::: "memory");
                     }
                 }
             }
@@ -333,15 +341,31 @@ namespace HAL::MEM::VMM {
                                         PMM::free_page((void*)phys_addr);
                                     }
                                 }
+                                
+                                asm volatile("mfence" ::: "memory");
+                                asm volatile("sfence" ::: "memory");
+                                asm volatile("lfence" ::: "memory");
                                 PMM::free_page((void*)(pd[k] & PTE_ADDR_MASK));
                             }
                         }
+
+                        asm volatile("mfence" ::: "memory");
+                        asm volatile("sfence" ::: "memory");
+                        asm volatile("lfence" ::: "memory");
                         PMM::free_page((void*)(pdpt[j] & PTE_ADDR_MASK));
                     }
                 }
+
+                asm volatile("mfence" ::: "memory");
+                asm volatile("sfence" ::: "memory");
+                asm volatile("lfence" ::: "memory");
                 PMM::free_page((void*)(pml4[i] & PTE_ADDR_MASK));
             }
         }
+
+        asm volatile("mfence" ::: "memory");
+        asm volatile("sfence" ::: "memory");
+        asm volatile("lfence" ::: "memory");
         PMM::free_page((void*)(cr3 & PTE_ADDR_MASK));
     }
 }

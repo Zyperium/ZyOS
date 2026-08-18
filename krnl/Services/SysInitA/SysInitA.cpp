@@ -143,7 +143,7 @@ namespace SysInitA {
                     char *p = (char *)path;
                     lib::string cp_path = p;
                     delete[] p;
-                    Debug::krnl_print("CMD", Debug::LOG_INFO, "Executing ring 3 task at: %s", cp_path.c_str());
+                    Debug::krnl_print("SYSA", Debug::LOG_INFO, "Executing ring 3 task at: %s", cp_path.c_str());
                     ELF::Runway(cp_path);
                     for (;;);
                 }, apps[i], true, (void *)apps[i]);

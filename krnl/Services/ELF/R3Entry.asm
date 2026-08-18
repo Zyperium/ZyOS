@@ -18,7 +18,7 @@ R3Entry:
     mov r9, rdx ; Save Ring 3 RSP
     mov r8, rsi ; Save FS base
 
-    mov ax, 0x23
+    mov ax, 0x0
     mov ds, ax
     mov es, ax
     mov fs, ax

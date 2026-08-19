@@ -22,6 +22,19 @@
 using namespace HAL;
 using namespace MEM;
 
+#ifndef EBADF
+#define EBADF 9
+#endif
+#ifndef EFAULT
+#define EFAULT 14
+#endif
+#ifndef ENOENT
+#define ENOENT 2
+#endif
+#ifndef EMFILE
+#define EMFILE 24
+#endif
+
 namespace Syscalls {
     void initialize() {
         Debug::krnl_print("SYS", Debug::LOG_INFO, "Initialize");
@@ -36,15 +49,6 @@ namespace Syscalls {
 
         return;
     }
-
-    // inline static bool is_canon(uint64_t ptr) {
-    //     if (ptr < ZyOS::END_OF_LOWER_HALF)
-    //         return true;
-    //     else if (ptr > ZyOS::START_OF_UPPER_HALF)
-    //         return true;
-
-    //     return false;
-    // }
 
     char *usr_to_string(uint64_t usr_ptr, uint64_t max_value) {
         auto *a = new char[max_value + 1]{0};
@@ -63,13 +67,30 @@ namespace Syscalls {
         return a;
     }
 
+    static char *usr_copy_bytes(uint64_t cr3, uint64_t usr_ptr, uint64_t len) {
+        if (usr_ptr > ZyOS::END_OF_LOWER_HALF) {
+            return nullptr;
+        }
+
+        uint64_t phys_addr = VMM::GetPhysicalAddress(cr3, usr_ptr);
+        if (!phys_addr) {
+            return nullptr;
+        }
+
+        auto *buf = new char[len + 1];
+        memcpy(buf, (const void *)(phys_addr + PMM::hhdm_offset), len);
+        buf[len] = '\0';
+        return buf;
+    }
+
+    static constexpr uint64_t STDIN_FD  = 0;
+    static constexpr uint64_t STDOUT_FD = 1;
+    static constexpr uint64_t STDERR_FD = 2;
 
     lib::SoftLock syslock;
 
-    /*
-        @params usr_ptr: the LOWER half pointer to a VALID path.
-        @returns a file descriptor.
-    */
+    static constexpr uint64_t RESERVED_FDS = 3;
+
     uint64_t SYS_OPEN_FILE(uint64_t usr_ptr, uint64_t max) {
         // lib::ScopedSoftLock x(syslock);
         auto *val = usr_to_string(usr_ptr, max);
@@ -78,7 +99,7 @@ namespace Syscalls {
 
         if (!val[0]) {
             delete[] val;
-            return 0;
+            return (uint64_t)-EFAULT;
         }
 
         auto filed{0};
@@ -88,7 +109,7 @@ namespace Syscalls {
         if (!usr_task->utask) {
             delete[] val;
             Debug::krnl_print("SYS", Debug::LOG_WARN, "Bad ring 3 task, or kernel task called a syscall function?");
-            return 0;
+            return (uint64_t)-EBADF;
         }
 
         filed = usr_task->utask->next_free_ds;
@@ -105,7 +126,7 @@ namespace Syscalls {
             if (usr_task->utask->next_free_ds > Scheduler::MAX_USR_FD) {
                 delete[] val;
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Out of filedescriptors!");
-                return 0;
+                return (uint64_t)-EMFILE;
             }
 
             filed = usr_task->utask->next_free_ds;
@@ -124,7 +145,7 @@ namespace Syscalls {
 
         if (!DISK::IsValidDisk(p.drv)) {
             Debug::krnl_print("SYS", Debug::LOG_WARN, "Received bad drive letter!");
-            return 0;
+            return (uint64_t)-ENOENT;
         }
 
         Debug::krnl_print("SYS", Debug::LOG_INFO, "Resolving virtual node!");
@@ -132,13 +153,28 @@ namespace Syscalls {
 
         if (!node) {
             Debug::krnl_print("SYS", Debug::LOG_WARN, "Received bad path!");
-            return 0;
+            return (uint64_t)-ENOENT;
         }
 
-        Debug::krnl_print("SYS", Debug::LOG_INFO, "Successfully opened file! (filed %i)", filed + 1);
+        Debug::krnl_print("SYS", Debug::LOG_INFO, "Successfully opened file! (filed %i)", filed + RESERVED_FDS);
         usr_task->utask->descriptors[filed] = node;
 
-        return filed + 1;
+        return filed + RESERVED_FDS;
+    }
+
+    static bool resolve_user_fd(uint64_t fd, size_t &out) {
+        if (fd < RESERVED_FDS) {
+            return false;
+        }
+
+        uint64_t idx = fd - RESERVED_FDS;
+
+        if (idx >= Scheduler::MAX_USR_FD) {
+            return false;
+        }
+
+        out = (size_t)idx;
+        return true;
     }
 
     /*
@@ -146,7 +182,7 @@ namespace Syscalls {
         @params read_offset: current integer offset to read
         @params read_amount: how much from the offset to read
         @params buffer: the buffer to pass the file content to
-        @returns bytes read
+        @returns bytes read (>= 0), or a negative errno value on failure.
     */
     uint64_t SYS_READ_FILE(uint64_t file_descriptor, uint64_t read_offset, uint64_t read_amount, uint64_t buffer) {
         // lib::ScopedSoftLock x(syslock);
@@ -154,15 +190,23 @@ namespace Syscalls {
 
         Debug::krnl_print("SYS", Debug::LOG_INFO, "Reading fd %i at %i to %i into %x", file_descriptor, read_offset, read_amount, buffer);
 
-        if (!usr_task->utask->descriptors[file_descriptor - 1]) {
-            Debug::krnl_print("SYS", Debug::LOG_WARN, "Invalid file descriptor");
+        if (file_descriptor == STDIN_FD) {
             return 0;
         }
 
-        auto *target = usr_task->utask->descriptors[file_descriptor - 1];
+        if (file_descriptor == STDOUT_FD || file_descriptor == STDERR_FD) {
+            return (uint64_t)-EBADF;
+        }
+
+        size_t idx;
+        if (!resolve_user_fd(file_descriptor, idx) || !usr_task->utask->descriptors[idx]) {
+            Debug::krnl_print("SYS", Debug::LOG_WARN, "Invalid file descriptor");
+            return (uint64_t)-EBADF;
+        }
+
+        auto *target = usr_task->utask->descriptors[idx];
         
         if (read_offset >= target->get_size()) {
-            Debug::krnl_print("SYS", Debug::LOG_WARN, "Offset >= than target size");
             return 0;
         }
 
@@ -174,7 +218,7 @@ namespace Syscalls {
 
         if (!buf_phys) {
             Debug::krnl_print("SYS", Debug::LOG_INFO, "Bad virtual address!");
-            return 0;
+            return (uint64_t)-EFAULT;
         }
 
         target->read(read_offset, (void *)buffer, read_amount);
@@ -188,23 +232,50 @@ namespace Syscalls {
         // lib::ScopedSoftLock x(syslock);
         auto *usr_task = HAL::CORE::get_core_data()->current_task;
 
-        if (!usr_task->utask->descriptors[file_descriptor - 1]) {
-            Debug::krnl_print("SYS", Debug::LOG_WARN, "Invalid file descriptor");
-            return 0;
+        if (file_descriptor == STDOUT_FD || file_descriptor == STDERR_FD) {
+            if (write_amount == 0) {
+                return 0;
+            }
+
+            char *text = usr_copy_bytes(usr_task->cr3, buffer, write_amount);
+            if (!text) {
+                return (uint64_t)-EFAULT;
+            }
+
+            Debug::krnl_print(
+                file_descriptor == STDOUT_FD ? "OUT" : "ERR",
+                Debug::LOG_INFO,
+                "%s: %s",
+                usr_task->task_name.c_str(),
+                text
+            );
+
+            delete[] text;
+            return write_amount;
         }
 
-        auto *target = usr_task->utask->descriptors[file_descriptor - 1];
+        if (file_descriptor == STDIN_FD) {
+            return (uint64_t)-EBADF;
+        }
+
+        size_t idx;
+        if (!resolve_user_fd(file_descriptor, idx) || !usr_task->utask->descriptors[idx]) {
+            Debug::krnl_print("SYS", Debug::LOG_WARN, "Invalid file descriptor");
+            return (uint64_t)-EBADF;
+        }
+
+        auto *target = usr_task->utask->descriptors[idx];
 
         if (write_offset >= target->get_size()) {
             Debug::krnl_print("SYS", Debug::LOG_WARN, "Offset >= than target size");
-            return 0;
+            return (uint64_t)-EFAULT;
         }
 
         auto buf_phys = VMM::GetPhysicalAddress(usr_task->cr3, buffer);
 
         if (!buf_phys) {
             Debug::krnl_print("SYS", Debug::LOG_INFO, "Bad virtual address!");
-            return 0;
+            return (uint64_t)-EFAULT;
         }
         
 
@@ -217,14 +288,19 @@ namespace Syscalls {
         // lib::ScopedSoftLock x(syslock);
         auto *usr_task = HAL::CORE::get_core_data()->current_task->utask;
 
-        if (!usr_task->descriptors[fd]) {
-            return 1; // invalid fd
+        if (fd == STDIN_FD || fd == STDOUT_FD || fd == STDERR_FD) {
+            return 0;
         }
 
-        usr_task->descriptors[fd]->release();
-        usr_task->descriptors[fd] = nullptr;
+        size_t idx;
+        if (!resolve_user_fd(fd, idx) || !usr_task->descriptors[idx]) {
+            return (uint64_t)-EBADF;
+        }
 
-        usr_task->next_free_ds = fd;
+        usr_task->descriptors[idx]->release();
+        usr_task->descriptors[idx] = nullptr;
+
+        usr_task->next_free_ds = idx;
 
         return 0;
     }
@@ -239,7 +315,8 @@ namespace Syscalls {
 
         if (!found) {
             Debug::krnl_print("SYS", Debug::LOG_WARN, "Unable to find ioctl");
-            return -1;
+            delete[] val;
+            return (uint64_t)-ENOENT;
         }
 
         auto *regdrvr = *found;
@@ -318,6 +395,37 @@ namespace Syscalls {
         return 0;
     }
 
+    uint64_t SYS_MPROTECT(uint64_t addr, uint64_t len, int prot) {
+        // lib::ScopedSoftLock x(syslock);
+        if (addr % PAGE_SIZE != 0 || len == 0) return (uint64_t)-EINVAL;
+
+        auto *usr_task = HAL::CORE::get_core_data()->current_task;
+        uint64_t aligned_len = (len + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+        uint64_t pages = aligned_len / PAGE_SIZE;
+
+        uint64_t pte_flags = VMM::PTE_USER | VMM::PTE_PRESENT;
+        if (prot & 0x2) pte_flags |= VMM::PTE_WRITABLE;
+        if (!(prot & 0x4)) pte_flags |= VMM::PTE_NX;
+
+        for (size_t i = 0; i < pages; ++i) {
+            uint64_t vaddr = addr + (i * PAGE_SIZE);
+            uint64_t phys = VMM::GetPhysicalAddress(usr_task->cr3, vaddr);
+
+            if (!phys) {
+                return (uint64_t)-ENOMEM;
+            }
+
+            VMM::map_page(
+                (uint64_t *)(usr_task->cr3 + PMM::hhdm_offset),
+                vaddr,
+                phys,
+                pte_flags
+            );
+        }
+
+        return 0;
+    }
+
     uint64_t HandleSyscall(SYSCALL_ID id, SUBREGS regs) {
         switch(id) {
             /*
@@ -328,7 +436,7 @@ namespace Syscalls {
             */
             case SYSCALL_ID::SYS_OPEN: {
                 if (!regs.A1) {
-                    return -1;
+                    return (uint64_t)-EFAULT;
                 }
 
                 return SYS_OPEN_FILE(regs.A1, regs.A2);
@@ -339,12 +447,13 @@ namespace Syscalls {
             case SYSCALL_ID::SYS_GLEN: {
                 auto *usr_task = HAL::CORE::get_core_data()->current_task;
 
-                if (!usr_task->utask->descriptors[regs.A1 - 1]) {
+                size_t idx;
+                if (!resolve_user_fd(regs.A1, idx) || !usr_task->utask->descriptors[idx]) {
                     Debug::krnl_print("SYS", Debug::LOG_WARN, "Invalid file descriptor");
-                    return 0;
+                    return (uint64_t)-EBADF;
                 }
 
-                auto *target = usr_task->utask->descriptors[regs.A1 - 1];
+                auto *target = usr_task->utask->descriptors[idx];
 
                 return target->get_size();
             }
@@ -376,8 +485,7 @@ namespace Syscalls {
                 return SYS_MUNMAP(regs.A1, regs.A2);
             }
             case SYSCALL_ID::SYS_MPROTECT: {
-                Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (mprotect)");
-                return -1;
+                return SYS_MPROTECT(regs.A1, regs.A2, (int)regs.A3);
             }
             case SYSCALL_ID::SYS_EXIT: {
                 Debug::krnl_print("SYS", Debug::LOG_INFO, "Task %s is exiting", HAL::CORE::get_core_data()->current_task->task_name.c_str());
@@ -405,23 +513,23 @@ namespace Syscalls {
             }
             case SYSCALL_ID::SYS_SHM_CREATE: {
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (shm create)");
-                return -1;
+                return (uint64_t)-EINVAL;
             }
             case SYSCALL_ID::SYS_SHM_MAP: {
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (shm map)");
-                return -1;
+                return (uint64_t)-EINVAL;
             }
             case SYSCALL_ID::SYS_SHM_UNMAP: {
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (shm unmap)");
-                return -1;
+                return (uint64_t)-EINVAL;
             }
             case SYSCALL_ID::SYS_FUTEX_WAIT: {
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (futex wait)");
-                return -1;
+                return (uint64_t)-EINVAL;
             }
             case SYSCALL_ID::SYS_FUTEX_WAKE: {
                 Debug::krnl_print("SYS", Debug::LOG_WARN, "Unimplemented (futex wake)");
-                return -1;
+                return (uint64_t)-EINVAL;
             }
             case SYSCALL_ID::SYS_GET_TIME: {
                 return ACPI::get_sys_time();
@@ -431,6 +539,10 @@ namespace Syscalls {
                 return pid;
             }
             case SYSCALL_ID::SYS_EXEC_APP: {
+                if (!regs.A1) {
+                    return (uint64_t)-EFAULT;
+                }
+
                 char *path = usr_to_string(regs.A1, 64);
 
                 Scheduler::Task *ntask = new Scheduler::Task([](void *ptr){ 

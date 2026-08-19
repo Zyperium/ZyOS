@@ -4,29 +4,38 @@
 
 namespace R0UI::AutoUI {
     // Root object. Contains an x, y point.
+    class Window;
+    struct Dim {
+        size_t x, y;
+        size_t width, height;
+    };
+
     class Object {
     private:
         Object *next;
         Object *previous;
-        
+        Window *refwin;
+        friend Window;
+    protected:
+        virtual ~Object();
     public:
         size_t pos_x, pos_y;
 
-        Object *GetNext();
-        void Insert(Object *addr);
-        void Remove();
-
+        Object(Window *ref);
+        Object(Window *ref, Dim &dimensions);
         virtual void Draw();
     };
 
     class Window {
     private:
+        bool _lock;
         WinControl *true_ref;
         Object *linked_queue;
 
         friend Object;
     public:
-        Window();
+        Window(const char *class_name);
+        Window(const char *class_name, Dim &);
         ~Window();
 
         // pass nullptr for things you don't want to fetch

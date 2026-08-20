@@ -107,7 +107,14 @@ namespace Scheduler {
         static lib::Spinlock lock;
     };
 
+    struct NotifData { 
+        uint32_t sender_id;
+        uint32_t data_id;
+        uint64_t contents;
+    };
+
     void EnableScheduler();
+    void WakeAndSendNotif(ZyOS::QWORD process_id, const NotifData &data);
     void DisabledScheduler();
     void ClearGarbage();
     void ForkerTask();
